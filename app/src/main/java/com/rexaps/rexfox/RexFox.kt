@@ -1,7 +1,6 @@
 package com.rexaps.rexfox
 
 import android.app.Activity
-import android.graphics.Color
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -12,13 +11,13 @@ class RexFox(private val activity: Activity) {
 
     private lateinit var webView: WebView
     private lateinit var addressBar: EditText
+    private lateinit var navigation: BrowserNavigation
 
     fun start() {
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Address bar
         val addressRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
         }
@@ -43,7 +42,6 @@ class RexFox(private val activity: Activity) {
             LinearLayout.LayoutParams(-2, -2)
         )
 
-        // Navigation buttons
         val navigationRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
         }
@@ -75,7 +73,6 @@ class RexFox(private val activity: Activity) {
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        // WebView
         webView = WebView(activity).apply {
             webViewClient = WebViewClient()
 
@@ -85,6 +82,8 @@ class RexFox(private val activity: Activity) {
             loadUrl("https://www.google.com")
         }
 
+        navigation = BrowserNavigation(webView)
+
         root.addView(addressRow)
         root.addView(navigationRow)
 
@@ -93,34 +92,25 @@ class RexFox(private val activity: Activity) {
             LinearLayout.LayoutParams(-1, 0, 1f)
         )
 
-        // GO
         goButton.setOnClickListener {
             loadAddress()
         }
 
-        // Enter pada address bar
         addressBar.setOnEditorActionListener { _, _, _ ->
             loadAddress()
             true
         }
 
-        // Back
         backButton.setOnClickListener {
-            if (webView.canGoBack()) {
-                webView.goBack()
-            }
+            navigation.back()
         }
 
-        // Forward
         forwardButton.setOnClickListener {
-            if (webView.canGoForward()) {
-                webView.goForward()
-            }
+            navigation.forward()
         }
 
-        // Reload
         reloadButton.setOnClickListener {
-            webView.reload()
+            navigation.reload()
         }
 
         activity.setContentView(root)
@@ -141,11 +131,6 @@ class RexFox(private val activity: Activity) {
     }
 
     fun goBack(): Boolean {
-        return if (webView.canGoBack()) {
-            webView.goBack()
-            true
-        } else {
-            false
-        }
+        return navigation.back()
     }
 }
