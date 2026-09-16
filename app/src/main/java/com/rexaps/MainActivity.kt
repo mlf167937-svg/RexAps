@@ -2,13 +2,12 @@ package com.rexaps
 
 import android.os.Bundle
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.LinearLayout
-import android.widget.EditText
 import android.widget.Button
-import android.graphics.Color
-import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -30,7 +29,6 @@ class MainActivity : AppCompatActivity() {
 
         addressBar = EditText(this).apply {
             hint = "Masukkan alamat..."
-            singleLine = true
             imeOptions = EditorInfo.IME_ACTION_GO
             setText("https://www.google.com")
         }
@@ -41,7 +39,11 @@ class MainActivity : AppCompatActivity() {
 
         topBar.addView(
             addressBar,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
 
         topBar.addView(
@@ -54,10 +56,8 @@ class MainActivity : AppCompatActivity() {
 
         webView = WebView(this).apply {
             webViewClient = WebViewClient()
-
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-
             loadUrl("https://www.google.com")
         }
 
