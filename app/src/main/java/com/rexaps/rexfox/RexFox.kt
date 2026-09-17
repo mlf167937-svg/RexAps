@@ -4,6 +4,7 @@ import android.app.Activity
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 
 class RexFox(private val activity: Activity) {
@@ -18,7 +19,10 @@ class RexFox(private val activity: Activity) {
     }
 
     private fun showHome() {
-        activity.setContent {
+        val componentActivity = activity as? ComponentActivity
+            ?: return
+
+        componentActivity.setContent {
             RexFoxTheme {
                 RexFoxHome(
                     onSearch = { query ->
@@ -33,8 +37,6 @@ class RexFox(private val activity: Activity) {
     }
 
     private fun openWebView(query: String) {
-        val url = normalizeUrl(query)
-
         webView = WebView(activity).apply {
             webViewClient = object : WebViewClient() {
 
@@ -69,7 +71,7 @@ class RexFox(private val activity: Activity) {
 
         activity.setContentView(root)
 
-        webView.loadUrl(url)
+        webView.loadUrl(normalizeUrl(query))
     }
 
     private fun normalizeUrl(input: String): String {
