@@ -4,11 +4,14 @@ import android.app.Activity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 
 @Composable
 fun RexFoxScreen(activity: Activity) {
-    val vm = ViewModelProvider(
-        activity,
+    val owner = activity as? ViewModelStoreOwner
+        ?: error("RexFoxScreen requires an Activity that implements ViewModelStoreOwner")
+    val vm: RexFoxBrowserViewModel = ViewModelProvider(
+        owner,
         RexFoxBrowserViewModel.Factory(activity.applicationContext, activity)
     )[RexFoxBrowserViewModel::class.java]
     val state = vm.state.collectAsState().value
