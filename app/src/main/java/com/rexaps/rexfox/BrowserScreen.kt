@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
@@ -72,10 +73,10 @@ fun BrowserScreen(
                 )
             } else {
                 Surface(
-                    Modifier.weight(1f),
+                    onClick = { editing = true },
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(11.dp),
-                    color = SurfaceCard,
-                    onClick = { editing = true }
+                    color = SurfaceCard
                 ) {
                     Text(
                         tab.url.removePrefix("https://").removePrefix("http://"),
@@ -110,8 +111,8 @@ fun BrowserScreen(
         }
 
         AndroidView(
-            Modifier.weight(1f),
             factory = { tab.webView },
+            modifier = Modifier.weight(1f),
             update = { }
         )
 
@@ -141,13 +142,13 @@ fun TabOverview(
         LazyColumn(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             items(state.tabs, key = { it.id }) { tab ->
                 Surface(
-                    Modifier.fillMaxWidth(),
+                    onClick = { onSwitch(tab.id) },
+                    modifier = Modifier.fillMaxWidth(),
                     color = if (tab.id == state.activeTabId) SurfaceElevated else SurfaceCard,
                     shape = RoundedCornerShape(14.dp),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp, if (tab.id == state.activeTabId) Violet else BorderSubtle
-                    ),
-                    onClick = { onSwitch(tab.id) }
+                    )
                 ) {
                     Row(Modifier.padding(13.dp)) {
                         Column(Modifier.weight(1f)) {

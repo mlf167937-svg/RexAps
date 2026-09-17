@@ -49,7 +49,11 @@ class RexFoxBrowserViewModel(
         onDownload = { url, ua, cd, mime ->
             downloadManager.enqueue(url, ua, cd, mime)
         }
-    )
+    ).also { manager ->
+        manager.pageStateListener = { url, title, progress, loading, error, incognito ->
+            onPageState(url, title, progress, loading, error, incognito)
+        }
+    }
 
     fun navigate(input: String) {
         when (val target = NavigationResolver.resolve(input, _state.value.settings.searchEngine)) {
@@ -122,9 +126,18 @@ class RexFoxBrowserViewModel(
         )
     }
 
-    fun onPageState(url: String, title: String, progress: Int, loading: Boolean, error: String?) {
-        val tab = tabManager.getActiveTab()
-        if (tab != null) historyRepo.add(url, title, tab.isIncognito)
+    fun onPageState(
+        url: String,
+        title: String,
+        progress: Int,
+        loading: Boolean,
+        error: String?,
+        incognito: Boolean
+    ) {
+        // Persist only completed, non-incognito navigations. Progress callbacks can fire many times.
+        if (!loading && progress >= 100) {
+            historyRepo.add(url, title, incognito)
+        }
 
         _state.value = _state.value.copy(
             progress = progress,

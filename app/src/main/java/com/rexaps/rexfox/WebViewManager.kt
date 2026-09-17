@@ -20,7 +20,7 @@ class WebViewManager(
     private val settingsProvider: () -> BrowserSettings,
     private val onState: (url: String, title: String, progress: Int, loading: Boolean, error: String?) -> Unit,
     private val onDownload: (String, String?, String?, String?) -> Unit,
-    private val onNewWindow: (String) -> Unit
+    private val onNewWindow: () -> WebView
 ) {
     @SuppressLint("SetJavaScriptEnabled")
     fun configure(webView: WebView, incognito: Boolean) {
@@ -117,14 +117,9 @@ class WebViewManager(
             ): Boolean {
                 // target=_blank is intentionally supported through a new RexFox tab.
                 val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                val child = WebView(activity)
-                configure(child, false)
-                child.webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) {
-                        onNewWindow(url)
-                    }
-                }
-                transport.webView = child
+                // Give Chromium a real RexFox tab WebView rather than an unmanaged child view.
+                val target = onNewWindow()
+                transport.webView = target
                 resultMsg.sendToTarget()
                 return true
             }
@@ -150,7 +145,7 @@ class WebViewManager(
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.stopLoading()
         webView.webChromeClient = null
-        webView.webViewClient = null
+        webView.webViewClient = WebViewClient()
         webView.destroy()
     }
 }

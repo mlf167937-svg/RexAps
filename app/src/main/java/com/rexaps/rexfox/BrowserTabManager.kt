@@ -24,12 +24,12 @@ class BrowserTabManager(
         val manager = WebViewManager(
             activity,
             settingsProvider,
-            { currentUrl, title, _, _, _ ->
+            { currentUrl, title, progress, loading, error ->
                 updateTab(tab.id, currentUrl, title)
-                onChanged()
+                onPageState(currentUrl, title, progress, loading, error, tab.isIncognito)
             },
             onDownload,
-            { target -> createTab(false, target) }
+            { createTab(false).webView }
         )
         manager.configure(webView, incognito)
         webView.tag = manager
@@ -78,6 +78,20 @@ class BrowserTabManager(
     fun snapshots() = tabs.map {
         TabSnapshot(it.id, it.title, it.url, it.isIncognito)
     }
+
+    private fun onPageState(
+        url: String,
+        title: String,
+        progress: Int,
+        loading: Boolean,
+        error: String?,
+        incognito: Boolean
+    ) {
+        onChanged()
+        pageStateListener?.invoke(url, title, progress, loading, error, incognito)
+    }
+
+    var pageStateListener: ((String, String, Int, Boolean, String?, Boolean) -> Unit)? = null
 
     fun destroyAll() {
         tabs.forEach {

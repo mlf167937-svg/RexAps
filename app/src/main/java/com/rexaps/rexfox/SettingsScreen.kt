@@ -3,6 +3,8 @@ package com.rexaps.rexfox
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -19,7 +21,7 @@ fun SettingsScreen(
 ) {
     Column(Modifier.fillMaxSize().background(DeepBlack)) {
         Row(Modifier.fillMaxWidth().background(SurfaceDark).padding(10.dp)) {
-            IconButton(onClick = onBack) { Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Back") }
+            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
             Text("Settings", fontWeight = FontWeight.Bold)
         }
 

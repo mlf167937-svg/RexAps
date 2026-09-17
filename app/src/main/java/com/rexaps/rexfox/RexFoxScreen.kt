@@ -2,15 +2,16 @@ package com.rexaps.rexfox
 
 import android.app.Activity
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.ViewModelProvider
 
 @Composable
 fun RexFoxScreen(activity: Activity) {
-    val vm: RexFoxBrowserViewModel = viewModel(
-        factory = RexFoxBrowserViewModel.Factory(activity.applicationContext, activity)
-    )
-    val state = vm.state.collectAsStateWithLifecycle().value
+    val vm = ViewModelProvider(
+        activity,
+        RexFoxBrowserViewModel.Factory(activity.applicationContext, activity)
+    )[RexFoxBrowserViewModel::class.java]
+    val state = vm.state.collectAsState().value
 
     RexFoxTheme {
         when (state.screen) {
