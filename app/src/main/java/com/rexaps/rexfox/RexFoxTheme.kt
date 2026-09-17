@@ -5,32 +5,45 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val RexFoxDarkColors = darkColorScheme(
-    primary = Color(0xFF8B5CF6),
+val Violet = Color(0xFF7C3AED)
+val VioletLight = Color(0xFFA78BFA)
+val Cyan = Color(0xFF06B6D4)
+val CyanLight = Color(0xFF67E8F9)
+val DeepBlack = Color(0xFF05050A)
+val SurfaceDark = Color(0xFF0D0D15)
+val SurfaceCard = Color(0xFF13131E)
+val SurfaceElevated = Color(0xFF1C1C2A)
+val OnSurfaceMuted = Color(0xFF9090A8)
+val OnSurfacePrimary = Color(0xFFF0F0FA)
+
+private val RexFoxColors = darkColorScheme(
+    primary = Violet,
     onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E1030),
+    onPrimaryContainer = VioletLight,
 
-    secondary = Color(0xFF22D3EE),
+    secondary = Cyan,
     onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF0A2030),
+    onSecondaryContainer = CyanLight,
 
-    background = Color(0xFF08080D),
-    onBackground = Color(0xFFF5F5F7),
+    background = DeepBlack,
+    onBackground = OnSurfacePrimary,
 
-    surface = Color(0xFF111118),
-    onSurface = Color(0xFFF5F5F7),
+    surface = SurfaceDark,
+    onSurface = OnSurfacePrimary,
 
-    surfaceVariant = Color(0xFF1A1A24),
-    onSurfaceVariant = Color(0xFFB8B8C7),
+    surfaceVariant = SurfaceCard,
+    onSurfaceVariant = OnSurfaceMuted,
 
-    primaryContainer = Color(0xFF241A3D),
-    onPrimaryContainer = Color(0xFFE9DDFF)
+    error = Color(0xFFFF6B6B),
+    outline = Color(0xFF2A2A3F)
 )
 
 @Composable
-fun RexFoxTheme(
-    content: @Composable () -> Unit
-) {
+fun RexFoxTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = RexFoxDarkColors,
+        colorScheme = RexFoxColors,
         content = content
     )
 }

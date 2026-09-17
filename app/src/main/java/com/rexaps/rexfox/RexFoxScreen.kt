@@ -1,58 +1,63 @@
 package com.rexaps.rexfox
 
-import android.webkit.WebView
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
+import android.app.Activity
+import androidx.compose.runtime.*
 
 @Composable
-fun RexFoxScreen(
-    onSettings: () -> Unit
-) {
-    var query by remember {
-        mutableStateOf("")
+fun RexFoxScreen(activity: Activity) {
+    val tabManager = remember { BrowserTabManager(activity) }
+    val history = remember { BrowserHistory() }
+    val bookmarkManager = remember { BookmarkManager() }
+
+    var screen by remember { mutableStateOf<Screen>(Screen.Home) }
+
+    RexFoxTheme {
+        when (val s = screen) {
+            is Screen.Home -> RexFoxHome(
+                onSearch = { query ->
+                    val url = normalizeUrl(query)
+                    val tab = tabManager.createTab()
+                    screen = Screen.Browser(url, tab.id)
+                },
+                onSettings = { screen = Screen.Settings },
+                historyEntries = history.getAll(),
+                bookmarks = bookmarkManager.getAll()
+            )
+
+            is Screen.Browser -> BrowserScreen(
+                initialUrl = s.url,
+                tabManager = tabManager,
+                history = history,
+                bookmarkManager = bookmarkManager,
+                onNewTab = { url ->
+                    val tab = tabManager.createTab()
+                    screen = Screen.Browser(url, tab.id)
+                },
+                onCloseTab = { id ->
+                    tabManager.closeTab(id)
+                    val active = tabManager.getActiveTab()
+                    screen = if (active != null) Screen.Browser(active.url, active.id)
+                    else Screen.Home
+                },
+                onSwitchTab = { id ->
+                    tabManager.switchTab(id)
+                    val tab = tabManager.getActiveTab()
+                    if (tab != null) screen = Screen.Browser(tab.url, tab.id)
+                },
+                onHome = { screen = Screen.Home },
+                onSettings = { screen = Screen.Settings }
+            )
+
+            is Screen.Settings -> SettingsScreen(
+                onBack = { screen = Screen.Home },
+                onClearHistory = { history.clear() }
+            )
+        }
     }
+}
 
-    var showBrowser by remember {
-        mutableStateOf(false)
-    }
-
-    if (!showBrowser) {
-        RexFoxHome(
-            onSearch = { input ->
-                query = input.trim()
-
-                if (query.isNotEmpty()) {
-                    showBrowser = true
-                }
-            },
-            onSettings = onSettings
-        )
-    } else {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-
-                    loadUrl(
-                        if (
-                            query.startsWith("http://") ||
-                            query.startsWith("https://")
-                        ) {
-                            query
-                        } else {
-                            "https://www.google.com/search?q=$query"
-                        }
-                    )
-                }
-            }
-        )
-    }
+sealed class Screen {
+    object Home : Screen()
+    data class Browser(val url: String, val tabId: Int) : Screen()
+    object Settings : Screen()
 }
