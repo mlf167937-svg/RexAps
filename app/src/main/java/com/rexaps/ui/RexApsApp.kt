@@ -1,5 +1,6 @@
 package com.rexaps.ui
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,21 +37,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
+import com.rexaps.rexfox.RexFoxTheme
 
 @Composable
-fun RexApsApp(
-    onOpenRexFox: () -> Unit
-) {
+fun RexApsApp(activity: Activity) {
     var rexFoxOpen by remember {
         mutableStateOf(false)
     }
 
+    // When RexFox is open, show it full screen
     if (rexFoxOpen) {
-        RexFoxScreen(
-            onSettings = {
-                rexFoxOpen = false
-            }
-        )
+        RexFoxTheme {
+            RexFoxScreen(activity = activity)
+        }
         return
     }
 
@@ -102,7 +101,6 @@ fun RexApsApp(
                     padding = padding,
                     onOpenRexFox = {
                         rexFoxOpen = true
-                        onOpenRexFox()
                     }
                 )
             } else {
@@ -166,10 +164,7 @@ private fun HomeContent(
                 AppCard(
                     app = app,
                     onClick = {
-                        if (
-                            app.id == "rexfox" &&
-                            app.available
-                        ) {
+                        if (app.id == "rexfox" && app.available) {
                             onOpenRexFox()
                         }
                     }

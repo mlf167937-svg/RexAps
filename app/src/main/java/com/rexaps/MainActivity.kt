@@ -9,22 +9,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        showHome()
-    }
-
-    private fun showHome() {
         setContent {
-            RexApsApp(
-                onOpenRexFox = {
-                    // RexFox akan kita sambungkan di langkah berikutnya.
-                }
-            )
+            RexApsApp(activity = this@MainActivity)
         }
     }
 
     @Deprecated("Deprecated in Android API")
     override fun onBackPressed() {
-        showHome()
+        super.onBackPressed()
     }
 }
