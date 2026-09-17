@@ -1,63 +1,57 @@
 package com.rexaps.rexfox
 
 import android.app.Activity
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun RexFoxScreen(activity: Activity) {
-    val tabManager = remember { BrowserTabManager(activity) }
-    val history = remember { BrowserHistory() }
-    val bookmarkManager = remember { BookmarkManager() }
-
-    var screen by remember { mutableStateOf<Screen>(Screen.Home) }
+    val vm: RexFoxBrowserViewModel = viewModel(
+        factory = RexFoxBrowserViewModel.Factory(activity.applicationContext, activity)
+    )
+    val state = vm.state.collectAsStateWithLifecycle().value
 
     RexFoxTheme {
-        when (val s = screen) {
-            is Screen.Home -> RexFoxHome(
-                onSearch = { query ->
-                    val url = normalizeUrl(query)
-                    val tab = tabManager.createTab()
-                    screen = Screen.Browser(url, tab.id)
-                },
-                onSettings = { screen = Screen.Settings },
-                historyEntries = history.getAll(),
-                bookmarks = bookmarkManager.getAll()
+        when (state.screen) {
+            Screen.Home -> RexFoxHome(
+                state = state,
+                onNavigate = vm::navigate,
+                onTabs = { vm.openScreen(Screen.Tabs) },
+                onBookmarks = { vm.openScreen(Screen.Bookmarks) },
+                onHistory = { vm.openScreen(Screen.History) },
+                onDownloads = { vm.openScreen(Screen.Downloads) },
+                onSettings = { vm.openScreen(Screen.Settings) }
             )
-
-            is Screen.Browser -> BrowserScreen(
-                initialUrl = s.url,
-                tabManager = tabManager,
-                history = history,
-                bookmarkManager = bookmarkManager,
-                onNewTab = { url ->
-                    val tab = tabManager.createTab()
-                    screen = Screen.Browser(url, tab.id)
-                },
-                onCloseTab = { id ->
-                    tabManager.closeTab(id)
-                    val active = tabManager.getActiveTab()
-                    screen = if (active != null) Screen.Browser(active.url, active.id)
-                    else Screen.Home
-                },
-                onSwitchTab = { id ->
-                    tabManager.switchTab(id)
-                    val tab = tabManager.getActiveTab()
-                    if (tab != null) screen = Screen.Browser(tab.url, tab.id)
-                },
-                onHome = { screen = Screen.Home },
-                onSettings = { screen = Screen.Settings }
+            Screen.Browser -> BrowserScreen(
+                state = state,
+                tabs = vm.tabManager,
+                onNavigate = vm::navigate,
+                onBack = vm::back,
+                onForward = vm::forward,
+                onReload = vm::reload,
+                onStop = vm::stop,
+                onBookmark = vm::toggleBookmark,
+                onTabs = { vm.openScreen(Screen.Tabs) },
+                onHome = { vm.openScreen(Screen.Home) },
+                onSettings = { vm.openScreen(Screen.Settings) },
+                onDevTools = { vm.openScreen(Screen.DevTools) },
+                onNewTab = vm::newTab
             )
-
-            is Screen.Settings -> SettingsScreen(
-                onBack = { screen = Screen.Home },
-                onClearHistory = { history.clear() }
+            Screen.Tabs -> TabOverview(
+                state = state,
+                onBack = { vm.openScreen(Screen.Browser) },
+                onNewTab = vm::newTab,
+                onSwitch = vm::switchTab,
+                onClose = vm::closeTab
             )
+            Screen.Settings -> SettingsScreen(
+                settings = state.settings,
+                onChange = vm::updateSettings,
+                onBack = { vm.openScreen(Screen.Home) },
+                onClearHistory = vm::clearHistory
+            )
+            else -> PlaceholderScreen(state.screen) { vm.openScreen(Screen.Home) }
         }
     }
-}
-
-sealed class Screen {
-    object Home : Screen()
-    data class Browser(val url: String, val tabId: Int) : Screen()
-    object Settings : Screen()
 }

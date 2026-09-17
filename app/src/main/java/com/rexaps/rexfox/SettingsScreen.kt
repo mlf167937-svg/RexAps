@@ -3,151 +3,79 @@ package com.rexaps.rexfox
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun SettingsScreen(
+    settings: BrowserSettings,
+    onChange: (BrowserSettings) -> Unit,
     onBack: () -> Unit,
     onClearHistory: () -> Unit
 ) {
-    var jsEnabled by remember { mutableStateOf(true) }
-    var domStorage by remember { mutableStateOf(true) }
-    var trackingProtection by remember { mutableStateOf(true) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DeepBlack)
-    ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SurfaceDark)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, null, tint = OnSurfacePrimary)
-            }
-            Spacer(Modifier.width(8.dp))
-            Text("Settings", style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold, color = OnSurfacePrimary)
+    Column(Modifier.fillMaxSize().background(DeepBlack)) {
+        Row(Modifier.fillMaxWidth().background(SurfaceDark).padding(10.dp)) {
+            IconButton(onClick = onBack) { Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Back") }
+            Text("Settings", fontWeight = FontWeight.Bold)
         }
 
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SettingsSectionLabel("Privacy")
-
-            SettingsToggle(
-                icon = Icons.Default.Shield,
-                title = "Tracking Protection",
-                subtitle = "Block known trackers",
-                checked = trackingProtection,
-                onCheckedChange = { trackingProtection = it }
-            )
-
-            SettingsSectionLabel("Web Engine")
-
-            SettingsToggle(
-                icon = Icons.Default.Code,
-                title = "JavaScript",
-                subtitle = "Enable JS execution",
-                checked = jsEnabled,
-                onCheckedChange = { jsEnabled = it }
-            )
-
-            SettingsToggle(
-                icon = Icons.Default.Storage,
-                title = "DOM Storage",
-                subtitle = "Allow local storage",
-                checked = domStorage,
-                onCheckedChange = { domStorage = it }
-            )
-
-            SettingsSectionLabel("Data")
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp)),
-                color = Color(0xFF200D0D)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Clear History", fontWeight = FontWeight.SemiBold, color = OnSurfacePrimary)
-                        Text("Remove all browsing history", fontSize = 12.sp, color = OnSurfaceMuted)
-                    }
-                    TextButton(onClick = onClearHistory) {
-                        Text("Clear", color = MaterialTheme.colorScheme.error)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Section("GENERAL")
+            Surface(Modifier.fillMaxWidth(), color = SurfaceCard, shape = RoundedCornerShape(12.dp)) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Search engine", fontWeight = FontWeight.SemiBold)
+                    SearchEngine.values().forEach { engine ->
+                        TextButton(onClick = { onChange(settings.copy(searchEngine = engine)) }) {
+                            Text(if (engine == settings.searchEngine) "✓ ${engine.label}" else engine.label)
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-            Text("RexFox v1.0 — Private · Fast · Dev-Ready",
-                fontSize = 11.sp, color = OnSurfaceMuted,
-                modifier = Modifier.align(Alignment.CenterHorizontally))
+            Section("PRIVACY")
+            Toggle("Tracking protection", "No tracker blocker is installed in this build.", settings.trackingProtectionEnabled) {
+                onChange(settings.copy(trackingProtectionEnabled = it))
+            }
+            Toggle("Do Not Track", "Request the preference where supported.", settings.doNotTrack) {
+                onChange(settings.copy(doNotTrack = it))
+            }
+            OutlinedButton(onClick = onClearHistory, Modifier.fillMaxWidth()) {
+                Text("Clear browsing history")
+            }
+
+            Section("WEB")
+            Toggle("JavaScript", "Required by many modern websites.", settings.javaScriptEnabled) {
+                onChange(settings.copy(javaScriptEnabled = it))
+            }
+            Toggle("DOM storage", "Allow website local storage.", settings.domStorageEnabled) {
+                onChange(settings.copy(domStorageEnabled = it))
+            }
+            Toggle("Third-party cookies", "Allow embedded services to use cookies.", settings.thirdPartyCookiesEnabled) {
+                onChange(settings.copy(thirdPartyCookiesEnabled = it))
+            }
+            Toggle("Desktop site", "Request desktop layouts.", settings.desktopSite) {
+                onChange(settings.copy(desktopSite = it))
+            }
         }
     }
 }
 
-@Composable
-fun SettingsSectionLabel(text: String) {
-    Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-        color = OnSurfaceMuted, letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
-}
+@Composable private fun Section(text: String) =
+    Text(text, color = OnSurfaceMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
 
 @Composable
-fun SettingsToggle(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = SurfaceCard
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = VioletLight, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
+private fun Toggle(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Surface(Modifier.fillMaxWidth(), color = SurfaceCard, shape = RoundedCornerShape(12.dp)) {
+        Row(Modifier.padding(12.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold, color = OnSurfacePrimary, fontSize = 14.sp)
-                Text(subtitle, fontSize = 11.sp, color = OnSurfaceMuted)
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = OnSurfaceMuted, fontSize = 11.sp)
             }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Violet
-                )
-            )
+            Switch(checked, onCheckedChange = onChange)
         }
     }
 }
