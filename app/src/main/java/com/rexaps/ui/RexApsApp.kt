@@ -28,16 +28,35 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.rexaps.rexfox.RexFoxScreen
 
 @Composable
 fun RexApsApp(
     onOpenRexFox: () -> Unit
 ) {
-    val selectedTab = remember { mutableIntStateOf(0) }
+    var rexFoxOpen by remember {
+        mutableStateOf(false)
+    }
+
+    if (rexFoxOpen) {
+        RexFoxScreen(
+            onSettings = {
+                rexFoxOpen = false
+            }
+        )
+        return
+    }
+
+    val selectedTab = remember {
+        mutableIntStateOf(0)
+    }
 
     MaterialTheme {
         Scaffold(
@@ -45,26 +64,34 @@ fun RexApsApp(
                 NavigationBar {
                     NavigationBarItem(
                         selected = selectedTab.intValue == 0,
-                        onClick = { selectedTab.intValue = 0 },
+                        onClick = {
+                            selectedTab.intValue = 0
+                        },
                         icon = {
                             Icon(
-                                Icons.Default.Home,
+                                imageVector = Icons.Default.Home,
                                 contentDescription = "Home"
                             )
                         },
-                        label = { Text("Home") }
+                        label = {
+                            Text("Home")
+                        }
                     )
 
                     NavigationBarItem(
                         selected = selectedTab.intValue == 1,
-                        onClick = { selectedTab.intValue = 1 },
+                        onClick = {
+                            selectedTab.intValue = 1
+                        },
                         icon = {
                             Icon(
-                                Icons.Default.Person,
+                                imageVector = Icons.Default.Person,
                                 contentDescription = "Profile"
                             )
                         },
-                        label = { Text("Profile") }
+                        label = {
+                            Text("Profile")
+                        }
                     )
                 }
             }
@@ -73,7 +100,10 @@ fun RexApsApp(
             if (selectedTab.intValue == 0) {
                 HomeContent(
                     padding = padding,
-                    onOpenRexFox = onOpenRexFox
+                    onOpenRexFox = {
+                        rexFoxOpen = true
+                        onOpenRexFox()
+                    }
                 )
             } else {
                 ProfileContent(padding)
@@ -95,7 +125,9 @@ private fun HomeContent(
             .padding(padding)
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(
+            modifier = Modifier.height(24.dp)
+        )
 
         Text(
             text = "RexAps",
@@ -107,27 +139,37 @@ private fun HomeContent(
             style = MaterialTheme.typography.bodyMedium
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(
+            modifier = Modifier.height(24.dp)
+        )
 
         Text(
             text = "Aplikasi",
             style = MaterialTheme.typography.titleLarge
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(
+            modifier = Modifier.height(12.dp)
+        )
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(
+                bottom = 24.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(apps) { app ->
+
                 AppCard(
                     app = app,
                     onClick = {
-                        if (app.id == "rexfox" && app.available) {
+                        if (
+                            app.id == "rexfox" &&
+                            app.available
+                        ) {
                             onOpenRexFox()
                         }
                     }
@@ -161,8 +203,8 @@ private fun AppCard(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        MaterialTheme.colorScheme.primaryContainer,
-                        RoundedCornerShape(16.dp)
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(16.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
