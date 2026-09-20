@@ -49,6 +49,30 @@ object RexAppRegistry {
             name = "RexTok",
             description = "Short video & feed",
             available = false
+        ),
+        RexModule(
+            id = "rexgit",
+            name = "RexGit",
+            description = "Git manager & repo"
+            available = false
+        ),
+        RexModule(
+            id = "rexchat",
+            name = "RexChat",
+            description = "Chat & AI assistant"
+            available = false
+        ),
+        RexModule(
+            id = "rextools",
+            name = "RexTools",
+            description = "Kumpulan tools harian"
+            available = false
+        ),
+        RexModule(
+            id = "rexai",
+            name = "RexAI",
+            description = "AI tools & generator",
+            available = false
         )
     )
 
