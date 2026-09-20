@@ -66,15 +66,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.alpha
+import androidx.compose.ui.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -85,7 +84,10 @@ import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
 import kotlinx.coroutines.delay
 
-private data class BottomTab(val label: String, val icon: ImageVector)
+private data class BottomTab(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
 
 private val bottomTabs = listOf(
     BottomTab("Home", Icons.Default.Home),
@@ -99,12 +101,25 @@ private const val THEME_COLUMNS = 3
 
 @Composable
 fun RexApsApp(activity: Activity) {
+
     var rexFoxOpen by remember {
         mutableStateOf(false)
     }
 
-    // Tema dibaca dari penyimpanan saat aplikasi dibuka, dan disimpan tiap kali diganti.
-    val themeStore = remember { RexThemeStore(activity) }
+    /*
+     * RexPanel hanya mengontrol apakah screen RexPanel sedang ditampilkan.
+     *
+     * Koneksi SSH TIDAK disimpan di sini.
+     * Koneksi harus tetap dikelola oleh ViewModel RexPanel.
+     */
+    var rexPanelOpen by remember {
+        mutableStateOf(false)
+    }
+
+    // Tema dibaca dari penyimpanan saat aplikasi dibuka.
+    val themeStore = remember {
+        RexThemeStore(activity)
+    }
 
     var themeOption by remember {
         mutableStateOf(themeStore.load())
@@ -115,13 +130,47 @@ fun RexApsApp(activity: Activity) {
         themeStore.save(option)
     }
 
-    // When RexFox is open, show it full screen
+    /*
+     * ------------------------------------------------------------------------
+     * REXFOX
+     * ------------------------------------------------------------------------
+     */
+
     if (rexFoxOpen) {
         FadeInScreen {
             RexTheme(option = themeOption) {
-                RexFoxScreen(activity = activity)
+                RexFoxScreen(
+                    activity = activity
+                )
             }
         }
+
+        return
+    }
+
+    /*
+     * ------------------------------------------------------------------------
+     * REXPANEL
+     * ------------------------------------------------------------------------
+     *
+     * Menutup screen dengan onExit hanya mengubah rexPanelOpen.
+     *
+     * ViewModel RexPanel tetap menjadi pemilik koneksi SSH sehingga koneksi
+     * dapat tetap hidup ketika screen ditutup.
+     */
+
+    if (rexPanelOpen) {
+        FadeInScreen {
+            RexTheme(option = themeOption) {
+                com.rexaps.rexpanel.RexPanelScreen(
+                    activity = activity,
+                    onExit = {
+                        rexPanelOpen = false
+                    }
+                )
+            }
+        }
+
         return
     }
 
@@ -134,6 +183,7 @@ fun RexApsApp(activity: Activity) {
     }
 
     RexTheme(option = themeOption) {
+
         val colors = MaterialTheme.colorScheme
 
         Box(
@@ -141,14 +191,18 @@ fun RexApsApp(activity: Activity) {
                 .fillMaxSize()
                 .background(colors.background)
         ) {
-            // Cahaya lembut di bagian atas layar
+
+            // Cahaya lembut di bagian atas layar.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(340.dp)
                     .background(
                         Brush.verticalGradient(
-                            listOf(colors.primary.copy(alpha = 0.16f), Color.Transparent)
+                            listOf(
+                                colors.primary.copy(alpha = 0.16f),
+                                Color.Transparent
+                            )
                         )
                     )
             )
@@ -156,12 +210,16 @@ fun RexApsApp(activity: Activity) {
             Scaffold(
                 containerColor = Color.Transparent,
                 contentColor = colors.onBackground,
+
                 bottomBar = {
                     FloatingNavBar(
                         selected = selectedTab.intValue,
-                        onSelect = { selectedTab.intValue = it }
+                        onSelect = {
+                            selectedTab.intValue = it
+                        }
                     )
                 }
+
             ) { padding ->
 
                 Crossfade(
@@ -169,25 +227,49 @@ fun RexApsApp(activity: Activity) {
                     animationSpec = tween(350),
                     label = "tab"
                 ) { tab ->
+
                     when (tab) {
+
+                        /*
+                         * HOME
+                         */
+
                         0 -> HomeContent(
                             padding = padding,
                             themeLabel = themeOption.label,
+
                             onAppClick = { app ->
-                                if (app.id == "rexfox" && app.available) {
-                                    rexFoxOpen = true
+
+                                when {
+
+                                    app.id == "rexfox" && app.available -> {
+                                        rexFoxOpen = true
+                                    }
+
+                                    app.id == "rexpanel" && app.available -> {
+                                        rexPanelOpen = true
+                                    }
                                 }
                             },
+
                             onOpenTheme = {
                                 showThemeSheet = true
                             }
                         )
+
+                        /*
+                         * PROFILE
+                         */
 
                         1 -> ProfileContent(
                             padding = padding,
                             appCount = RexAppRegistry.modules.size,
                             themeLabel = themeOption.label
                         )
+
+                        /*
+                         * SETTINGS
+                         */
 
                         else -> SettingsContent(
                             padding = padding,
@@ -200,10 +282,15 @@ fun RexApsApp(activity: Activity) {
         }
 
         if (showThemeSheet) {
+
             ThemeSheet(
                 selected = themeOption,
+
                 onSelect = onThemeChange,
-                onDismiss = { showThemeSheet = false }
+
+                onDismiss = {
+                    showThemeSheet = false
+                }
             )
         }
     }
@@ -211,10 +298,17 @@ fun RexApsApp(activity: Activity) {
 
 /* ------------------------------ ANIMATION KIT ----------------------------- */
 
-/** Layar RexFox muncul dengan fade halus. */
+/**
+ * Layar RexFox / RexPanel muncul dengan fade halus.
+ */
 @Composable
-private fun FadeInScreen(content: @Composable () -> Unit) {
-    var visible by remember { mutableStateOf(false) }
+private fun FadeInScreen(
+    content: @Composable () -> Unit
+) {
+
+    var visible by remember {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(Unit) {
         visible = true
@@ -229,54 +323,93 @@ private fun FadeInScreen(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { this.alpha = alpha }
+            .graphicsLayer {
+                this.alpha = alpha
+            }
     ) {
         content()
     }
 }
 
-/** Elemen muncul bergantian: fade + naik + zoom kecil. */
+/**
+ * Elemen muncul bergantian:
+ * fade + naik + zoom kecil.
+ */
 @Composable
-private fun Modifier.entrance(index: Int): Modifier {
-    var shown by rememberSaveable { mutableStateOf(false) }
+private fun Modifier.entrance(
+    index: Int
+): Modifier {
+
+    var shown by rememberSaveable {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(Unit) {
+
         if (!shown) {
-            delay(index.coerceAtMost(8) * 60L)
+            delay(
+                index.coerceAtMost(8) * 60L
+            )
         }
+
         shown = true
     }
 
     val progress by animateFloatAsState(
         targetValue = if (shown) 1f else 0f,
-        animationSpec = tween(550, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            550,
+            easing = FastOutSlowInEasing
+        ),
         label = "entrance"
     )
 
     return this.graphicsLayer {
+
         alpha = progress
-        translationY = (1f - progress) * 48.dp.toPx()
-        val s = 0.94f + 0.06f * progress
-        scaleX = s
-        scaleY = s
+
+        translationY =
+            (1f - progress) * 48.dp.toPx()
+
+        val scale =
+            0.94f + 0.06f * progress
+
+        scaleX = scale
+        scaleY = scale
     }
 }
 
-/** Klik dengan efek mengecil memantul saat ditekan. */
+/**
+ * Klik dengan efek mengecil lalu memantul.
+ */
 @Composable
 private fun Modifier.pressable(
     enabled: Boolean = true,
     onClick: () -> Unit
 ): Modifier {
-    val source = remember { MutableInteractionSource() }
+
+    val source = remember {
+        MutableInteractionSource()
+    }
+
     val pressed by source.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
+        targetValue =
+            if (pressed && enabled) {
+                0.96f
+            } else {
+                1f
+            },
+
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
+            dampingRatio =
+                Spring.DampingRatioMediumBouncy,
+
+            stiffness =
+                Spring.StiffnessMedium
         ),
+
         label = "press"
     )
 
@@ -295,12 +428,13 @@ private fun Modifier.pressable(
 }
 
 @Composable
-private fun accentBrush(): Brush = Brush.linearGradient(
-    listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary
+private fun accentBrush(): Brush =
+    Brush.linearGradient(
+        listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.tertiary
+        )
     )
-)
 
 /* ------------------------------- NAVIGATION ------------------------------- */
 
@@ -309,31 +443,50 @@ private fun FloatingNavBar(
     selected: Int,
     onSelect: (Int) -> Unit
 ) {
+
     val colors = MaterialTheme.colorScheme
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(
+                horizontal = 24.dp,
+                vertical = 12.dp
+            ),
+
         contentAlignment = Alignment.Center
     ) {
+
         Surface(
             shape = RoundedCornerShape(32.dp),
             color = colors.surfaceVariant,
             shadowElevation = 12.dp,
-            border = BorderStroke(1.dp, colors.outlineVariant)
+
+            border = BorderStroke(
+                1.dp,
+                colors.outlineVariant
+            )
         ) {
+
             Row(
                 modifier = Modifier.padding(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+
+                horizontalArrangement =
+                    Arrangement.spacedBy(4.dp),
+
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
+
                 bottomTabs.forEachIndexed { index, tab ->
+
                     NavItem(
                         tab = tab,
                         selected = index == selected,
-                        onClick = { onSelect(index) }
+                        onClick = {
+                            onSelect(index)
+                        }
                     )
                 }
             }
@@ -347,22 +500,43 @@ private fun NavItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+
     val colors = MaterialTheme.colorScheme
 
     val background by animateColorAsState(
-        targetValue = if (selected) colors.primary else Color.Transparent,
+        targetValue =
+            if (selected) {
+                colors.primary
+            } else {
+                Color.Transparent
+            },
+
         animationSpec = tween(300),
+
         label = "navBg"
     )
+
     val foreground by animateColorAsState(
-        targetValue = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        targetValue =
+            if (selected) {
+                colors.onPrimary
+            } else {
+                colors.onSurfaceVariant
+            },
+
         animationSpec = tween(300),
+
         label = "navFg"
     )
 
     Row(
         modifier = Modifier
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow))
+            .animateContentSize(
+                spring(
+                    stiffness =
+                        Spring.StiffnessMediumLow
+                )
+            )
             .clip(CircleShape)
             .background(background)
             .selectable(
@@ -370,10 +544,18 @@ private fun NavItem(
                 onClick = onClick,
                 role = Role.Tab
             )
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(
+                horizontal = 18.dp,
+                vertical = 12.dp
+            ),
+
+        verticalAlignment =
+            Alignment.CenterVertically,
+
+        horizontalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
+
         Icon(
             imageVector = tab.icon,
             contentDescription = tab.label,
@@ -381,6 +563,7 @@ private fun NavItem(
         )
 
         if (selected) {
+
             Text(
                 text = tab.label,
                 style = MaterialTheme.typography.labelLarge,
@@ -400,32 +583,58 @@ private fun HomeContent(
     onAppClick: (RexModule) -> Unit,
     onOpenTheme: () -> Unit
 ) {
+
     val apps = RexAppRegistry.modules
-    val featured = apps.firstOrNull { it.id == "rexfox" }
-    val others = apps.filter { it.id != "rexfox" }
+
+    val featured =
+        apps.firstOrNull {
+            it.id == "rexfox"
+        }
+
+    val others =
+        apps.filter {
+            it.id != "rexfox"
+        }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
+
         modifier = Modifier
             .fillMaxSize()
             .padding(padding),
+
         contentPadding = PaddingValues(
             start = 20.dp,
             end = 20.dp,
             top = 24.dp,
             bottom = 24.dp
         ),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp),
+
+        verticalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
+
+        item(
+            span = {
+                GridItemSpan(maxLineSpan)
+            }
+        ) {
+
             HomeHeader(
                 onOpenTheme = onOpenTheme,
                 modifier = Modifier.entrance(0)
             )
         }
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
+        item(
+            span = {
+                GridItemSpan(maxLineSpan)
+            }
+        ) {
+
             HeroCard(
                 appCount = apps.size,
                 themeLabel = themeLabel,
@@ -434,43 +643,81 @@ private fun HomeContent(
         }
 
         if (featured != null) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+
+            item(
+                span = {
+                    GridItemSpan(maxLineSpan)
+                }
+            ) {
+
                 FeaturedCard(
                     app = featured,
-                    onClick = { onAppClick(featured) },
+
+                    onClick = {
+                        onAppClick(featured)
+                    },
+
                     modifier = Modifier.entrance(2)
                 )
             }
         }
 
         if (others.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+
+            item(
+                span = {
+                    GridItemSpan(maxLineSpan)
+                }
+            ) {
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)
                         .entrance(3),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween,
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
+
                     Text(
                         text = "Aplikasi lainnya",
-                        style = MaterialTheme.typography.titleLarge
+                        style =
+                            MaterialTheme.typography.titleLarge
                     )
+
                     Text(
                         text = "${others.size}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style =
+                            MaterialTheme.typography.labelLarge,
+
+                        color =
+                            MaterialTheme.colorScheme
+                                .onSurfaceVariant
                     )
                 }
             }
         }
 
-        itemsIndexed(others, key = { _, app -> app.id }) { index, app ->
+        itemsIndexed(
+            others,
+            key = { _, app ->
+                app.id
+            }
+        ) { index, app ->
+
             AppCard(
                 app = app,
-                onClick = { onAppClick(app) },
-                modifier = Modifier.entrance(index + 4)
+
+                onClick = {
+                    onAppClick(app)
+                },
+
+                modifier =
+                    Modifier.entrance(index + 4)
             )
         }
     }
@@ -481,45 +728,78 @@ private fun HomeHeader(
     onOpenTheme: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+
     val colors = MaterialTheme.colorScheme
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+
+        verticalAlignment =
+            Alignment.CenterVertically,
+
+        horizontalArrangement =
+            Arrangement.SpaceBetween
     ) {
+
         Column {
+
             Text(
                 text = "Selamat datang di",
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.onSurfaceVariant
+                style =
+                    MaterialTheme.typography.labelLarge,
+
+                color =
+                    colors.onSurfaceVariant
             )
+
             Text(
                 text = "RexAps",
-                style = MaterialTheme.typography.headlineLarge
+                style =
+                    MaterialTheme.typography.headlineLarge
             )
         }
 
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .pressable(onClick = onOpenTheme)
+                .pressable(
+                    onClick = onOpenTheme
+                )
                 .clip(CircleShape)
                 .background(colors.surfaceVariant)
-                .border(1.dp, colors.outlineVariant, CircleShape)
-                .semantics { contentDescription = "Ubah tema" },
-            contentAlignment = Alignment.Center
+                .border(
+                    1.dp,
+                    colors.outlineVariant,
+                    CircleShape
+                )
+                .semantics {
+                    contentDescription =
+                        "Ubah tema"
+                },
+
+            contentAlignment =
+                Alignment.Center
         ) {
+
             Box(
                 modifier = Modifier
                     .size(26.dp)
-                    .background(accentBrush(), CircleShape),
-                contentAlignment = Alignment.Center
+                    .background(
+                        accentBrush(),
+                        CircleShape
+                    ),
+
+                contentAlignment =
+                    Alignment.Center
             ) {
+
                 Box(
                     modifier = Modifier
                         .size(10.dp)
-                        .background(colors.surfaceVariant, CircleShape)
+                        .background(
+                            colors.surfaceVariant,
+                            CircleShape
+                        )
                 )
             }
         }
@@ -532,70 +812,138 @@ private fun HeroCard(
     themeLabel: String,
     modifier: Modifier = Modifier
 ) {
-    val onAccent = MaterialTheme.colorScheme.onPrimary
 
-    val transition = rememberInfiniteTransition(label = "hero")
+    val onAccent =
+        MaterialTheme.colorScheme.onPrimary
+
+    val transition =
+        rememberInfiniteTransition(
+            label = "hero"
+        )
+
     val drift by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(7000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
+
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        7000,
+                        easing =
+                            FastOutSlowInEasing
+                    ),
+
+                repeatMode =
+                    RepeatMode.Reverse
+            ),
+
         label = "drift"
     )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(accentBrush())
+            .clip(
+                RoundedCornerShape(32.dp)
+            )
+            .background(
+                accentBrush()
+            )
             .drawBehind {
+
                 drawCircle(
-                    color = onAccent.copy(alpha = 0.12f),
-                    radius = 110.dp.toPx(),
-                    center = Offset(
-                        x = size.width - 30.dp.toPx() - drift * 30.dp.toPx(),
-                        y = 10.dp.toPx() + drift * 24.dp.toPx()
-                    )
+                    color =
+                        onAccent.copy(
+                            alpha = 0.12f
+                        ),
+
+                    radius =
+                        110.dp.toPx(),
+
+                    center =
+                        Offset(
+                            x =
+                                size.width -
+                                    30.dp.toPx() -
+                                    drift * 30.dp.toPx(),
+
+                            y =
+                                10.dp.toPx() +
+                                    drift * 24.dp.toPx()
+                        )
                 )
+
                 drawCircle(
-                    color = onAccent.copy(alpha = 0.09f),
-                    radius = 64.dp.toPx(),
-                    center = Offset(
-                        x = size.width - 90.dp.toPx() + drift * 36.dp.toPx(),
-                        y = size.height - 10.dp.toPx() - drift * 20.dp.toPx()
-                    )
+                    color =
+                        onAccent.copy(
+                            alpha = 0.09f
+                        ),
+
+                    radius =
+                        64.dp.toPx(),
+
+                    center =
+                        Offset(
+                            x =
+                                size.width -
+                                    90.dp.toPx() +
+                                    drift * 36.dp.toPx(),
+
+                            y =
+                                size.height -
+                                    10.dp.toPx() -
+                                    drift * 20.dp.toPx()
+                        )
                 )
             }
     ) {
+
         Column(
             modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+
+            verticalArrangement =
+                Arrangement.spacedBy(14.dp)
         ) {
+
             Row(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(onAccent.copy(alpha = 0.16f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .background(
+                        onAccent.copy(alpha = 0.16f)
+                    )
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 6.dp
+                    )
             ) {
+
                 Text(
                     text = "$appCount aplikasi",
-                    style = MaterialTheme.typography.labelMedium,
+                    style =
+                        MaterialTheme.typography.labelMedium,
+
                     color = onAccent
                 )
             }
 
             Text(
                 text = "Semua aplikasimu,\nsatu tempat.",
-                style = MaterialTheme.typography.headlineSmall,
+
+                style =
+                    MaterialTheme.typography.headlineSmall,
+
                 color = onAccent
             )
 
             Text(
                 text = "Tema aktif: $themeLabel",
-                style = MaterialTheme.typography.bodySmall,
-                color = onAccent.copy(alpha = 0.8f)
+
+                style =
+                    MaterialTheme.typography.bodySmall,
+
+                color =
+                    onAccent.copy(alpha = 0.8f)
             )
         }
     }
@@ -607,8 +955,14 @@ private fun AppIcon(
     size: Dp,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(size * 0.32f)
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    val shape =
+        RoundedCornerShape(
+            size * 0.32f
+        )
 
     Box(
         modifier = modifier
@@ -616,48 +970,100 @@ private fun AppIcon(
             .shadow(
                 elevation = 14.dp,
                 shape = shape,
-                ambientColor = colors.primary.copy(alpha = 0.5f),
-                spotColor = colors.primary.copy(alpha = 0.5f)
+
+                ambientColor =
+                    colors.primary.copy(
+                        alpha = 0.5f
+                    ),
+
+                spotColor =
+                    colors.primary.copy(
+                        alpha = 0.5f
+                    )
             )
             .clip(shape)
-            .background(accentBrush()),
-        contentAlignment = Alignment.Center
+            .background(
+                accentBrush()
+            ),
+
+        contentAlignment =
+            Alignment.Center
     ) {
+
         Text(
             text = letter,
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.onPrimary
+
+            style =
+                MaterialTheme.typography.titleLarge,
+
+            color =
+                colors.onPrimary
         )
     }
 }
 
 @Composable
-private fun StatusPill(available: Boolean) {
-    val colors = MaterialTheme.colorScheme
+private fun StatusPill(
+    available: Boolean
+) {
+
+    val colors =
+        MaterialTheme.colorScheme
 
     Row(
         modifier = Modifier
             .clip(CircleShape)
             .background(
-                if (available) colors.primaryContainer
-                else colors.outlineVariant.copy(alpha = 0.5f)
+                if (available) {
+                    colors.primaryContainer
+                } else {
+                    colors.outlineVariant
+                        .copy(alpha = 0.5f)
+                }
             )
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(
+                horizontal = 10.dp,
+                vertical = 5.dp
+            ),
+
+        verticalAlignment =
+            Alignment.CenterVertically,
+
+        horizontalArrangement =
+            Arrangement.spacedBy(6.dp)
     ) {
+
         Box(
             modifier = Modifier
                 .size(6.dp)
                 .background(
-                    if (available) colors.primary else colors.onSurfaceVariant,
+                    if (available) {
+                        colors.primary
+                    } else {
+                        colors.onSurfaceVariant
+                    },
+
                     CircleShape
                 )
         )
+
         Text(
-            text = if (available) "Tersedia" else "Segera",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (available) colors.onPrimaryContainer else colors.onSurfaceVariant
+            text =
+                if (available) {
+                    "Tersedia"
+                } else {
+                    "Segera"
+                },
+
+            style =
+                MaterialTheme.typography.labelSmall,
+
+            color =
+                if (available) {
+                    colors.onPrimaryContainer
+                } else {
+                    colors.onSurfaceVariant
+                }
         )
     }
 }
@@ -668,93 +1074,227 @@ private fun FeaturedCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(32.dp)
-    val primary = colors.primary
-    val outline = colors.outlineVariant
 
-    val transition = rememberInfiniteTransition(label = "featured")
+    val colors =
+        MaterialTheme.colorScheme
+
+    val shape =
+        RoundedCornerShape(32.dp)
+
+    val primary =
+        colors.primary
+
+    val outline =
+        colors.outlineVariant
+
+    val transition =
+        rememberInfiniteTransition(
+            label = "featured"
+        )
+
     val glow by transition.animateFloat(
         initialValue = 0.25f,
         targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
+
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        2600,
+                        easing =
+                            FastOutSlowInEasing
+                    ),
+
+                repeatMode =
+                    RepeatMode.Reverse
+            ),
+
         label = "glow"
     )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .pressable(enabled = app.available, onClick = onClick)
-            .alpha(if (app.available) 1f else 0.6f)
-            .clip(shape)
-            .background(colors.surfaceVariant)
-            .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(primary.copy(alpha = 0.28f * glow), Color.Transparent),
-                        center = Offset(size.width * 0.9f, 0f),
-                        radius = size.width * 0.75f
-                    ),
-                    radius = size.width * 0.75f,
-                    center = Offset(size.width * 0.9f, 0f)
-                )
-            }
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    listOf(primary.copy(alpha = 0.3f + 0.6f * glow), outline)
-                ),
-                shape = shape
+
+            .pressable(
+                enabled = app.available,
+                onClick = onClick
             )
-            .padding(22.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 64.dp)
-                StatusPill(available = app.available)
+
+            .alpha(
+                if (app.available) {
+                    1f
+                } else {
+                    0.6f
+                }
+            )
+
+            .clip(shape)
+
+            .background(
+                colors.surfaceVariant
+            )
+
+            .drawBehind {
+
+                drawCircle(
+                    brush =
+                        Brush.radialGradient(
+                            colors =
+                                listOf(
+                                    primary.copy(
+                                        alpha =
+                                            0.28f * glow
+                                    ),
+
+                                    Color.Transparent
+                                ),
+
+                            center =
+                                Offset(
+                                    size.width * 0.9f,
+                                    0f
+                                ),
+
+                            radius =
+                                size.width * 0.75f
+                        ),
+
+                    radius =
+                        size.width * 0.75f,
+
+                    center =
+                        Offset(
+                            size.width * 0.9f,
+                            0f
+                        )
+                )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            .border(
+                width = 1.dp,
+
+                brush =
+                    Brush.linearGradient(
+                        listOf(
+                            primary.copy(
+                                alpha =
+                                    0.3f +
+                                        0.6f * glow
+                            ),
+
+                            outline
+                        )
+                    ),
+
+                shape = shape
+            )
+
+            .padding(22.dp)
+    ) {
+
+        Column(
+            verticalArrangement =
+                Arrangement.spacedBy(20.dp)
+        ) {
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.Top
+            ) {
+
+                AppIcon(
+                    letter =
+                        app.name
+                            .take(1)
+                            .uppercase(),
+
+                    size = 64.dp
+                )
+
+                StatusPill(
+                    available =
+                        app.available
+                )
+            }
+
+            Column(
+                verticalArrangement =
+                    Arrangement.spacedBy(4.dp)
+            ) {
+
                 Text(
                     text = app.name,
-                    style = MaterialTheme.typography.headlineSmall,
+
+                    style =
+                        MaterialTheme.typography.headlineSmall,
+
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+
+                    overflow =
+                        TextOverflow.Ellipsis
                 )
+
                 Text(
                     text = app.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
+
+                    style =
+                        MaterialTheme.typography.bodyMedium,
+
+                    color =
+                        colors.onSurfaceVariant,
+
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+
+                    overflow =
+                        TextOverflow.Ellipsis
                 )
             }
 
             if (app.available) {
+
                 Row(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(accentBrush())
-                        .padding(horizontal = 20.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .background(
+                            accentBrush()
+                        )
+                        .padding(
+                            horizontal = 20.dp,
+                            vertical = 11.dp
+                        ),
+
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp)
                 ) {
+
                     Text(
                         text = "Buka",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.onPrimary
+
+                        style =
+                            MaterialTheme.typography.labelLarge,
+
+                        color =
+                            colors.onPrimary
                     )
+
                     Text(
                         text = "→",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.onPrimary
+
+                        style =
+                            MaterialTheme.typography.labelLarge,
+
+                        color =
+                            colors.onPrimary
                     )
                 }
             }
@@ -768,73 +1308,157 @@ private fun AppCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(28.dp)
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    val shape =
+        RoundedCornerShape(28.dp)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(176.dp)
-            .pressable(enabled = app.available, onClick = onClick)
-            .alpha(if (app.available) 1f else 0.55f)
+
+            .pressable(
+                enabled = app.available,
+                onClick = onClick
+            )
+
+            .alpha(
+                if (app.available) {
+                    1f
+                } else {
+                    0.55f
+                }
+            )
+
             .clip(shape)
-            .background(colors.surfaceVariant)
-            .border(1.dp, colors.outlineVariant, shape)
+
+            .background(
+                colors.surfaceVariant
+            )
+
+            .border(
+                1.dp,
+                colors.outlineVariant,
+                shape
+            )
+
             .padding(18.dp)
     ) {
+
         Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+            modifier =
+                Modifier.fillMaxSize(),
+
+            verticalArrangement =
+                Arrangement.SpaceBetween
         ) {
+
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.Top
             ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 48.dp)
+
+                AppIcon(
+                    letter =
+                        app.name
+                            .take(1)
+                            .uppercase(),
+
+                    size = 48.dp
+                )
 
                 if (app.available) {
+
                     Box(
                         modifier = Modifier
                             .size(30.dp)
-                            .background(colors.primaryContainer, CircleShape),
-                        contentAlignment = Alignment.Center
+                            .background(
+                                colors.primaryContainer,
+                                CircleShape
+                            ),
+
+                        contentAlignment =
+                            Alignment.Center
                     ) {
+
                         Text(
                             text = "→",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.onPrimaryContainer
+
+                            style =
+                                MaterialTheme.typography.labelLarge,
+
+                            color =
+                                colors.onPrimaryContainer
                         )
                     }
+
                 } else {
+
                     Row(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(colors.outlineVariant.copy(alpha = 0.5f))
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .background(
+                                colors.outlineVariant
+                                    .copy(alpha = 0.5f)
+                            )
+                            .padding(
+                                horizontal = 10.dp,
+                                vertical = 5.dp
+                            )
                     ) {
+
                         Text(
                             text = "Segera",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant
+
+                            style =
+                                MaterialTheme.typography.labelSmall,
+
+                            color =
+                                colors.onSurfaceVariant
                         )
                     }
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                verticalArrangement =
+                    Arrangement.spacedBy(2.dp)
+            ) {
+
                 Text(
                     text = app.name,
-                    style = MaterialTheme.typography.titleMedium,
+
+                    style =
+                        MaterialTheme.typography.titleMedium,
+
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+
+                    overflow =
+                        TextOverflow.Ellipsis
                 )
+
                 Text(
                     text = app.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
+
+                    style =
+                        MaterialTheme.typography.bodySmall,
+
+                    color =
+                        colors.onSurfaceVariant,
+
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+
+                    overflow =
+                        TextOverflow.Ellipsis
                 )
             }
         }
@@ -849,15 +1473,28 @@ private fun ProfileContent(
     appCount: Int,
     themeLabel: String
 ) {
-    val colors = MaterialTheme.colorScheme
 
-    val spin = rememberInfiniteTransition(label = "spin")
+    val colors =
+        MaterialTheme.colorScheme
+
+    val spin =
+        rememberInfiniteTransition(
+            label = "spin"
+        )
+
     val angle by spin.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing)
-        ),
+
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        8000,
+                        easing = LinearEasing
+                    )
+            ),
+
         label = "angle"
     )
 
@@ -866,73 +1503,126 @@ private fun ProfileContent(
             .fillMaxSize()
             .padding(padding)
             .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+
+        verticalArrangement =
+            Arrangement.Center,
+
+        horizontalAlignment =
+            Alignment.CenterHorizontally
     ) {
+
         Box(
             modifier = Modifier
                 .entrance(0)
                 .size(128.dp),
-            contentAlignment = Alignment.Center
+
+            contentAlignment =
+                Alignment.Center
         ) {
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { rotationZ = angle }
+                    .graphicsLayer {
+                        rotationZ = angle
+                    }
                     .background(
                         Brush.sweepGradient(
-                            colors = listOf(colors.primary, colors.tertiary, colors.primary)
+                            colors =
+                                listOf(
+                                    colors.primary,
+                                    colors.tertiary,
+                                    colors.primary
+                                )
                         ),
+
                         CircleShape
                     )
             )
+
             Box(
                 modifier = Modifier
                     .size(118.dp)
-                    .background(colors.background, CircleShape),
-                contentAlignment = Alignment.Center
+                    .background(
+                        colors.background,
+                        CircleShape
+                    ),
+
+                contentAlignment =
+                    Alignment.Center
             ) {
+
                 Box(
                     modifier = Modifier
                         .size(106.dp)
-                        .background(accentBrush(), CircleShape),
-                    contentAlignment = Alignment.Center
+                        .background(
+                            accentBrush(),
+                            CircleShape
+                        ),
+
+                    contentAlignment =
+                        Alignment.Center
                 ) {
+
                     Text(
                         text = "R",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = colors.onPrimary
+
+                        style =
+                            MaterialTheme.typography.headlineLarge,
+
+                        color =
+                            colors.onPrimary
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
 
         Text(
             text = "Profile RexAps",
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.entrance(1)
+
+            style =
+                MaterialTheme.typography.headlineSmall,
+
+            textAlign =
+                TextAlign.Center,
+
+            modifier =
+                Modifier.entrance(1)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .entrance(2),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+            horizontalArrangement =
+                Arrangement.spacedBy(12.dp)
         ) {
+
             StatCard(
                 label = "Aplikasi",
                 value = "$appCount",
-                modifier = Modifier.weight(1f)
+
+                modifier =
+                    Modifier.weight(1f)
             )
+
             StatCard(
                 label = "Tema",
                 value = themeLabel,
-                modifier = Modifier.weight(1f)
+
+                modifier =
+                    Modifier.weight(1f)
             )
         }
     }
@@ -944,28 +1634,53 @@ private fun StatCard(
     value: String,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    val shape =
+        RoundedCornerShape(24.dp)
 
     Column(
         modifier = modifier
             .clip(shape)
-            .background(colors.surfaceVariant)
-            .border(1.dp, colors.outlineVariant, shape)
+            .background(
+                colors.surfaceVariant
+            )
+            .border(
+                1.dp,
+                colors.outlineVariant,
+                shape
+            )
             .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+
+        verticalArrangement =
+            Arrangement.spacedBy(4.dp)
     ) {
+
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurfaceVariant
+
+            style =
+                MaterialTheme.typography.labelMedium,
+
+            color =
+                colors.onSurfaceVariant
         )
+
         Text(
             text = value,
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.primary,
+
+            style =
+                MaterialTheme.typography.titleLarge,
+
+            color =
+                colors.primary,
+
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+
+            overflow =
+                TextOverflow.Ellipsis
         )
     }
 }
@@ -978,51 +1693,81 @@ private fun SettingsContent(
     selectedTheme: RexThemeOption,
     onThemeSelected: (RexThemeOption) -> Unit
 ) {
-    val colors = MaterialTheme.colorScheme
+
+    val colors =
+        MaterialTheme.colorScheme
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+
+        contentPadding =
+            PaddingValues(
+                horizontal = 20.dp,
+                vertical = 24.dp
+            ),
+
+        verticalArrangement =
+            Arrangement.spacedBy(12.dp)
     ) {
+
         item {
+
             Text(
                 text = "Pengaturan",
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.entrance(0)
+
+                style =
+                    MaterialTheme.typography.headlineLarge,
+
+                modifier =
+                    Modifier.entrance(0)
             )
         }
 
         item {
+
             Column(
                 modifier = Modifier
                     .padding(top = 8.dp)
                     .entrance(1)
             ) {
+
                 Text(
                     text = "Tema",
-                    style = MaterialTheme.typography.titleLarge
+
+                    style =
+                        MaterialTheme.typography.titleLarge
                 )
+
                 Text(
-                    text = "Aktif: ${selectedTheme.label}. Pilihanmu tersimpan otomatis.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant
+                    text =
+                        "Aktif: ${selectedTheme.label}. Pilihanmu tersimpan otomatis.",
+
+                    style =
+                        MaterialTheme.typography.bodySmall,
+
+                    color =
+                        colors.onSurfaceVariant
                 )
             }
         }
 
         item {
+
             ThemePicker(
                 selected = selectedTheme,
                 onSelect = onThemeSelected,
-                modifier = Modifier.entrance(2)
+
+                modifier =
+                    Modifier.entrance(2)
             )
         }
 
         item {
-            val shape = RoundedCornerShape(24.dp)
+
+            val shape =
+                RoundedCornerShape(24.dp)
 
             Row(
                 modifier = Modifier
@@ -1030,23 +1775,46 @@ private fun SettingsContent(
                     .fillMaxWidth()
                     .entrance(3)
                     .clip(shape)
-                    .background(colors.surfaceVariant)
-                    .border(1.dp, colors.outlineVariant, shape)
+                    .background(
+                        colors.surfaceVariant
+                    )
+                    .border(
+                        1.dp,
+                        colors.outlineVariant,
+                        shape
+                    )
                     .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+
+                verticalAlignment =
+                    Alignment.CenterVertically,
+
+                horizontalArrangement =
+                    Arrangement.spacedBy(14.dp)
             ) {
-                AppIcon(letter = "R", size = 48.dp)
+
+                AppIcon(
+                    letter = "R",
+                    size = 48.dp
+                )
 
                 Column {
+
                     Text(
                         text = "RexAps",
-                        style = MaterialTheme.typography.titleMedium
+
+                        style =
+                            MaterialTheme.typography.titleMedium
                     )
+
                     Text(
-                        text = "Semua aplikasimu, satu tempat.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
+                        text =
+                            "Semua aplikasimu, satu tempat.",
+
+                        style =
+                            MaterialTheme.typography.bodySmall,
+
+                        color =
+                            colors.onSurfaceVariant
                     )
                 }
             }
@@ -1063,30 +1831,58 @@ private fun ThemeSheet(
     onSelect: (RexThemeOption) -> Unit,
     onDismiss: () -> Unit
 ) {
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.background,
-        contentColor = MaterialTheme.colorScheme.onBackground
+
+        containerColor =
+            MaterialTheme.colorScheme.background,
+
+        contentColor =
+            MaterialTheme.colorScheme.onBackground
     ) {
+
         Column(
             modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(
+                    rememberScrollState()
+                )
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 32.dp
+                ),
+
+            verticalArrangement =
+                Arrangement.spacedBy(16.dp)
         ) {
+
             Column {
+
                 Text(
                     text = "Tema",
-                    style = MaterialTheme.typography.titleLarge
+
+                    style =
+                        MaterialTheme.typography.titleLarge
                 )
+
                 Text(
-                    text = "Pilih tampilan yang paling nyaman untukmu.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text =
+                        "Pilih tampilan yang paling nyaman untukmu.",
+
+                    style =
+                        MaterialTheme.typography.bodyMedium,
+
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant
                 )
             }
 
-            ThemePicker(selected = selected, onSelect = onSelect)
+            ThemePicker(
+                selected = selected,
+                onSelect = onSelect
+            )
         }
     }
 }
@@ -1097,25 +1893,52 @@ private fun ThemePicker(
     onSelect: (RexThemeOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
+
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+
+        verticalArrangement =
+            Arrangement.spacedBy(10.dp)
     ) {
-        RexThemeOption.values().toList().chunked(THEME_COLUMNS).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowItems.forEach { option ->
-                    ThemeTile(
-                        option = option,
-                        isSelected = option == selected,
-                        onClick = { onSelect(option) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                repeat(THEME_COLUMNS - rowItems.size) {
-                    Spacer(modifier = Modifier.weight(1f))
+
+        RexThemeOption.values()
+            .toList()
+            .chunked(THEME_COLUMNS)
+            .forEach { rowItems ->
+
+                Row(
+                    horizontalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
+
+                    rowItems.forEach { option ->
+
+                        ThemeTile(
+                            option = option,
+                            isSelected =
+                                option == selected,
+
+                            onClick = {
+                                onSelect(option)
+                            },
+
+                            modifier =
+                                Modifier.weight(1f)
+                        )
+                    }
+
+                    repeat(
+                        THEME_COLUMNS -
+                            rowItems.size
+                    ) {
+
+                        Spacer(
+                            modifier =
+                                Modifier.weight(1f)
+                        )
+                    }
                 }
             }
-        }
     }
 }
 
@@ -1126,73 +1949,163 @@ private fun ThemeTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
-    val preview = option.colorScheme(isSystemInDarkTheme())
-    val shape = RoundedCornerShape(20.dp)
-    val previewShape = RoundedCornerShape(14.dp)
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    val preview =
+        option.colorScheme(
+            isSystemInDarkTheme()
+        )
+
+    val shape =
+        RoundedCornerShape(20.dp)
+
+    val previewShape =
+        RoundedCornerShape(14.dp)
 
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected) colors.primary else colors.outlineVariant,
-        animationSpec = tween(250),
+
+        targetValue =
+            if (isSelected) {
+                colors.primary
+            } else {
+                colors.outlineVariant
+            },
+
+        animationSpec =
+            tween(250),
+
         label = "tileBorder"
     )
+
     val tileScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0.96f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+
+        targetValue =
+            if (isSelected) {
+                1f
+            } else {
+                0.96f
+            },
+
+        animationSpec =
+            spring(
+                stiffness =
+                    Spring.StiffnessMediumLow
+            ),
+
         label = "tileScale"
     )
+
     val checkScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+
+        targetValue =
+            if (isSelected) {
+                1f
+            } else {
+                0f
+            },
+
+        animationSpec =
+            spring(
+                dampingRatio =
+                    Spring.DampingRatioMediumBouncy
+            ),
+
         label = "check"
     )
 
     Column(
         modifier = modifier
             .graphicsLayer {
+
                 scaleX = tileScale
                 scaleY = tileScale
             }
+
             .clip(shape)
-            .background(colors.surfaceVariant)
-            .border(if (isSelected) 2.dp else 1.dp, borderColor, shape)
+
+            .background(
+                colors.surfaceVariant
+            )
+
+            .border(
+                if (isSelected) {
+                    2.dp
+                } else {
+                    1.dp
+                },
+
+                borderColor,
+
+                shape
+            )
+
             .selectable(
                 selected = isSelected,
                 onClick = onClick,
                 role = Role.RadioButton
             )
+
             .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+
+        verticalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(72.dp)
                 .clip(previewShape)
-                .background(preview.background)
-                .border(1.dp, preview.outlineVariant, previewShape)
+                .background(
+                    preview.background
+                )
+                .border(
+                    1.dp,
+                    preview.outlineVariant,
+                    previewShape
+                )
         ) {
+
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+
+                verticalArrangement =
+                    Arrangement.spacedBy(5.dp)
             ) {
+
                 Box(
                     modifier = Modifier
                         .width(34.dp)
                         .height(8.dp)
                         .background(
-                            Brush.linearGradient(listOf(preview.primary, preview.tertiary)),
+                            Brush.linearGradient(
+                                listOf(
+                                    preview.primary,
+                                    preview.tertiary
+                                )
+                            ),
+
                             CircleShape
                         )
                 )
+
                 Box(
                     modifier = Modifier
                         .width(50.dp)
                         .height(10.dp)
-                        .background(preview.surfaceVariant, CircleShape)
-                        .border(1.dp, preview.outlineVariant, CircleShape)
+                        .background(
+                            preview.surfaceVariant,
+                            CircleShape
+                        )
+                        .border(
+                            1.dp,
+                            preview.outlineVariant,
+                            CircleShape
+                        )
                 )
             }
 
@@ -1202,27 +2115,52 @@ private fun ThemeTile(
                     .padding(6.dp)
                     .size(20.dp)
                     .graphicsLayer {
+
                         scaleX = checkScale
                         scaleY = checkScale
-                        alpha = checkScale.coerceIn(0f, 1f)
+
+                        alpha =
+                            checkScale.coerceIn(
+                                0f,
+                                1f
+                            )
                     }
-                    .background(colors.primary, CircleShape),
-                contentAlignment = Alignment.Center
+                    .background(
+                        colors.primary,
+                        CircleShape
+                    ),
+
+                contentAlignment =
+                    Alignment.Center
             ) {
+
                 Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Dipilih",
-                    tint = colors.onPrimary,
-                    modifier = Modifier.size(14.dp)
+                    imageVector =
+                        Icons.Default.Check,
+
+                    contentDescription =
+                        "Dipilih",
+
+                    tint =
+                        colors.onPrimary,
+
+                    modifier =
+                        Modifier.size(14.dp)
                 )
             }
         }
 
         Text(
             text = option.label,
-            style = MaterialTheme.typography.labelMedium,
+
+            style =
+                MaterialTheme.typography.labelMedium,
+
             maxLines = 1,
-            textAlign = TextAlign.Center,
+
+            textAlign =
+                TextAlign.Center,
+
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 2.dp)
