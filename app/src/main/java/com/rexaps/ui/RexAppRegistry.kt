@@ -15,24 +15,35 @@ object RexAppRegistry {
             name = "RexFox",
             description = "Browser cepat & ringan"
         ),
+
+        RexModule(
+            id = "rexpanel",
+            name = "RexPanel",
+            description = "Monitoring dan kontrol SSH",
+            available = true
+        ),
+
         RexModule(
             id = "rexnux",
             name = "RexNux",
             description = "Terminal & Linux",
             available = false
         ),
+
         RexModule(
             id = "rexmusic",
             name = "RexMusic",
             description = "Musik & playlist",
             available = false
         ),
+
         RexModule(
             id = "rextube",
             name = "RexTube",
             description = "Video & subscriptions",
             available = false
         ),
+
         RexModule(
             id = "rextok",
             name = "RexTok",
