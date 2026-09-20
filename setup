@@ -1,3 +1,5 @@
-export RexFox="app/src/main/java/com/rexaps/rexfox"
+export RexFox="$PWD/app/src/main/java/com/rexaps/rexfox"
+export Aps="$PWD/app/src/main/java/com/rexaps"
+
 echo "RexFox = $RexFox"
-alias lsfox="ls -l $RexFox"
+echo "Aps = $Aps"
