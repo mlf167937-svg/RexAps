@@ -79,3 +79,89 @@ fun RexFoxTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
+
+/* ------------------------------ ANIMATION KIT ----------------------------- */
+
+/** Elemen muncul bergantian: fade + naik + zoom kecil. */
+@Composable
+fun Modifier.rexEntrance(index: Int): Modifier {
+    var shown by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!shown) delay(index.coerceAtMost(8) * 55L)
+        shown = true
+    }
+
+    val progress by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(500, easing = FastOutSlowInEasing),
+        label = "rexEntrance"
+    )
+
+    return this.graphicsLayer {
+        alpha = progress
+        translationY = (1f - progress) * 36.dp.toPx()
+        val s = 0.95f + 0.05f * progress
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/** Klik dengan efek mengecil memantul saat ditekan. */
+@Composable
+fun Modifier.rexPressable(
+    enabled: Boolean = true,
+    onClick: () -> Unit
+): Modifier {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.95f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "rexPress"
+    )
+
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = source,
+            indication = null,
+            enabled = enabled,
+            role = Role.Button,
+            onClick = onClick
+        )
+}
+
+/** Transisi halus saat berpindah layar RexFox. */
+@Composable
+fun RexFoxFade(content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { visible = true }
+
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "rexScreen"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = progress
+                val s = 0.985f + 0.015f * progress
+                scaleX = s
+                scaleY = s
+            }
+    ) {
+        content()
+    }
+}
