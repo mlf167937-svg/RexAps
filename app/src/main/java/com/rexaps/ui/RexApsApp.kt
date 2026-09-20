@@ -1,10 +1,26 @@
 package com.rexaps.ui
 
 import android.app.Activity
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,11 +34,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -47,6 +64,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -66,6 +85,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexfox.RexFoxTheme
+import kotlinx.coroutines.delay
 
 private data class BottomTab(val label: String, val icon: ImageVector)
 
@@ -75,14 +95,24 @@ private val bottomTabs = listOf(
     BottomTab("Settings", Icons.Default.Settings)
 )
 
+private const val THEME_COLUMNS = 3
+
 @Composable
 fun RexApsApp(activity: Activity) {
     var rexFoxOpen by remember {
         mutableStateOf(false)
     }
 
-    var themeOption by rememberSaveable {
-        mutableStateOf(RexThemeOption.SYSTEM)
+    // Tema dibaca dari penyimpanan saat aplikasi dibuka, dan disimpan tiap kali diganti.
+    val themeStore = remember { RexThemeStore(activity) }
+
+    var themeOption by remember {
+        mutableStateOf(themeStore.load())
+    }
+
+    val onThemeChange: (RexThemeOption) -> Unit = { option ->
+        themeOption = option
+        themeStore.save(option)
     }
 
     // When RexFox is open, show it full screen
@@ -130,9 +160,23 @@ fun RexApsApp(activity: Activity) {
             }
         ) { padding ->
 
-            Crossfade(
+            AnimatedContent(
                 targetState = selectedTab.intValue,
-                label = "tab"
+                transitionSpec = {
+                    val direction = if (targetState > initialState) 1 else -1
+
+                    (fadeIn(tween(300, delayMillis = 80)) +
+                        slideInHorizontally(
+                            animationSpec = tween(360, easing = FastOutSlowInEasing),
+                            initialOffsetX = { fullWidth -> fullWidth / 10 * direction }
+                        )) togetherWith
+                        (fadeOut(tween(160)) +
+                            slideOutHorizontally(
+                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                targetOffsetX = { fullWidth -> -fullWidth / 10 * direction }
+                            ))
+                },
+                label = "tabTransition"
             ) { tab ->
                 when (tab) {
                     0 -> HomeContent(
@@ -150,7 +194,7 @@ fun RexApsApp(activity: Activity) {
                     else -> SettingsContent(
                         padding = padding,
                         selectedTheme = themeOption,
-                        onThemeSelected = { themeOption = it }
+                        onThemeSelected = onThemeChange
                     )
                 }
             }
@@ -159,14 +203,36 @@ fun RexApsApp(activity: Activity) {
         if (showThemeSheet) {
             ThemeSheet(
                 selected = themeOption,
-                onSelect = { themeOption = it },
+                onSelect = onThemeChange,
                 onDismiss = { showThemeSheet = false }
             )
         }
     }
 }
 
-/* ---------------------------------- HOME ---------------------------------- */
+/* -------------------------------- ANIMATION ------------------------------- */
+
+/** Elemen muncul bergantian: fade + naik sedikit. Hanya 8 item pertama yang diberi jeda. */
+@Composable
+private fun Modifier.entrance(index: Int): Modifier {
+    var shown by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(index.coerceAtMost(8) * 55L)
+        shown = true
+    }
+
+    val progress by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(450, easing = FastOutSlowInEasing),
+        label = "entrance"
+    )
+
+    return graphicsLayer {
+        alpha = progress
+        translationY = (1f - progress) * 40.dp.toPx()
+    }
+}
 
 @Composable
 private fun accentBrush(): Brush = Brush.linearGradient(
@@ -175,6 +241,8 @@ private fun accentBrush(): Brush = Brush.linearGradient(
         MaterialTheme.colorScheme.tertiary
     )
 )
+
+/* ---------------------------------- HOME ---------------------------------- */
 
 @Composable
 private fun HomeContent(
@@ -199,24 +267,33 @@ private fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            HomeHeader(onOpenTheme = onOpenTheme)
+            HomeHeader(
+                onOpenTheme = onOpenTheme,
+                modifier = Modifier.entrance(0)
+            )
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            HeroCard(appCount = apps.size)
+            HeroCard(
+                appCount = apps.size,
+                modifier = Modifier.entrance(1)
+            )
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
                 text = "Aplikasi",
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(top = 12.dp)
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .entrance(2)
             )
         }
 
-        items(apps, key = { it.id }) { app ->
+        itemsIndexed(apps, key = { _, app -> app.id }) { index, app ->
             AppCard(
                 app = app,
+                modifier = Modifier.entrance(index + 3),
                 onClick = {
                     if (app.id == "rexfox" && app.available) {
                         onOpenRexFox()
@@ -228,9 +305,12 @@ private fun HomeContent(
 }
 
 @Composable
-private fun HomeHeader(onOpenTheme: () -> Unit) {
+private fun HomeHeader(
+    onOpenTheme: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -265,11 +345,14 @@ private fun HomeHeader(onOpenTheme: () -> Unit) {
 }
 
 @Composable
-private fun HeroCard(appCount: Int) {
+private fun HeroCard(
+    appCount: Int,
+    modifier: Modifier = Modifier
+) {
     val onAccent = MaterialTheme.colorScheme.onPrimary
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
             .background(accentBrush())
@@ -315,16 +398,33 @@ private fun HeroCard(appCount: Int) {
 @Composable
 private fun AppCard(
     app: RexModule,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "cardScale"
+    )
 
     Card(
         onClick = onClick,
         enabled = app.available,
-        modifier = Modifier
+        interactionSource = interactionSource,
+        modifier = modifier
             .fillMaxWidth()
-            .height(168.dp),
+            .height(168.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
             containerColor = colors.surfaceVariant,
@@ -408,6 +508,7 @@ private fun ProfileContent(
         Box(
             modifier = Modifier
                 .size(96.dp)
+                .entrance(0)
                 .background(accentBrush(), CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -423,7 +524,8 @@ private fun ProfileContent(
         Text(
             text = "Profile RexAps",
             style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.entrance(1)
         )
     }
 }
@@ -446,18 +548,27 @@ private fun SettingsContent(
         item {
             Text(
                 text = "Pengaturan",
-                style = MaterialTheme.typography.headlineLarge
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.entrance(0)
             )
         }
 
         item {
-            SectionLabel("Tampilan")
+            Column(modifier = Modifier.entrance(1)) {
+                SectionLabel("Tema")
+                Text(
+                    text = "Aktif: ${selectedTheme.label}. Pilihanmu tersimpan otomatis.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         item {
             ThemePicker(
                 selected = selectedTheme,
-                onSelect = onThemeSelected
+                onSelect = onThemeSelected,
+                modifier = Modifier.entrance(2)
             )
         }
 
@@ -469,7 +580,8 @@ private fun SettingsContent(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.entrance(3)
             ) {
                 Column(
                     modifier = Modifier
@@ -516,7 +628,7 @@ private fun ThemeSheet(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Column {
                 Text(
@@ -538,90 +650,134 @@ private fun ThemeSheet(
 @Composable
 private fun ThemePicker(
     selected: RexThemeOption,
-    onSelect: (RexThemeOption) -> Unit
+    onSelect: (RexThemeOption) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        RexThemeOption.values().forEach { option ->
-            ThemeOptionRow(
-                option = option,
-                isSelected = option == selected,
-                onClick = { onSelect(option) }
-            )
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        RexThemeOption.values().toList().chunked(THEME_COLUMNS).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowItems.forEach { option ->
+                    ThemeTile(
+                        option = option,
+                        isSelected = option == selected,
+                        onClick = { onSelect(option) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                repeat(THEME_COLUMNS - rowItems.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ThemeOptionRow(
+private fun ThemeTile(
     option: RexThemeOption,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
+    val preview = option.colorScheme(isSystemInDarkTheme())
     val shape = RoundedCornerShape(20.dp)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) colors.primary else colors.outlineVariant,
+        animationSpec = tween(250),
+        label = "tileBorder"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.97f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "tileScale"
+    )
+
+    Column(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(shape)
-            .background(if (isSelected) colors.primaryContainer else colors.surfaceVariant)
-            .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) colors.primary else colors.outlineVariant,
-                shape = shape
-            )
+            .background(colors.surfaceVariant)
+            .border(if (isSelected) 2.dp else 1.dp, borderColor, shape)
             .selectable(
                 selected = isSelected,
                 onClick = onClick,
                 role = Role.RadioButton
             )
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        ThemeSwatch(option)
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = option.label,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = option.caption,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant
-            )
-        }
-
-        if (isSelected) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = "Dipilih",
-                tint = colors.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThemeSwatch(option: RexThemeOption) {
-    val preview = option.colorScheme(isSystemInDarkTheme())
-
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(preview.background)
-            .border(1.dp, preview.outlineVariant, RoundedCornerShape(14.dp)),
-        contentAlignment = Alignment.Center
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(18.dp)
-                .background(
-                    Brush.linearGradient(listOf(preview.primary, preview.tertiary)),
-                    CircleShape
+                .fillMaxWidth()
+                .height(68.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(preview.background)
+                .border(1.dp, preview.outlineVariant, RoundedCornerShape(14.dp))
+        ) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .background(
+                            Brush.linearGradient(listOf(preview.primary, preview.tertiary)),
+                            CircleShape
+                        )
                 )
+                Box(
+                    modifier = Modifier
+                        .width(22.dp)
+                        .height(10.dp)
+                        .background(preview.surfaceVariant, RoundedCornerShape(50))
+                        .border(1.dp, preview.outlineVariant, RoundedCornerShape(50))
+                )
+            }
+
+            AnimatedVisibility(
+                visible = isSelected,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp),
+                enter = scaleIn(spring(Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .background(colors.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Dipilih",
+                        tint = colors.onPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = option.label,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 2.dp)
         )
     }
 }
