@@ -1,36 +1,81 @@
 package com.rexaps.rexfox
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
-val Violet = Color(0xFF7C3AED)
-val VioletLight = Color(0xFFA78BFA)
-val Cyan = Color(0xFF06B6D4)
-val CyanLight = Color(0xFF67E8F9)
-val DeepBlack = Color(0xFF050507)
-val SurfaceDark = Color(0xFF0B0C10)
-val SurfaceCard = Color(0xFF12141A)
-val SurfaceElevated = Color(0xFF191C24)
-val BorderSubtle = Color(0xFF292D38)
-val OnSurfaceMuted = Color(0xFF9AA1B2)
-val OnSurfacePrimary = Color(0xFFF3F5F8)
+// Semua warna RexFox sekarang mengikuti tema RexAps yang sedang aktif.
+val Violet: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
+val VioletLight: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
+val Cyan: Color
+    @Composable get() = MaterialTheme.colorScheme.tertiary
+val CyanLight: Color
+    @Composable get() = MaterialTheme.colorScheme.tertiary
+val DeepBlack: Color
+    @Composable get() = MaterialTheme.colorScheme.background
+val SurfaceDark: Color
+    @Composable get() = lerp(
+        MaterialTheme.colorScheme.background,
+        MaterialTheme.colorScheme.surfaceVariant,
+        0.5f
+    )
+val SurfaceCard: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+val SurfaceElevated: Color
+    @Composable get() = lerp(
+        MaterialTheme.colorScheme.surfaceVariant,
+        MaterialTheme.colorScheme.onSurface,
+        0.07f
+    )
+val BorderSubtle: Color
+    @Composable get() = MaterialTheme.colorScheme.outlineVariant
+val OnSurfaceMuted: Color
+    @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+val OnSurfacePrimary: Color
+    @Composable get() = MaterialTheme.colorScheme.onSurface
 
+/** Warna teks/ikon di atas gradien aksen (menggantikan Color.White). */
+val OnAccent: Color
+    @Composable get() = MaterialTheme.colorScheme.onPrimary
+
+val RexFoxAccent: Brush
+    @Composable get() = Brush.linearGradient(
+        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
+    )
+
+/** Tidak lagi memaksa warna sendiri, hanya mewarisi tema dari RexAps. */
 @Composable
 fun RexFoxTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Violet,
-            secondary = Cyan,
-            background = DeepBlack,
-            surface = SurfaceDark,
-            surfaceVariant = SurfaceCard,
-            onSurface = OnSurfacePrimary,
-            onBackground = OnSurfacePrimary,
-            onSurfaceVariant = OnSurfaceMuted,
-            outline = BorderSubtle
-        ),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         content = content
     )
 }

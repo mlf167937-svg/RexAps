@@ -83,7 +83,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
-import com.rexaps.rexfox.RexFoxTheme
 import kotlinx.coroutines.delay
 
 private data class BottomTab(val label: String, val icon: ImageVector)
@@ -119,7 +118,7 @@ fun RexApsApp(activity: Activity) {
     // When RexFox is open, show it full screen
     if (rexFoxOpen) {
         FadeInScreen {
-            RexFoxTheme {
+            RexTheme(option = themeOption) {
                 RexFoxScreen(activity = activity)
             }
         }
