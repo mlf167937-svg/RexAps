@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import com.rexaps.rexfox.rexPressable
+import androidx.compose.material.icons.filled.Visibility
 
 private val TermFg = Color(0xFFCDD6F4)
 private val Good = Color(0xFFA6E3A1)
@@ -536,7 +537,7 @@ private fun TerminalPane(
                     .alpha(0f)
                     .focusRequester(focus)
                     .onPreviewKeyEvent { handleKey(it, vm) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.VisiblePassword, imeAction = ImeAction.Send),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Icons.Default.Visibility, imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { vm.sendRaw("\r") })
             )
         }
