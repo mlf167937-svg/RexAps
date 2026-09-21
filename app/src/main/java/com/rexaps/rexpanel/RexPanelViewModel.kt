@@ -24,73 +24,172 @@ sealed interface ConnState {
 data class Metrics(
     val host: String,
     val cpu: Float?,
+    val cpuFreqFrac: Float?,
+    val cpuFreqMhz: Int?,
+    val cores: Int?,
     val memUsedKb: Long?,
     val memTotalKb: Long?,
     val load: String?,
     val uptimeSec: Long?,
+    val uptimeText: String?,
     val diskPct: Int?,
     val diskUsedKb: Long?,
     val diskTotalKb: Long?,
+    val diskMount: String?,
     val rxBps: Long?,
-    val txBps: Long?
+    val txBps: Long?,
+    val batteryPct: Int?,
+    val batteryStatus: String?,
+    val batteryTemp: Float?
 )
 
 class RawSample(
     val cpuTotal: Long?, val cpuIdle: Long?,
+    val freqFrac: Float?, val freqMhz: Int?, val cores: Int?,
     val memTotalKb: Long?, val memAvailKb: Long?,
-    val load: String?, val uptimeSec: Long?,
-    val diskPct: Int?, val diskUsedKb: Long?, val diskTotalKb: Long?,
+    val load: String?,
+    val uptimeSec: Long?, val uptimeText: String?,
+    val diskPct: Int?, val diskUsedKb: Long?, val diskTotalKb: Long?, val diskMount: String?,
     val rx: Long?, val tx: Long?,
+    val batPct: Int?, val batStatus: String?, val batTemp: Float?,
     val host: String?,
     val at: Long = System.currentTimeMillis()
 )
 
-private const val MON_CMD =
-    "head -n1 /proc/stat; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; " +
-        "cat /proc/loadavg; cat /proc/uptime; df -P / | tail -n1; cat /proc/net/dev; echo HOST=\$(hostname 2>/dev/null)"
+// § diganti menjadi $ supaya tidak bentrok dengan string template Kotlin.
+private val MON_CMD = """
+T=""; command -v timeout >/dev/null 2>&1 && T="timeout 3"
+rd() {
+  cat "§1" 2>/dev/null && return 0
+  [ "§(id -u)" = 0 ] && return 1
+  [ -n "§T" ] || return 1
+  §T sudo -n cat "§1" 2>/dev/null && return 0
+  command -v su >/dev/null 2>&1 && §T su -c "cat §1" 2>/dev/null
+}
+echo "##STAT"; rd /proc/stat | head -n1
+echo "##MEM"; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
+echo "##LOAD"; rd /proc/loadavg
+echo "##UPTIME"; cat /proc/uptime 2>/dev/null
+echo "##UPCMD"; uptime 2>/dev/null
+echo "##DF"; df -P / 2>/dev/null | tail -n1
+echo "##DFH"; df -P "§HOME" 2>/dev/null | tail -n1
+echo "##NET"; rd /proc/net/dev
+echo "##SYSNET"
+for d in /sys/class/net/*; do
+  n="§{d##*/}"; [ "§n" = lo ] && continue
+  echo "§n §(cat §d/statistics/rx_bytes 2>/dev/null) §(cat §d/statistics/tx_bytes 2>/dev/null)"
+done
+echo "##FREQ"
+for c in /sys/devices/system/cpu/cpu[0-9]*; do
+  echo "§(cat §c/cpufreq/scaling_cur_freq 2>/dev/null) §(cat §c/cpufreq/cpuinfo_max_freq 2>/dev/null)"
+done
+echo "##CORES"; nproc 2>/dev/null
+echo "##BAT"
+command -v termux-battery-status >/dev/null 2>&1 && §T termux-battery-status 2>/dev/null
+echo "##HOST"; hostname 2>/dev/null
+""".trimIndent().replace("§", "$")
 
 private val LOAD_RE = Regex("""^\d+\.\d+ \d+\.\d+ \d+\.\d+ \d+/\d+ \d+$""")
-private val UP_RE = Regex("""^\d+\.\d+ \d+\.\d+$""")
+private val UPCMD_LOAD_RE = Regex("""load averages?:\s*([\d.]+),?\s+([\d.]+),?\s+([\d.]+)""")
+private val UPCMD_UP_RE = Regex("""up\s+(.+?),\s+(?:\d+\s+users?|load)""")
 private val WS = Regex("\\s+")
 
 fun parseSample(raw: String): RawSample {
-    var cpuT: Long? = null; var cpuI: Long? = null
-    var mt: Long? = null; var ma: Long? = null
-    var load: String? = null; var up: Long? = null
-    var dp: Int? = null; var du: Long? = null; var dt: Long? = null
-    var rx = 0L; var tx = 0L; var hasNet = false
-    var host: String? = null
-
-    for (line in raw.lines().map { it.trim() }) {
-        when {
-            line.startsWith("cpu ") -> {
-                val n = line.split(WS).drop(1).mapNotNull { it.toLongOrNull() }
-                if (n.size >= 5) { cpuT = n.take(8).sum(); cpuI = n[3] + n[4] }
-            }
-            line.startsWith("MemTotal:") -> mt = line.filter { it.isDigit() }.toLongOrNull()
-            line.startsWith("MemAvailable:") -> ma = line.filter { it.isDigit() }.toLongOrNull()
-            line.startsWith("HOST=") -> host = line.removePrefix("HOST=").ifBlank { null }
-            LOAD_RE.matches(line) -> load = line.split(" ").take(3).joinToString(" ")
-            UP_RE.matches(line) -> up = line.substringBefore('.').toLongOrNull()
-            line.endsWith(" /") && line.contains('%') -> {
-                val t = line.split(WS)
-                if (t.size >= 6) {
-                    dt = t[1].toLongOrNull(); du = t[2].toLongOrNull()
-                    dp = t[4].removeSuffix("%").toIntOrNull()
-                }
-            }
-            line.contains(':') && !line.contains('|') -> {
-                val name = line.substringBefore(':').trim()
-                if (name != "lo" && !name.contains(' ')) {
-                    val f = line.substringAfter(':').trim().split(WS).mapNotNull { it.toLongOrNull() }
-                    if (f.size >= 9) { rx += f[0]; tx += f[8]; hasNet = true }
-                }
-            }
+    val sec = HashMap<String, MutableList<String>>()
+    var key = ""
+    for (l in raw.lines()) {
+        val t = l.trim()
+        if (t.startsWith("##")) {
+            key = t.removePrefix("##")
+            sec[key] = mutableListOf()
+        } else if (t.isNotEmpty()) {
+            sec[key]?.add(t)
         }
     }
+    fun lines(k: String): List<String> = sec[k].orEmpty()
+
+    // CPU (delta dari /proc/stat)
+    var cpuT: Long? = null
+    var cpuI: Long? = null
+    lines("STAT").firstOrNull { it.startsWith("cpu ") }?.let { line ->
+        val n = line.split(WS).drop(1).mapNotNull { it.toLongOrNull() }
+        if (n.size >= 5) { cpuT = n.take(8).sum(); cpuI = n[3] + n[4] }
+    }
+
+    // Frekuensi CPU (cadangan)
+    val freqs = lines("FREQ").mapNotNull { l ->
+        val t = l.split(WS)
+        val cur = t.getOrNull(0)?.toLongOrNull()
+        val max = t.getOrNull(1)?.toLongOrNull()
+        if (cur != null && max != null && max > 0) cur to max else null
+    }
+    val freqFrac = if (freqs.isNotEmpty())
+        (freqs.map { it.first }.average() / freqs.maxOf { it.second }).toFloat().coerceIn(0f, 1f) else null
+    val freqMhz = if (freqs.isNotEmpty()) (freqs.map { it.first }.average() / 1000).toInt() else null
+    val cores = lines("CORES").firstOrNull()?.toIntOrNull()
+        ?: lines("FREQ").size.takeIf { it > 0 }
+
+    // Memori
+    var mt: Long? = null
+    var ma: Long? = null
+    for (l in lines("MEM")) {
+        if (l.startsWith("MemTotal:")) mt = l.filter { it.isDigit() }.toLongOrNull()
+        if (l.startsWith("MemAvailable:")) ma = l.filter { it.isDigit() }.toLongOrNull()
+    }
+
+    // Load
+    val upCmd = lines("UPCMD").joinToString(" ")
+    val load = lines("LOAD").firstOrNull { LOAD_RE.matches(it) }?.split(" ")?.take(3)?.joinToString(" ")
+        ?: UPCMD_LOAD_RE.find(upCmd)?.let { "${it.groupValues[1]} ${it.groupValues[2]} ${it.groupValues[3]}" }
+
+    // Uptime
+    val upSec = lines("UPTIME").firstOrNull()?.substringBefore('.')?.toLongOrNull()
+    val upText = UPCMD_UP_RE.find(upCmd)?.groupValues?.get(1)
+
+    // Disk
+    fun df(k: String): List<String>? =
+        lines(k).lastOrNull()?.split(WS)?.takeIf { it.size >= 6 && it[4].endsWith("%") }
+    val d = df("DF") ?: df("DFH")
+
+    // Jaringan
+    var rx = 0L
+    var tx = 0L
+    var hasNet = false
+    for (l in lines("NET")) {
+        if ('|' in l || ':' !in l) continue
+        val name = l.substringBefore(':').trim()
+        if (name == "lo") continue
+        val f = l.substringAfter(':').trim().split(WS).mapNotNull { it.toLongOrNull() }
+        if (f.size >= 9) { rx += f[0]; tx += f[8]; hasNet = true }
+    }
+    if (!hasNet) {
+        for (l in lines("SYSNET")) {
+            val t = l.split(WS)
+            val a = t.getOrNull(1)?.toLongOrNull()
+            val b = t.getOrNull(2)?.toLongOrNull()
+            if (a != null && b != null) { rx += a; tx += b; hasNet = true }
+        }
+    }
+
+    // Baterai (termux-api)
+    val bat = lines("BAT").joinToString(" ")
+    val batPct = Regex(""""percentage"\s*:\s*(\d+)""").find(bat)?.groupValues?.get(1)?.toIntOrNull()
+    val batStatus = Regex(""""status"\s*:\s*"(\w+)"""").find(bat)?.groupValues?.get(1)
+    val batTemp = Regex(""""temperature"\s*:\s*([\d.]+)""").find(bat)?.groupValues?.get(1)?.toFloatOrNull()
+
     return RawSample(
-        cpuT, cpuI, mt, ma, load, up, dp, du, dt,
-        if (hasNet) rx else null, if (hasNet) tx else null, host
+        cpuTotal = cpuT, cpuIdle = cpuI,
+        freqFrac = freqFrac, freqMhz = freqMhz, cores = cores,
+        memTotalKb = mt, memAvailKb = ma,
+        load = load,
+        uptimeSec = upSec, uptimeText = upText,
+        diskPct = d?.get(4)?.removeSuffix("%")?.toIntOrNull(),
+        diskUsedKb = d?.get(2)?.toLongOrNull(),
+        diskTotalKb = d?.get(1)?.toLongOrNull(),
+        diskMount = d?.drop(5)?.joinToString(" "),
+        rx = if (hasNet) rx else null, tx = if (hasNet) tx else null,
+        batPct = batPct, batStatus = batStatus, batTemp = batTemp,
+        host = lines("HOST").firstOrNull()
     )
 }
 
@@ -118,15 +217,23 @@ private fun buildMetrics(cur: RawSample, prev: RawSample?): Metrics {
     return Metrics(
         host = cur.host ?: "server",
         cpu = cpu,
+        cpuFreqFrac = cur.freqFrac,
+        cpuFreqMhz = cur.freqMhz,
+        cores = cur.cores,
         memUsedKb = if (total != null && avail != null) total - avail else null,
         memTotalKb = total,
         load = cur.load,
         uptimeSec = cur.uptimeSec,
+        uptimeText = cur.uptimeText,
         diskPct = cur.diskPct,
         diskUsedKb = cur.diskUsedKb,
         diskTotalKb = cur.diskTotalKb,
+        diskMount = cur.diskMount,
         rxBps = rxBps,
-        txBps = txBps
+        txBps = txBps,
+        batteryPct = cur.batPct,
+        batteryStatus = cur.batStatus,
+        batteryTemp = cur.batTemp
     )
 }
 
@@ -221,7 +328,7 @@ class RexPanelViewModel : ViewModel() {
                         val sample = parseSample(raw)
                         val m = buildMetrics(sample, prev)
                         metrics = m
-                        m.cpu?.let {
+                        (m.cpu ?: m.cpuFreqFrac)?.let {
                             cpuHistory.add(it)
                             if (cpuHistory.size > 40) cpuHistory.removeAt(0)
                         }

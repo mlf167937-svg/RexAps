@@ -338,90 +338,62 @@ private fun PanelHeader(
 /* -------------------------------- MONITOR -------------------------------- */
 
 @Composable
-private fun MonitorSection(
-    m: Metrics?,
-    cpuHistory: List<Float>
-) {
+private fun MonitorSection(m: Metrics?, cpuHistory: List<Float>) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         val total = m?.memTotalKb
         val used = m?.memUsedKb
-        val memFrac =
-            if (total != null && used != null && total > 0) {
-                used.toFloat() / total
-            } else {
-                null
-            }
+        val memFrac = if (total != null && used != null && total > 0) used.toFloat() / total else null
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        val cpuFrac = m?.cpu ?: m?.cpuFreqFrac
+        val cpuValue = when {
+            m?.cpu != null -> "${(m.cpu * 100).toInt()}%"
+            m?.cpuFreqMhz != null -> fmtMhz(m.cpuFreqMhz)
+            else -> "–"
+        }
+        val coreText = m?.cores?.let { " · $it core" } ?: ""
+        val cpuSub = when {
+            m?.cpu != null -> "Penggunaan$coreText"
+            m?.cpuFreqMhz != null -> "Frekuensi$coreText"
+            else -> "Tidak tersedia"
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GaugeCard(
                 title = "CPU",
-                fraction = m?.cpu,
-                value = m?.cpu?.let {
-                    "${(it * 100).toInt()}%"
-                } ?: "–",
-                sub = if (m?.cpu == null) {
-                    "Tidak tersedia"
-                } else {
-                    "Penggunaan"
-                },
+                fraction = cpuFrac,
+                value = cpuValue,
+                sub = cpuSub,
                 history = cpuHistory,
                 modifier = Modifier.weight(1f)
             )
-
             GaugeCard(
                 title = "RAM",
                 fraction = memFrac,
-                value = memFrac?.let {
-                    "${(it * 100).toInt()}%"
-                } ?: "–",
-                sub =
-                    if (used != null && total != null) {
-                        "${fmtKb(used)} / ${fmtKb(total)}"
-                    } else {
-                        "Tidak tersedia"
-                    },
+                value = memFrac?.let { "${(it * 100).toInt()}%" } ?: "–",
+                sub = if (used != null && total != null) "${fmtKb(used)} / ${fmtKb(total)}" else "Tidak tersedia",
                 history = null,
                 modifier = Modifier.weight(1f)
             )
         }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile(
-                "Disk /",
+                "Disk ${m?.diskMount ?: ""}".trim(),
                 m?.diskPct?.let { "$it%" } ?: "–",
-                if (m?.diskUsedKb != null && m.diskTotalKb != null) {
-                    "${fmtKb(m.diskUsedKb)} / ${fmtKb(m.diskTotalKb)}"
-                } else {
-                    ""
-                },
+                if (m?.diskUsedKb != null && m.diskTotalKb != null) "${fmtKb(m.diskUsedKb)} / ${fmtKb(m.diskTotalKb)}" else "",
                 Modifier.weight(1f)
             )
-
             StatTile(
                 "Uptime",
-                m?.uptimeSec?.let { fmtUptime(it) } ?: "–",
+                m?.uptimeSec?.let { fmtUptime(it) } ?: m?.uptimeText ?: "–",
                 "",
                 Modifier.weight(1f)
             )
         }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            StatTile(
-                "Load",
-                m?.load?.substringBefore(' ') ?: "–",
-                m?.load ?: "",
-                Modifier.weight(1f)
-            )
-
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Load", m?.load?.substringBefore(' ') ?: "–", m?.load ?: "", Modifier.weight(1f))
             StatTile(
                 "Jaringan",
                 "↓ " + (m?.rxBps?.let { fmtRate(it) } ?: "–"),
@@ -429,8 +401,27 @@ private fun MonitorSection(
                 Modifier.weight(1f)
             )
         }
+        if (m?.batteryPct != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatTile(
+                    "Baterai",
+                    "${m.batteryPct}%",
+                    m.batteryStatus?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "",
+                    Modifier.weight(1f)
+                )
+                StatTile(
+                    "Suhu",
+                    m.batteryTemp?.let { String.format("%.1f°C", it) } ?: "–",
+                    "Baterai",
+                    Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
+
+private fun fmtMhz(mhz: Int): String =
+    if (mhz >= 1000) String.format("%.1f GHz", mhz / 1000.0) else "$mhz MHz"
 
 @Composable
 private fun GaugeCard(
