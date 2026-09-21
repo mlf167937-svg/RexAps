@@ -50,12 +50,21 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
     private fun createWebView(activity: Activity): WebView {
         val wv = WebView(activity)
 
+        // Ambil versi Chrome asli dari WebView di HP, supaya UA selalu cocok dan tidak usang.
+        val chromeVersion = Regex("""Chrome/([\d.]+)""")
+            .find(wv.settings.userAgentString)?.groupValues?.get(1) ?: "138.0.0.0"
+        val desktopUa =
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/$chromeVersion Safari/537.36"
+
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true // sesi WA Web disimpan di sini
             databaseEnabled = true
             cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = DESKTOP_UA
+            userAgentString = desktopUa
+            useWideViewPort = true
+            loadWithOverviewMode = true
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             allowContentAccess = true
@@ -118,6 +127,15 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
             ): Boolean {
                 storeFileCallback(filePathCallback)
                 onPickFiles?.invoke()
+                return true
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: android.webkit.RenderProcessGoneDetail
+            ): Boolean {
+                error = "Tampilan WhatsApp berhenti. Ketuk Coba lagi."
+                loading = false
                 return true
             }
 
