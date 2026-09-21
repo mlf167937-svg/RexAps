@@ -116,6 +116,14 @@ fun RexApsApp(activity: Activity) {
         mutableStateOf(false)
     }
 
+    /*
+     * RexChat: WhatsApp Web yang dikunci di WebView.
+     * Sesi login disimpan oleh WebView (cookie + storage), bukan di sini.
+     */
+    var rexChatOpen by remember {
+        mutableStateOf(false)
+    }
+
     // Tema dibaca dari penyimpanan saat aplikasi dibuka.
     val themeStore = remember {
         RexThemeStore(activity)
@@ -166,6 +174,27 @@ fun RexApsApp(activity: Activity) {
                     activity = activity,
                     onExit = {
                         rexPanelOpen = false
+                    }
+                )
+            }
+        }
+
+        return
+    }
+
+    /*
+     * ------------------------------------------------------------------------
+     * REXCHAT
+     * ------------------------------------------------------------------------
+     */
+
+    if (rexChatOpen) {
+        FadeInScreen {
+            RexTheme(option = themeOption) {
+                com.rexaps.rexchat.RexChatScreen(
+                    activity = activity,
+                    onExit = {
+                        rexChatOpen = false
                     }
                 )
             }
@@ -248,6 +277,9 @@ fun RexApsApp(activity: Activity) {
 
                                     app.id == "rexpanel" && app.available -> {
                                         rexPanelOpen = true
+                                    }
+                                    app.id == "rexchat" && app.available -> {
+                                        rexChatOpen = true
                                     }
                                 }
                             },

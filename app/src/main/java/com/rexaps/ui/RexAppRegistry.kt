@@ -56,7 +56,7 @@ object RexAppRegistry {
             id = "rexchat",
             name = "RexChat",
             description = "WA Client - Pairing only",
-            available = false
+            available = true
         ),
         RexModule(
             id = "rextools",
