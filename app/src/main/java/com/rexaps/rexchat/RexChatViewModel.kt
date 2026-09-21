@@ -40,14 +40,19 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
     var onPickFiles: (() -> Unit)? = null
     var onNeedPermissions: ((Array<String>) -> Unit)? = null
 
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var pendingRequest: PermissionRequest? = null
+    private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingPermission: PermissionRequest? = null
 
     @SuppressLint("SetJavaScriptEnabled")
-    val webView: WebView = WebView(activity).apply {
-        settings.apply {
+    val webView: WebView = createWebView(activity)
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createWebView(activity: Activity): WebView {
+        val wv = WebView(activity)
+
+        wv.settings.apply {
             javaScriptEnabled = true
-            domStorageEnabled = true          // sesi WA Web disimpan di sini
+            domStorageEnabled = true // sesi WA Web disimpan di sini
             databaseEnabled = true
             cacheMode = WebSettings.LOAD_DEFAULT
             userAgentString = DESKTOP_UA
@@ -57,19 +62,23 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
             setSupportZoom(false)
             builtInZoomControls = false
         }
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            setAcceptThirdPartyCookies(this@apply, true)
-        }
 
-        webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+        val cookies = CookieManager.getInstance()
+        cookies.setAcceptCookie(true)
+        cookies.setAcceptThirdPartyCookies(wv, true)
+
+        wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
                 val uri = request.url
                 if (isAllowed(uri)) return false
-                // Di luar WhatsApp: buka di aplikasi lain, tidak di dalam RexChat.
+                // Di luar WhatsApp: buka di aplikasi lain, bukan di dalam RexChat.
                 runCatching {
                     view.context.startActivity(
-                        Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        Intent(Intent.ACTION_VIEW, uri)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 }
                 return true
@@ -85,7 +94,11 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
                 CookieManager.getInstance().flush()
             }
 
-            override fun onReceivedError(view: WebView, request: WebResourceRequest, err: WebResourceError) {
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                err: WebResourceError
+            ) {
                 if (request.isForMainFrame) {
                     error = "Tidak bisa terhubung ke WhatsApp Web. Cek koneksi internetmu."
                     loading = false
@@ -93,18 +106,17 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
             }
         }
 
-        webChromeClient = object : WebChromeClient() {
+        wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress = newProgress
             }
 
             override fun onShowFileChooser(
                 webView: WebView,
-                callback: ValueCallback<Array<Uri>>,
-                params: FileChooserParams
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
             ): Boolean {
-                fileCallback?.onReceiveValue(null)
-                fileCallback = callback
+                storeFileCallback(filePathCallback)
                 onPickFiles?.invoke()
                 return true
             }
@@ -112,8 +124,10 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
             override fun onPermissionRequest(request: PermissionRequest) {
                 val needed = request.resources.mapNotNull {
                     when (it) {
-                        PermissionRequest.RESOURCE_VIDEO_CAPTURE -> android.Manifest.permission.CAMERA
-                        PermissionRequest.RESOURCE_AUDIO_CAPTURE -> android.Manifest.permission.RECORD_AUDIO
+                        PermissionRequest.RESOURCE_VIDEO_CAPTURE ->
+                            android.Manifest.permission.CAMERA
+                        PermissionRequest.RESOURCE_AUDIO_CAPTURE ->
+                            android.Manifest.permission.RECORD_AUDIO
                         else -> null
                     }
                 }
@@ -121,13 +135,23 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
                     request.deny()
                     return
                 }
-                pendingRequest?.deny()
-                pendingRequest = request
+                storePermissionRequest(request)
                 onNeedPermissions?.invoke(needed.toTypedArray())
             }
         }
 
-        loadUrl(HOME_URL)
+        wv.loadUrl(HOME_URL)
+        return wv
+    }
+
+    private fun storeFileCallback(callback: ValueCallback<Array<Uri>>) {
+        pendingFileCallback?.onReceiveValue(null)
+        pendingFileCallback = callback
+    }
+
+    private fun storePermissionRequest(request: PermissionRequest) {
+        pendingPermission?.deny()
+        pendingPermission = request
     }
 
     private fun isAllowed(uri: Uri): Boolean {
@@ -138,14 +162,16 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
     }
 
     fun onFilesPicked(uris: List<Uri>) {
-        fileCallback?.onReceiveValue(if (uris.isEmpty()) null else uris.toTypedArray())
-        fileCallback = null
+        pendingFileCallback?.onReceiveValue(
+            if (uris.isEmpty()) null else uris.toTypedArray()
+        )
+        pendingFileCallback = null
     }
 
     fun onPermissionsResult(granted: Boolean) {
-        val req = pendingRequest ?: return
+        val req = pendingPermission ?: return
         if (granted) req.grant(req.resources) else req.deny()
-        pendingRequest = null
+        pendingPermission = null
     }
 
     fun reload() {
