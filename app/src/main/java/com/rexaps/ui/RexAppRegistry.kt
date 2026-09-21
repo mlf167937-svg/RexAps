@@ -13,12 +13,14 @@ object RexAppRegistry {
         RexModule(
             id = "rexfox",
             name = "RexFox",
-            description = "Browser cepat & ringan"
+            description = "Browser cepat & ringan",
+            available = true
         ),
         RexModule(
             id = "rexpanel",
             name = "RexPanel",
-            description = "Monitoring dan kontrol SSH"
+            description = "Monitoring dan kontrol SSH",
+            available = true
         ),
         RexModule(
             id = "rexnux",
@@ -47,17 +49,20 @@ object RexAppRegistry {
         RexModule(
             id = "rexgit",
             name = "RexGit",
-            description = "Git manager & repo"
+            description = "Git manager & repo",
+            available = false
         ),
         RexModule(
             id = "rexchat",
             name = "RexChat",
-            description = "WA Client - Pairing only"
+            description = "WA Client - Pairing only",
+            available = false
         ),
         RexModule(
             id = "rextools",
             name = "RexTools",
-            description = "Kumpulan tools harian"
+            description = "Kumpulan tools harian",
+            available = false
         ),
         RexModule(
             id = "rexai",
