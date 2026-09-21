@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -23,9 +24,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
 private const val HOME_URL = "https://web.whatsapp.com/"
-private const val DESKTOP_UA =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/124.0.0.0 Safari/537.36"
 
 class RexChatViewModel(activity: Activity) : ViewModel() {
 
@@ -43,7 +41,6 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingPermission: PermissionRequest? = null
 
-    @SuppressLint("SetJavaScriptEnabled")
     val webView: WebView = createWebView(activity)
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -113,6 +110,16 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
                     loading = false
                 }
             }
+
+            // Milik WebViewClient (bukan WebChromeClient). Mencegah layar putih permanen.
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: RenderProcessGoneDetail
+            ): Boolean {
+                error = "Tampilan WhatsApp berhenti. Ketuk Coba lagi."
+                loading = false
+                return true
+            }
         }
 
         wv.webChromeClient = object : WebChromeClient() {
@@ -127,15 +134,6 @@ class RexChatViewModel(activity: Activity) : ViewModel() {
             ): Boolean {
                 storeFileCallback(filePathCallback)
                 onPickFiles?.invoke()
-                return true
-            }
-
-            override fun onRenderProcessGone(
-                view: WebView,
-                detail: android.webkit.RenderProcessGoneDetail
-            ): Boolean {
-                error = "Tampilan WhatsApp berhenti. Ketuk Coba lagi."
-                loading = false
                 return true
             }
 
