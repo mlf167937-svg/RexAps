@@ -7,13 +7,44 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,83 +58,340 @@ import androidx.lifecycle.ViewModelStoreOwner
 import com.rexaps.rexfox.rexPressable
 
 @Composable
-fun RexChatScreen(activity: Activity, onExit: () -> Unit) {
-    val owner = activity as? ViewModelStoreOwner
-        ?: error("RexChatScreen requires an Activity that implements ViewModelStoreOwner")
-    val vm = ViewModelProvider(owner, RexChatViewModel.Factory(activity))[RexChatViewModel::class.java]
-    val colors = MaterialTheme.colorScheme
+fun RexChatScreen(
+    activity: Activity,
+    onExit: () -> Unit
+) {
 
-    var showMenu by remember { mutableStateOf(false) }
-    var confirmClear by remember { mutableStateOf(false) }
+    /*
+     * ---------------------------------------------------------
+     * VIEWMODEL
+     * ---------------------------------------------------------
+     */
 
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
-        vm.onFilesPicked(it)
+    val owner =
+        activity as? ViewModelStoreOwner
+            ?: error(
+                "RexChatScreen requires a ViewModelStoreOwner"
+            )
+
+    val vm =
+        ViewModelProvider(
+            owner,
+            RexChatViewModel.Factory(activity)
+        )[RexChatViewModel::class.java]
+
+    val colors =
+        MaterialTheme.colorScheme
+
+    /*
+     * ---------------------------------------------------------
+     * LOCAL UI STATE
+     * ---------------------------------------------------------
+     */
+
+    var showMenu by remember {
+        mutableStateOf(false)
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        vm.onPermissionsResult(it.isNotEmpty() && it.values.all { ok -> ok })
+
+    var confirmClear by remember {
+        mutableStateOf(false)
     }
+
+    /*
+     * ---------------------------------------------------------
+     * FILE PICKER
+     * ---------------------------------------------------------
+     */
+
+    val filePicker =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts.GetMultipleContents()
+        ) { uris ->
+
+            vm.onFilesPicked(
+                uris
+            )
+        }
+
+    /*
+     * ---------------------------------------------------------
+     * CAMERA / MICROPHONE
+     * ---------------------------------------------------------
+     */
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts.RequestMultiplePermissions()
+        ) { result ->
+
+            val granted =
+                result.isNotEmpty() &&
+                        result.values.all {
+                            it
+                        }
+
+            vm.onPermissionsResult(
+                granted
+            )
+        }
+
+    /*
+     * ---------------------------------------------------------
+     * CALLBACK BINDING
+     * ---------------------------------------------------------
+     */
 
     DisposableEffect(vm) {
-        vm.onPickFiles = { filePicker.launch("*/*") }
-        vm.onNeedPermissions = { permissionLauncher.launch(it) }
+
+        vm.onPickFiles = {
+
+            filePicker.launch(
+                "*/*"
+            )
+        }
+
+        vm.onNeedPermissions = { permissions ->
+
+            permissionLauncher.launch(
+                permissions
+            )
+        }
+
         onDispose {
+
             vm.onPickFiles = null
             vm.onNeedPermissions = null
+
+            /*
+             * Jangan destroy WebView di sini.
+             *
+             * ViewModel masih memegang session.
+             */
             vm.flush()
         }
     }
 
+    /*
+     * ---------------------------------------------------------
+     * BACK BUTTON
+     * ---------------------------------------------------------
+     */
+
     BackHandler {
-        if (vm.webView.canGoBack()) vm.webView.goBack() else onExit()
+
+        if (vm.canGoBack()) {
+
+            vm.goBack()
+
+        } else {
+
+            onExit()
+        }
     }
 
+    /*
+     * ---------------------------------------------------------
+     * ROOT
+     * ---------------------------------------------------------
+     */
+
     Column(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(colors.background)
+            .background(
+                colors.background
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
     ) {
-        /* ------------------------------ HEADER ------------------------------ */
+
+        /*
+         * =====================================================
+         * HEADER
+         * =====================================================
+         */
+
         Row(
-            Modifier
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(
+                    horizontal = 8.dp,
+                    vertical = 6.dp
+                ),
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
-            IconButton(onClick = onExit) { Icon(Icons.Default.ArrowBack, "Kembali") }
 
-            Box(
-                Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
-                contentAlignment = Alignment.Center
+            /*
+             * BACK
+             */
+
+            IconButton(
+                onClick = {
+
+                    if (vm.canGoBack()) {
+                        vm.goBack()
+                    } else {
+                        onExit()
+                    }
+                }
             ) {
-                Icon(Icons.Default.Chat, null, tint = colors.onPrimary, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
 
-            Column(Modifier.weight(1f)) {
-                Text("RexChat", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "WhatsApp Web",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant
+                Icon(
+                    imageVector =
+                        Icons.Default.ArrowBack,
+                    contentDescription =
+                        "Kembali"
                 )
             }
 
-            IconButton(onClick = { vm.reload() }) { Icon(Icons.Default.Refresh, "Muat ulang") }
+            /*
+             * ICON
+             */
+
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            12.dp
+                        )
+                    )
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                colors.primary,
+                                colors.tertiary
+                            )
+                        )
+                    ),
+                contentAlignment =
+                    Alignment.Center
+            ) {
+
+                Icon(
+                    imageVector =
+                        Icons.Default.Chat,
+                    contentDescription =
+                        null,
+                    tint =
+                        colors.onPrimary,
+                    modifier =
+                        Modifier.size(21.dp)
+                )
+            }
+
+            Spacer(
+                modifier =
+                    Modifier.width(12.dp)
+            )
+
+            /*
+             * TITLE
+             */
+
+            Column(
+                modifier =
+                    Modifier.weight(1f)
+            ) {
+
+                Text(
+                    text = "RexChat",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .titleMedium
+                )
+
+                Text(
+                    text =
+                        if (
+                            vm.pageTitle.isBlank() ||
+                            vm.pageTitle == "WhatsApp Web"
+                        ) {
+                            "WhatsApp Web"
+                        } else {
+                            vm.pageTitle
+                        },
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
+                    color =
+                        colors.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+
+            /*
+             * RELOAD
+             */
+
+            IconButton(
+                onClick = {
+                    vm.reload()
+                }
+            ) {
+
+                Icon(
+                    imageVector =
+                        Icons.Default.Refresh,
+                    contentDescription =
+                        "Muat ulang"
+                )
+            }
+
+            /*
+             * MENU
+             */
 
             Box {
-                IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "Menu") }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+
+                IconButton(
+                    onClick = {
+                        showMenu = true
+                    }
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons.Default.MoreVert,
+                        contentDescription =
+                            "Menu"
+                    )
+                }
+
+                DropdownMenu(
+                    expanded =
+                        showMenu,
+                    onDismissRequest = {
+                        showMenu = false
+                    }
+                ) {
+
                     DropdownMenuItem(
-                        text = { Text("Hapus sesi (logout)") },
-                        leadingIcon = { Icon(Icons.Default.Logout, null) },
+                        text = {
+                            Text(
+                                "Hapus sesi"
+                            )
+                        },
+                        leadingIcon = {
+
+                            Icon(
+                                imageVector =
+                                    Icons.Default.Logout,
+                                contentDescription =
+                                    null
+                            )
+                        },
                         onClick = {
+
                             showMenu = false
+
                             confirmClear = true
                         }
                     )
@@ -111,83 +399,262 @@ fun RexChatScreen(activity: Activity, onExit: () -> Unit) {
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(2.dp)) {
+        /*
+         * =====================================================
+         * PROGRESS
+         * =====================================================
+         */
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+        ) {
+
             if (vm.loading) {
+
                 LinearProgressIndicator(
-                    progress = { vm.progress / 100f },
-                    modifier = Modifier.fillMaxSize(),
-                    color = colors.tertiary,
-                    trackColor = Color.Transparent
+                    progress = {
+                        vm.progress
+                            .coerceIn(
+                                0,
+                                100
+                            ) / 100f
+                    },
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    color =
+                        colors.tertiary,
+                    trackColor =
+                        Color.Transparent
                 )
             }
         }
 
-        /* ------------------------------ CONTENT ----------------------------- */
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        /*
+         * =====================================================
+         * WEBVIEW AREA
+         * =====================================================
+         */
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+
+            /*
+             * -------------------------------------------------
+             * WEBVIEW
+             * -------------------------------------------------
+             */
+
             AndroidView(
                 factory = {
-                    // Cegah crash "child already has a parent" saat layar dibuka ulang.
-                    (vm.webView.parent as? ViewGroup)?.removeView(vm.webView)
+
+                    /*
+                     * Biasanya tidak diperlukan,
+                     * tetapi ini mencegah crash jika WebView
+                     * masih punya parent lama.
+                     */
+                    (
+                        vm.webView.parent
+                            as? ViewGroup
+                        )?.removeView(
+                            vm.webView
+                        )
+
                     vm.webView
                 },
-                modifier = Modifier.fillMaxSize()
+                update = {
+                    /*
+                     * Tidak perlu melakukan apa-apa.
+                     *
+                     * Jangan memanggil loadUrl() di sini,
+                     * karena AndroidView update dipanggil
+                     * berkali-kali saat Compose recomposition.
+                     */
+                },
+                modifier =
+                    Modifier.fillMaxSize()
             )
 
+            /*
+             * -------------------------------------------------
+             * ERROR OVERLAY
+             * -------------------------------------------------
+             */
+
             vm.error?.let { message ->
+
                 Column(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxSize()
-                        .background(colors.background)
+                        .background(
+                            colors.background
+                        )
                         .padding(32.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    verticalArrangement =
+                        Arrangement.Center,
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
                 ) {
+
+                    /*
+                     * ERROR ICON
+                     */
+
                     Box(
-                        Modifier
+                        modifier = Modifier
                             .size(72.dp)
-                            .background(colors.surfaceVariant, CircleShape)
-                            .border(1.dp, colors.outlineVariant, CircleShape),
-                        contentAlignment = Alignment.Center
+                            .background(
+                                colors.surfaceVariant,
+                                CircleShape
+                            )
+                            .border(
+                                1.dp,
+                                colors.outlineVariant,
+                                CircleShape
+                            ),
+                        contentAlignment =
+                            Alignment.Center
                     ) {
-                        Icon(Icons.Default.WifiOff, null, tint = colors.tertiary, modifier = Modifier.size(32.dp))
+
+                        Icon(
+                            imageVector =
+                                Icons.Default.WifiOff,
+                            contentDescription =
+                                null,
+                            tint =
+                                colors.tertiary,
+                            modifier =
+                                Modifier.size(32.dp)
+                        )
                     }
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        message,
-                        textAlign = TextAlign.Center,
-                        color = colors.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(16.dp)
                     )
-                    Spacer(Modifier.height(20.dp))
+
+                    /*
+                     * MESSAGE
+                     */
+
+                    Text(
+                        text = message,
+                        textAlign =
+                            TextAlign.Center,
+                        color =
+                            colors.onSurfaceVariant,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyMedium
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(20.dp)
+                    )
+
+                    /*
+                     * RETRY
+                     */
+
                     Box(
-                        Modifier
-                            .rexPressable { vm.reload() }
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary)))
-                            .padding(horizontal = 28.dp, vertical = 12.dp)
+                        modifier = Modifier
+                            .rexPressable {
+                                vm.reload()
+                            }
+                            .clip(
+                                CircleShape
+                            )
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        colors.primary,
+                                        colors.tertiary
+                                    )
+                                )
+                            )
+                            .padding(
+                                horizontal = 28.dp,
+                                vertical = 12.dp
+                            )
                     ) {
-                        Text("Coba lagi", color = colors.onPrimary, style = MaterialTheme.typography.labelLarge)
+
+                        Text(
+                            text = "Coba lagi",
+                            color =
+                                colors.onPrimary,
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .labelLarge
+                        )
                     }
                 }
             }
         }
     }
 
+    /*
+     * =========================================================
+     * CLEAR SESSION DIALOG
+     * =========================================================
+     */
+
     if (confirmClear) {
+
         AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Hapus sesi?") },
+            onDismissRequest = {
+                confirmClear = false
+            },
+
+            title = {
+                Text(
+                    "Hapus sesi?"
+                )
+            },
+
             text = {
-                Text("Kamu akan logout dari WhatsApp Web di aplikasi ini dan perlu scan QR atau kode pairing lagi.")
+                Text(
+                    "Sesi WhatsApp Web di RexChat akan " +
+                            "dihapus. Setelah itu kamu perlu " +
+                            "menautkan perangkat lagi."
+                )
             },
+
             confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    vm.clearSession()
-                }) { Text("Hapus") }
+
+                TextButton(
+                    onClick = {
+
+                        confirmClear = false
+
+                        vm.clearSession()
+                    }
+                ) {
+
+                    Text(
+                        "Hapus"
+                    )
+                }
             },
+
             dismissButton = {
-                TextButton(onClick = { confirmClear = false }) { Text("Batal") }
+
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                    }
+                ) {
+
+                    Text(
+                        "Batal"
+                    )
+                }
             }
         )
     }
