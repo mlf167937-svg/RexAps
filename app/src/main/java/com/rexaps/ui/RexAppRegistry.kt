@@ -23,6 +23,12 @@ object RexAppRegistry {
             available = true
         ),
         RexModule(
+            id = "rexchat",
+            name = "RexChat",
+            description = "WA Client - Pairing only",
+            available = true
+        ),
+        RexModule(
             id = "rexnux",
             name = "RexNux",
             description = "Terminal & Linux",
@@ -51,12 +57,6 @@ object RexAppRegistry {
             name = "RexGit",
             description = "Git manager & repo",
             available = false
-        ),
-        RexModule(
-            id = "rexchat",
-            name = "RexChat",
-            description = "WA Client - Pairing only",
-            available = true
         ),
         RexModule(
             id = "rextools",

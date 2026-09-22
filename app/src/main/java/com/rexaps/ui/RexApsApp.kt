@@ -1,3 +1,4 @@
+// /data/data/com.termux/files/home/RexAps/app/src/main/java/com/rexaps/ui/RexApsApp.kt
 package com.rexaps.ui
 
 import android.app.Activity
@@ -47,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -95,7 +97,7 @@ private val bottomTabs = listOf(
     BottomTab("Settings", Icons.Default.Settings)
 )
 
-private const val THEME_COLUMNS = 3
+private const val THEME_COLUMNS = 4
 
 /* ---------------------------------- ROOT ---------------------------------- */
 
@@ -221,15 +223,16 @@ fun RexApsApp(activity: Activity) {
                 .background(colors.background)
         ) {
 
-            // Cahaya lembut di bagian atas layar.
+            // Cahaya lembut di bagian atas layar — mesh ganda untuk kedalaman.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(340.dp)
+                    .height(380.dp)
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                colors.primary.copy(alpha = 0.16f),
+                                colors.primary.copy(alpha = 0.20f),
+                                colors.tertiary.copy(alpha = 0.08f),
                                 Color.Transparent
                             )
                         )
@@ -330,9 +333,6 @@ fun RexApsApp(activity: Activity) {
 
 /* ------------------------------ ANIMATION KIT ----------------------------- */
 
-/**
- * Layar RexFox / RexPanel muncul dengan fade halus.
- */
 /**
  * Layar RexFox / RexPanel / RexChat muncul dengan fade halus.
  * Konten (termasuk WebView) tidak ikut dianimasikan alpha-nya,
@@ -491,17 +491,18 @@ private fun FloatingNavBar(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(
-                horizontal = 24.dp,
-                vertical = 12.dp
+                horizontal = 28.dp,
+                vertical = 14.dp
             ),
 
         contentAlignment = Alignment.Center
     ) {
 
         Surface(
-            shape = RoundedCornerShape(32.dp),
-            color = colors.surfaceVariant,
-            shadowElevation = 12.dp,
+            shape = RoundedCornerShape(36.dp),
+            color = colors.surfaceVariant.copy(alpha = 0.96f),
+            shadowElevation = 18.dp,
+            tonalElevation = 4.dp,
 
             border = BorderStroke(
                 1.dp,
@@ -510,7 +511,7 @@ private fun FloatingNavBar(
         ) {
 
             Row(
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.padding(7.dp),
 
                 horizontalArrangement =
                     Arrangement.spacedBy(4.dp),
@@ -569,6 +570,15 @@ private fun NavItem(
         label = "navFg"
     )
 
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "navIconScale"
+    )
+
     Row(
         modifier = Modifier
             .animateContentSize(
@@ -585,8 +595,8 @@ private fun NavItem(
                 role = Role.Tab
             )
             .padding(
-                horizontal = 18.dp,
-                vertical = 12.dp
+                horizontal = 20.dp,
+                vertical = 13.dp
             ),
 
         verticalAlignment =
@@ -599,7 +609,11 @@ private fun NavItem(
         Icon(
             imageVector = tab.icon,
             contentDescription = tab.label,
-            tint = foreground
+            tint = foreground,
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale
+                scaleY = iconScale
+            }
         )
 
         if (selected) {
@@ -636,6 +650,8 @@ private fun HomeContent(
             it.id != "rexfox"
         }
 
+    val availableCount = apps.count { it.available }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
 
@@ -647,14 +663,14 @@ private fun HomeContent(
             start = 20.dp,
             end = 20.dp,
             top = 24.dp,
-            bottom = 24.dp
+            bottom = 32.dp
         ),
 
         horizontalArrangement =
-            Arrangement.spacedBy(12.dp),
+            Arrangement.spacedBy(14.dp),
 
         verticalArrangement =
-            Arrangement.spacedBy(12.dp)
+            Arrangement.spacedBy(14.dp)
     ) {
 
         item(
@@ -677,6 +693,7 @@ private fun HomeContent(
 
             HeroCard(
                 appCount = apps.size,
+                availableCount = availableCount,
                 themeLabel = themeLabel,
                 modifier = Modifier.entrance(1)
             )
@@ -713,7 +730,7 @@ private fun HomeContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp)
+                        .padding(top = 16.dp)
                         .entrance(3),
 
                     horizontalArrangement =
@@ -729,15 +746,26 @@ private fun HomeContent(
                             MaterialTheme.typography.titleLarge
                     )
 
-                    Text(
-                        text = "${others.size}",
-                        style =
-                            MaterialTheme.typography.labelLarge,
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Text(
+                            text = "${others.size}",
+                            style =
+                                MaterialTheme.typography.labelLarge,
 
-                        color =
-                            MaterialTheme.colorScheme
-                                .onSurfaceVariant
-                    )
+                            color =
+                                MaterialTheme.colorScheme
+                                    .onSurfaceVariant,
+
+                            modifier = Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 5.dp
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -783,14 +811,25 @@ private fun HomeHeader(
 
         Column {
 
-            Text(
-                text = "Selamat datang di",
-                style =
-                    MaterialTheme.typography.labelLarge,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(colors.primary, CircleShape)
+                )
 
-                color =
-                    colors.onSurfaceVariant
-            )
+                Text(
+                    text = "Selamat datang di",
+                    style =
+                        MaterialTheme.typography.labelLarge,
+
+                    color =
+                        colors.onSurfaceVariant
+                )
+            }
 
             Text(
                 text = "RexAps",
@@ -801,7 +840,13 @@ private fun HomeHeader(
 
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(54.dp)
+                .shadow(
+                    elevation = 10.dp,
+                    shape = CircleShape,
+                    ambientColor = colors.primary.copy(alpha = 0.4f),
+                    spotColor = colors.primary.copy(alpha = 0.4f)
+                )
                 .pressable(
                     onClick = onOpenTheme
                 )
@@ -823,7 +868,7 @@ private fun HomeHeader(
 
             Box(
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(28.dp)
                     .background(
                         accentBrush(),
                         CircleShape
@@ -835,7 +880,7 @@ private fun HomeHeader(
 
                 Box(
                     modifier = Modifier
-                        .size(10.dp)
+                        .size(11.dp)
                         .background(
                             colors.surfaceVariant,
                             CircleShape
@@ -849,6 +894,7 @@ private fun HomeHeader(
 @Composable
 private fun HeroCard(
     appCount: Int,
+    availableCount: Int,
     themeLabel: String,
     modifier: Modifier = Modifier
 ) {
@@ -884,6 +930,12 @@ private fun HeroCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 20.dp,
+                shape = RoundedCornerShape(32.dp),
+                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            )
             .clip(
                 RoundedCornerShape(32.dp)
             )
@@ -895,11 +947,11 @@ private fun HeroCard(
                 drawCircle(
                     color =
                         onAccent.copy(
-                            alpha = 0.12f
+                            alpha = 0.14f
                         ),
 
                     radius =
-                        110.dp.toPx(),
+                        120.dp.toPx(),
 
                     center =
                         Offset(
@@ -917,11 +969,11 @@ private fun HeroCard(
                 drawCircle(
                     color =
                         onAccent.copy(
-                            alpha = 0.09f
+                            alpha = 0.10f
                         ),
 
                     radius =
-                        64.dp.toPx(),
+                        70.dp.toPx(),
 
                     center =
                         Offset(
@@ -940,17 +992,17 @@ private fun HeroCard(
     ) {
 
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(26.dp),
 
             verticalArrangement =
-                Arrangement.spacedBy(14.dp)
+                Arrangement.spacedBy(16.dp)
         ) {
 
             Row(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(
-                        onAccent.copy(alpha = 0.16f)
+                        onAccent.copy(alpha = 0.18f)
                     )
                     .padding(
                         horizontal = 12.dp,
@@ -976,16 +1028,52 @@ private fun HeroCard(
                 color = onAccent
             )
 
-            Text(
-                text = "Tema aktif: $themeLabel",
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
 
-                style =
-                    MaterialTheme.typography.bodySmall,
+                HeroStatChip(
+                    label = "Tersedia",
+                    value = "$availableCount",
+                    onAccent = onAccent
+                )
 
-                color =
-                    onAccent.copy(alpha = 0.8f)
-            )
+                HeroStatChip(
+                    label = "Tema aktif",
+                    value = themeLabel,
+                    onAccent = onAccent
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun HeroStatChip(
+    label: String,
+    value: String,
+    onAccent: Color
+) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(onAccent.copy(alpha = 0.12f))
+            .border(1.dp, onAccent.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = onAccent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = onAccent.copy(alpha = 0.8f)
+        )
     }
 }
 
@@ -1169,6 +1257,13 @@ private fun FeaturedCard(
                 }
             )
 
+            .shadow(
+                elevation = 16.dp,
+                shape = shape,
+                ambientColor = primary.copy(alpha = 0.3f),
+                spotColor = primary.copy(alpha = 0.3f)
+            )
+
             .clip(shape)
 
             .background(
@@ -1230,7 +1325,7 @@ private fun FeaturedCard(
                 shape = shape
             )
 
-            .padding(22.dp)
+            .padding(24.dp)
     ) {
 
         Column(
@@ -1266,8 +1361,21 @@ private fun FeaturedCard(
 
             Column(
                 verticalArrangement =
-                    Arrangement.spacedBy(4.dp)
+                    Arrangement.spacedBy(6.dp)
             ) {
+
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.primary.copy(alpha = 0.12f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Aplikasi utama",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.primary
+                    )
+                }
 
                 Text(
                     text = app.name,
@@ -1327,14 +1435,11 @@ private fun FeaturedCard(
                             colors.onPrimary
                     )
 
-                    Text(
-                        text = "→",
-
-                        style =
-                            MaterialTheme.typography.labelLarge,
-
-                        color =
-                            colors.onPrimary
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = null,
+                        tint = colors.onPrimary,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -1355,10 +1460,16 @@ private fun AppCard(
     val shape =
         RoundedCornerShape(28.dp)
 
+    val borderColor = if (app.available) {
+        colors.primary.copy(alpha = 0.35f)
+    } else {
+        colors.outlineVariant
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(176.dp)
+            .height(180.dp)
 
             .pressable(
                 enabled = app.available,
@@ -1373,6 +1484,13 @@ private fun AppCard(
                 }
             )
 
+            .shadow(
+                elevation = if (app.available) 8.dp else 0.dp,
+                shape = shape,
+                ambientColor = colors.primary.copy(alpha = 0.2f),
+                spotColor = colors.primary.copy(alpha = 0.2f)
+            )
+
             .clip(shape)
 
             .background(
@@ -1381,7 +1499,7 @@ private fun AppCard(
 
             .border(
                 1.dp,
-                colors.outlineVariant,
+                borderColor,
                 shape
             )
 
@@ -1430,14 +1548,11 @@ private fun AppCard(
                             Alignment.Center
                     ) {
 
-                        Text(
-                            text = "→",
-
-                            style =
-                                MaterialTheme.typography.labelLarge,
-
-                            color =
-                                colors.onPrimaryContainer
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = colors.onPrimaryContainer,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 
@@ -1554,7 +1669,13 @@ private fun ProfileContent(
         Box(
             modifier = Modifier
                 .entrance(0)
-                .size(128.dp),
+                .size(132.dp)
+                .shadow(
+                    elevation = 20.dp,
+                    shape = CircleShape,
+                    ambientColor = colors.primary.copy(alpha = 0.4f),
+                    spotColor = colors.primary.copy(alpha = 0.4f)
+                ),
 
             contentAlignment =
                 Alignment.Center
@@ -1633,6 +1754,19 @@ private fun ProfileContent(
 
             modifier =
                 Modifier.entrance(1)
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(6.dp)
+        )
+
+        Text(
+            text = "Kelola aplikasi dan preferensimu",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.entrance(1)
         )
 
         Spacer(
@@ -1773,12 +1907,29 @@ private fun SettingsContent(
                     .entrance(1)
             ) {
 
-                Text(
-                    text = "Tema",
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Tema",
 
-                    style =
-                        MaterialTheme.typography.titleLarge
-                )
+                        style =
+                            MaterialTheme.typography.titleLarge
+                    )
+
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.primaryContainer
+                    ) {
+                        Text(
+                            text = "${RexThemeOption.values().size} pilihan",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
 
                 Text(
                     text =
@@ -1788,7 +1939,9 @@ private fun SettingsContent(
                         MaterialTheme.typography.bodySmall,
 
                     color =
-                        colors.onSurfaceVariant
+                        colors.onSurfaceVariant,
+
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }
@@ -1899,12 +2052,29 @@ private fun ThemeSheet(
 
             Column {
 
-                Text(
-                    text = "Tema",
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Tema",
 
-                    style =
-                        MaterialTheme.typography.titleLarge
-                )
+                        style =
+                            MaterialTheme.typography.titleLarge
+                    )
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            text = "${RexThemeOption.values().size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
 
                 Text(
                     text =
@@ -1999,10 +2169,10 @@ private fun ThemeTile(
         )
 
     val shape =
-        RoundedCornerShape(20.dp)
+        RoundedCornerShape(18.dp)
 
     val previewShape =
-        RoundedCornerShape(14.dp)
+        RoundedCornerShape(12.dp)
 
     val borderColor by animateColorAsState(
 
@@ -2087,19 +2257,21 @@ private fun ThemeTile(
                 role = Role.RadioButton
             )
 
-            .padding(8.dp),
+            .padding(6.dp),
 
         verticalArrangement =
-            Arrangement.spacedBy(8.dp)
+            Arrangement.spacedBy(6.dp)
     ) {
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(58.dp)
                 .clip(previewShape)
                 .background(
-                    preview.background
+                    Brush.linearGradient(
+                        listOf(preview.background, preview.surfaceVariant)
+                    )
                 )
                 .border(
                     1.dp,
@@ -2108,52 +2280,28 @@ private fun ThemeTile(
                 )
         ) {
 
-            Column(
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(8.dp),
+                    .padding(6.dp)
+                    .size(16.dp)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                preview.primary,
+                                preview.tertiary
+                            )
+                        ),
 
-                verticalArrangement =
-                    Arrangement.spacedBy(5.dp)
-            ) {
-
-                Box(
-                    modifier = Modifier
-                        .width(34.dp)
-                        .height(8.dp)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    preview.primary,
-                                    preview.tertiary
-                                )
-                            ),
-
-                            CircleShape
-                        )
-                )
-
-                Box(
-                    modifier = Modifier
-                        .width(50.dp)
-                        .height(10.dp)
-                        .background(
-                            preview.surfaceVariant,
-                            CircleShape
-                        )
-                        .border(
-                            1.dp,
-                            preview.outlineVariant,
-                            CircleShape
-                        )
-                )
-            }
+                        CircleShape
+                    )
+            )
 
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(20.dp)
+                    .padding(5.dp)
+                    .size(18.dp)
                     .graphicsLayer {
 
                         scaleX = checkScale
@@ -2185,7 +2333,7 @@ private fun ThemeTile(
                         colors.onPrimary,
 
                     modifier =
-                        Modifier.size(14.dp)
+                        Modifier.size(12.dp)
                 )
             }
         }
@@ -2194,9 +2342,12 @@ private fun ThemeTile(
             text = option.label,
 
             style =
-                MaterialTheme.typography.labelMedium,
+                MaterialTheme.typography.labelSmall,
 
             maxLines = 1,
+
+            overflow =
+                TextOverflow.Ellipsis,
 
             textAlign =
                 TextAlign.Center,
