@@ -333,6 +333,12 @@ fun RexApsApp(activity: Activity) {
 /**
  * Layar RexFox / RexPanel muncul dengan fade halus.
  */
+/**
+ * Layar RexFox / RexPanel / RexChat muncul dengan fade halus.
+ * Konten (termasuk WebView) tidak ikut dianimasikan alpha-nya,
+ * karena pada beberapa perangkat itu membuat WebView blank putih.
+ * Sebagai gantinya, layar hitam transparan memudar dari atas.
+ */
 @Composable
 private fun FadeInScreen(
     content: @Composable () -> Unit
@@ -346,20 +352,22 @@ private fun FadeInScreen(
         visible = true
     }
 
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (visible) 0f else 1f,
         animationSpec = tween(400),
         label = "screenFade"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                this.alpha = alpha
-            }
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         content()
+
+        if (scrimAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = scrimAlpha))
+            )
+        }
     }
 }
 
