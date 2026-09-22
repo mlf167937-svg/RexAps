@@ -839,8 +839,6 @@ class RexChatViewModel(
          */
         runCatching {
             webView.stopLoading()
-            webView.webChromeClient = null
-            webView.webViewClient = null
             webView.destroy()
         }
 
