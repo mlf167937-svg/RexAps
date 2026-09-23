@@ -21,11 +21,48 @@ jobs:
           java-version: '17'
 
       - name: Build APK
+        id: build
+        continue-on-error: true
         run: |
-          gradle assembleDebug --stacktrace
+          set -o pipefail
 
-      - name: Upload APK
+          gradle assembleDebug --stacktrace 2>&1 | tee build.log
+
+          exit ${PIPESTATUS[0]}
+
+      - name: Prepare APK
+        if: steps.build.outcome == 'success'
+        run: |
+          mkdir -p artifacts
+
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/RexAps.apk
+
+          cp build.log artifacts/build.log
+
+      - name: Prepare Build Log (Build Failed)
+        if: steps.build.outcome == 'failure'
+        run: |
+          mkdir -p artifacts
+
+          cp build.log artifacts/build.log
+
+      - name: Upload APK and Log
+        if: always() && steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: RexAps-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: artifacts/
+
+      - name: Upload Log Only (Build Failed)
+        if: always() && steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-build-log
+          path: artifacts/build.log
+
+      - name: Fail Workflow If Build Failed
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "Build gagal. Cek build.log untuk detail."
+          exit 1
