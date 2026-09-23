@@ -1,7 +1,7 @@
 // /data/data/com.termux/files/home/RexAps/app/src/main/java/com/rexaps/ui/RexThemeLoading.kt
 package com.rexaps.ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibility as FadeVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -95,7 +96,7 @@ fun RexThemeLoadingOverlay(
             .background(Color.Black.copy(alpha = 0.4f)),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedVisibility(
+        FadeVisibility(
             visible = cardVisible,
             enter = fadeIn(tween(220)) + scaleIn(
                 initialScale = 0.88f,
@@ -124,7 +125,7 @@ fun RexThemeLoadingOverlay(
                             track = colors.outlineVariant.copy(alpha = 0.4f)
                         )
 
-                        AnimatedVisibility(
+                        FadeVisibility(
                             visible = showCheck,
                             enter = scaleIn(
                                 initialScale = 0.4f,
@@ -239,7 +240,7 @@ fun RexAppLoader(
             .background(colors.background),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedVisibility(
+        FadeVisibility(
             visible = visible,
             enter = fadeIn(tween(240)) + scaleIn(
                 initialScale = 0.9f,
@@ -360,7 +361,7 @@ private fun RexPalettePreviewDots(spec: RexPaletteSpec) {
         Color(spec.card)
     )
 
-    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         dotColors.forEach { dot ->
             Box(
                 modifier = Modifier
