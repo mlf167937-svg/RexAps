@@ -1,7 +1,6 @@
 // /data/data/com.termux/files/home/RexAps/app/src/main/java/com/rexaps/ui/RexThemeLoading.kt
 package com.rexaps.ui
 
-import androidx.compose.animation.AnimatedVisibility as FadeVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -96,7 +95,7 @@ fun RexThemeLoadingOverlay(
             .background(Color.Black.copy(alpha = 0.4f)),
         contentAlignment = Alignment.Center
     ) {
-        FadeVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = cardVisible,
             enter = fadeIn(tween(220)) + scaleIn(
                 initialScale = 0.88f,
@@ -125,7 +124,7 @@ fun RexThemeLoadingOverlay(
                             track = colors.outlineVariant.copy(alpha = 0.4f)
                         )
 
-                        FadeVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = showCheck,
                             enter = scaleIn(
                                 initialScale = 0.4f,
@@ -240,7 +239,7 @@ fun RexAppLoader(
             .background(colors.background),
         contentAlignment = Alignment.Center
     ) {
-        FadeVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = visible,
             enter = fadeIn(tween(240)) + scaleIn(
                 initialScale = 0.9f,
