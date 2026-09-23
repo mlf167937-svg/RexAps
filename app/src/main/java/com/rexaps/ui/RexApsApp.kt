@@ -2,7 +2,7 @@
 package com.rexaps.ui
 
 import android.app.Activity
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.nimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -289,17 +289,18 @@ fun RexApsApp(activity: Activity) {
             enter = fadeIn(tween(150)),
             exit = fadeOut(tween(150))
         ) {
-            RexThemeLoadingOverlay(
-                onFinished = {
-                    pendingTheme?.let {
-                        themeOption = it
-                        themeStore.save(it)
+            pendingTheme?.let { target ->
+                RexThemeLoadingOverlay(
+                    targetOption = target,
+                    onFinished = {
+                        themeOption = target
+                        themeStore.save(target)
+                        pendingTheme = null
+                        themeApplying = false
+                        showThemeSheet = false
                     }
-                    pendingTheme = null
-                    themeApplying = false
-                    showThemeSheet = false
-                }
-            )
+                )
+            }
         }
     }
 }
