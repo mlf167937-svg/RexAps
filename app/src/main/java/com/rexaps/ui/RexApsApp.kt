@@ -110,15 +110,11 @@ private enum class RexRoute { NONE, REXFOX, REXPANEL, REXCHAT }
 fun RexApsApp(activity: Activity) {
 
     var route by remember { mutableStateOf(RexRoute.NONE) }
-
-    // True while the branded loader for the target route is showing.
     var routeLoading by remember { mutableStateOf(false) }
 
     val themeStore = remember { RexThemeStore(activity) }
     var themeOption by remember { mutableStateOf(themeStore.load()) }
 
-    // Drives the small "Menerapkan tema" popup so switching themes never
-    // forces a heavy, fully-synchronous recolor of the whole tree at once.
     var themeApplying by remember { mutableStateOf(false) }
     var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
 
@@ -130,13 +126,7 @@ fun RexApsApp(activity: Activity) {
     }
 
     /*
-     * ------------------------------------------------------------------------
      * SUB-APP ROUTES (RexFox / RexPanel / RexChat)
-     * ------------------------------------------------------------------------
-     * Opening any of these now shows a premium branded loader first
-     * (RexAppLoader) instead of jumping straight into the screen, and the
-     * screen itself fades in once ready — matches native "app launch" feel
-     * without adding heavy transition libraries.
      */
 
     if (route != RexRoute.NONE) {
@@ -195,7 +185,6 @@ fun RexApsApp(activity: Activity) {
                 .background(colors.background)
         ) {
 
-            // Cahaya lembut di bagian atas layar — mesh ganda untuk kedalaman.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -214,14 +203,12 @@ fun RexApsApp(activity: Activity) {
             Scaffold(
                 containerColor = Color.Transparent,
                 contentColor = colors.onBackground,
-
                 bottomBar = {
                     FloatingNavBar(
                         selected = selectedTab.intValue,
                         onSelect = { selectedTab.intValue = it }
                     )
                 }
-
             ) { padding ->
 
                 Crossfade(
@@ -236,7 +223,6 @@ fun RexApsApp(activity: Activity) {
                             padding = padding,
                             themeLabel = themeOption.label,
                             isActive = selectedTab.intValue == 0,
-
                             onAppClick = { app ->
                                 if (!app.available) return@HomeContent
 
@@ -252,7 +238,6 @@ fun RexApsApp(activity: Activity) {
                                     routeLoading = true
                                 }
                             },
-
                             onOpenTheme = { showThemeSheet = true }
                         )
 
@@ -281,9 +266,6 @@ fun RexApsApp(activity: Activity) {
             )
         }
 
-        // Lightweight popup shown while the chosen theme is being applied.
-        // Only one scheme is resolved (via the cache in RexTheme.kt) instead
-        // of animating every color token of the whole tree simultaneously.
         AnimatedVisibility(
             visible = themeApplying,
             enter = fadeIn(tween(150)),
@@ -307,9 +289,6 @@ fun RexApsApp(activity: Activity) {
 
 /* ------------------------------ ANIMATION KIT ----------------------------- */
 
-/**
- * Elemen muncul bergantian: fade + naik + zoom kecil.
- */
 @Composable
 private fun Modifier.entrance(index: Int): Modifier {
 
@@ -337,9 +316,6 @@ private fun Modifier.entrance(index: Int): Modifier {
     }
 }
 
-/**
- * Klik dengan efek mengecil lalu memantul.
- */
 @Composable
 private fun Modifier.pressable(
     enabled: Boolean = true,
@@ -665,8 +641,6 @@ private fun HeroCard(
     val onAccent = MaterialTheme.colorScheme.onPrimary
     val transition = rememberInfiniteTransition(label = "hero")
 
-    // Only animates while the Home tab is actually visible — saves battery
-    // when the user is on Profile/Settings.
     val drift by transition.animateFloat(
         initialValue = 0f,
         targetValue = if (isActive) 1f else 0f,
@@ -1360,11 +1334,6 @@ private fun ThemeSheet(
     }
 }
 
-/**
- * Uses only the lightweight swatch color (RexPaletteSpec) for each tile —
- * no full ColorScheme is built just to render a preview. Full schemes are
- * only ever built lazily, on selection, via the RexThemeCache.
- */
 @Composable
 private fun ThemePicker(
     selected: RexThemeOption,
