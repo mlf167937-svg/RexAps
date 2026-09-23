@@ -2,7 +2,7 @@
 package com.rexaps.ui
 
 import android.app.Activity
-import androidx.compose.animation.nimatedVisibility
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
