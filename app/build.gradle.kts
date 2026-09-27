@@ -37,9 +37,29 @@ dependencies {
 
     implementation("com.github.mwiede:jsch:0.2.18")
 
+    // Compose BOM: aligns every androidx.compose.* artifact below
+    // to one mutually-compatible version set. Do not add explicit
+    // version numbers to any androidx.compose.* line below this.
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+
     implementation("androidx.activity:activity-compose:1.10.0")
-    implementation("androidx.compose.ui:ui:1.7.6")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.7.6")
-    implementation("androidx.compose.material:material-icons-extended:1.7.6")
-    implementation("androidx.compose.material3:material3:1.3.1")
+
+    implementation("androidx.compose.runtime:runtime")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+
+    // Fixes: Unresolved reference 'viewModel' / 'compose'
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
+
+    // Used by RexNuxViewModel/RexNuxTerminalViewModel's
+    // viewModelScope.launch(Dispatchers.IO) calls
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

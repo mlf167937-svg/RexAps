@@ -2,6 +2,8 @@ package com.rexaps.rexnux
 
 import android.content.Context
 import android.system.Os
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -57,121 +59,124 @@ class RexNuxInstaller(
     private suspend fun installAlpine(
         onProgress: suspend (InstallProgress) -> Unit
     ) {
-        rootDir.mkdirs()
-        downloadsDir.mkdirs()
+        withContext(Dispatchers.IO) {
 
-        val archive = File(
-            downloadsDir,
-            "alpine-$ALPINE_VERSION-aarch64.tar.gz"
-        )
+            rootDir.mkdirs()
+            downloadsDir.mkdirs()
 
-        onProgress(
-            InstallProgress(
-                0f,
-                "Downloading Alpine Linux..."
+            val archive = File(
+                downloadsDir,
+                "alpine-$ALPINE_VERSION-aarch64.tar.gz"
             )
-        )
-
-        download(
-            url = ALPINE_URL,
-            destination = archive
-        ) { downloaded, total ->
-
-            val progress =
-                if (total > 0) {
-                    downloaded.toFloat() / total.toFloat()
-                } else {
-                    0f
-                }
 
             onProgress(
                 InstallProgress(
-                    progress * 0.7f,
-                    "Downloading Alpine... ${
-                        (progress * 100).toInt()
-                    }%"
+                    0f,
+                    "Downloading Alpine Linux..."
                 )
             )
-        }
 
-        onProgress(
-            InstallProgress(
-                0.72f,
-                "Verifying Alpine..."
-            )
-        )
+            download(
+                url = ALPINE_URL,
+                destination = archive
+            ) { downloaded, total ->
 
-        val expectedSha = downloadText(
-            ALPINE_SHA256_URL
-        ).trim()
-            .split(Regex("\\s+"))
-            .first()
+                val progress =
+                    if (total > 0) {
+                        downloaded.toFloat() / total.toFloat()
+                    } else {
+                        0f
+                    }
 
-        val actualSha = sha256(archive)
-
-        if (!expectedSha.equals(actualSha, ignoreCase = true)) {
-            archive.delete()
-
-            throw IllegalStateException(
-                "SHA-256 verification failed."
-            )
-        }
-
-        onProgress(
-            InstallProgress(
-                0.78f,
-                "Preparing filesystem..."
-            )
-        )
-
-        if (alpineDir.exists()) {
-            alpineDir.deleteRecursively()
-        }
-
-        alpineDir.mkdirs()
-
-        onProgress(
-            InstallProgress(
-                0.8f,
-                "Extracting Alpine..."
-            )
-        )
-
-        extractTarGz(
-            archive,
-            alpineDir
-        ) { extracted, estimated ->
-
-            val progress =
-                if (estimated > 0) {
-                    extracted.toFloat() /
-                            estimated.toFloat()
-                } else {
-                    0f
-                }
+                onProgress(
+                    InstallProgress(
+                        progress * 0.7f,
+                        "Downloading Alpine... ${
+                            (progress * 100).toInt()
+                        }%"
+                    )
+                )
+            }
 
             onProgress(
                 InstallProgress(
-                    0.8f + progress * 0.19f,
+                    0.72f,
+                    "Verifying Alpine..."
+                )
+            )
+
+            val expectedSha = downloadText(
+                ALPINE_SHA256_URL
+            ).trim()
+                .split(Regex("\\s+"))
+                .first()
+
+            val actualSha = sha256(archive)
+
+            if (!expectedSha.equals(actualSha, ignoreCase = true)) {
+                archive.delete()
+
+                throw IllegalStateException(
+                    "SHA-256 verification failed."
+                )
+            }
+
+            onProgress(
+                InstallProgress(
+                    0.78f,
+                    "Preparing filesystem..."
+                )
+            )
+
+            if (alpineDir.exists()) {
+                alpineDir.deleteRecursively()
+            }
+
+            alpineDir.mkdirs()
+
+            onProgress(
+                InstallProgress(
+                    0.8f,
                     "Extracting Alpine..."
                 )
             )
-        }
 
-        archive.delete()
+            extractTarGz(
+                archive,
+                alpineDir
+            ) { extracted, estimated ->
 
-        onProgress(
-            InstallProgress(
-                1f,
-                "Alpine installation complete."
+                val progress =
+                    if (estimated > 0) {
+                        extracted.toFloat() /
+                                estimated.toFloat()
+                    } else {
+                        0f
+                    }
+
+                onProgress(
+                    InstallProgress(
+                        0.8f + progress * 0.19f,
+                        "Extracting Alpine..."
+                    )
+                )
+            }
+
+            archive.delete()
+
+            onProgress(
+                InstallProgress(
+                    1f,
+                    "Alpine installation complete."
+                )
             )
-        )
+        }
     }
 
-    private fun download(
+    private suspend fun download(
         url: String,
         destination: File,
-        onProgress: (Long, Long) -> Unit
+        onProgress: suspend (Long, Long) -> Unit
     ) {
         val connection =
             URL(url).openConnection() as HttpURLConnection
@@ -277,10 +282,10 @@ class RexNuxInstaller(
             }
     }
 
-    private fun extractTarGz(
+    private suspend fun extractTarGz(
         archive: File,
         destination: File,
-        onProgress: (Long, Long) -> Unit
+        onProgress: suspend (Long, Long) -> Unit
     ) {
         /*
          * Minirootfs berukuran kecil, jadi untuk tahap awal
