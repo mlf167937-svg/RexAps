@@ -56,6 +56,12 @@ fun RexNuxScreen(
             )
         }
 
+        state.showTerminal -> {
+            RexNuxTerminalScreen(
+                onBack = viewModel::closeRexNux
+            )
+        }
+
         state.downloading -> {
             RexNuxInstallingScreen(
                 state = state
@@ -93,7 +99,8 @@ fun RexNuxScreen(
 private fun RexNuxHomeScreen(
     state: RexNuxUiState,
     onDownload: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onOpenRexNux: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -132,7 +139,8 @@ private fun RexNuxHomeScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 distro = state.installedDistro,
-                error = state.error
+                error = state.error,
+                onOpen = onOpenRexNux
             )
         }
     }
@@ -235,7 +243,8 @@ private fun RexNuxNoDistroContent(
 private fun RexNuxInstalledContent(
     modifier: Modifier = Modifier,
     distro: RexNuxDistro,
-    error: String?
+    error: String?,
+    onOpen: () -> Unit
 ) {
     LazyColumn(
         modifier = modifier
@@ -312,14 +321,7 @@ private fun RexNuxInstalledContent(
                     )
 
                     Button(
-                        onClick = {
-                            /*
-                             * Runtime RexNux akan dipasang di sini.
-                             *
-                             * Untuk sekarang rootfs sudah bisa
-                             * didownload dan diekstrak oleh installer.
-                             */
-                        },
+                        onClick = onOpen,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Open RexNux")

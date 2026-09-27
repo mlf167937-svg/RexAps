@@ -1,6 +1,7 @@
 package com.rexaps.rexnux
 
 import android.content.Context
+import android.system.Os
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -295,6 +296,7 @@ class RexNuxInstaller(
          * 136..147 = mtime
          * 148..155 = checksum
          * 156 = typeflag
+         * 157..256 = linkname (for symlinks/hardlinks)
          */
         GZIPInputStream(
             BufferedInputStream(
@@ -366,14 +368,78 @@ class RexNuxInstaller(
                         )
                     }
 
+                    '1' -> {
+                        /*
+                         * Hardlink. The linkname field points to
+                         * another path already extracted inside
+                         * this archive. We fall back to a copy of
+                         * that file since Android/Java has no
+                         * portable hardlink API exposed here.
+                         */
+                        val linkName = readString(
+                            header,
+                            157,
+                            100
+                        )
+
+                        val linkedFile =
+                            safeResolve(
+                                destination,
+                                linkName
+                            )
+
+                        target.parentFile?.mkdirs()
+
+                        if (linkedFile.exists()) {
+                            linkedFile.copyTo(
+                                target,
+                                overwrite = true
+                            )
+
+                            target.setReadable(true, false)
+                            target.setWritable(true, true)
+                            target.setExecutable(
+                                linkedFile.canExecute(),
+                                false
+                            )
+                        }
+                    }
+
                     '2' -> {
                         /*
-                         * Symlink support.
-                         *
-                         * Android filesystem permissions differ
-                         * from normal Linux, therefore this is kept
-                         * conservative for the first implementation.
+                         * Symlink. Alpine's minirootfs relies
+                         * heavily on these (busybox applets),
+                         * so this must actually create a real
+                         * symlink or the rootfs is unusable.
                          */
+                        val linkTarget = readString(
+                            header,
+                            157,
+                            100
+                        )
+
+                        target.parentFile?.mkdirs()
+
+                        if (target.exists() ||
+                            java.nio.file.Files.isSymbolicLink(
+                                target.toPath()
+                            )
+                        ) {
+                            target.delete()
+                        }
+
+                        try {
+                            Os.symlink(
+                                linkTarget,
+                                target.absolutePath
+                            )
+                        } catch (e: Exception) {
+                            /*
+                             * Non-fatal: skip broken symlink
+                             * entries rather than aborting the
+                             * whole install.
+                             */
+                        }
                     }
 
                     else -> {
