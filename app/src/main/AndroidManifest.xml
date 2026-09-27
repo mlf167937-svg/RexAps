@@ -10,6 +10,8 @@
     <application
         android:theme="@style/AppTheme"
         android:label="RexAps"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:supportsRtl="true">
 
@@ -18,9 +20,11 @@
             android:authorities="${applicationId}.provider"
             android:exported="false"
             android:grantUriPermissions="true">
+
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
+
         </provider>
 
         <activity
