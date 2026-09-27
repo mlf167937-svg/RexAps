@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
+import com.rexaps.rexnux.RexNuxScreen
 import kotlinx.coroutines.delay
 
 private data class BottomTab(
@@ -100,9 +101,6 @@ private val bottomTabs = listOf(
 )
 
 private const val THEME_COLUMNS = 4
-
-/** Which sub-app is currently opening/open, used to drive the loader + screen swap. */
-private enum class RexRoute { NONE, REXFOX, REXPANEL, REXCHAT }
 
 /* ---------------------------------- ROOT ---------------------------------- */
 
@@ -126,17 +124,12 @@ fun RexApsApp(activity: Activity) {
     }
 
     /*
-     * SUB-APP ROUTES (RexFox / RexPanel / RexChat)
+     * SUB-APP ROUTES (RexFox / RexPanel / RexChat / RexNux)
      */
 
     if (route != RexRoute.NONE) {
 
-        val appName = when (route) {
-            RexRoute.REXFOX -> "RexFox"
-            RexRoute.REXPANEL -> "RexPanel"
-            RexRoute.REXCHAT -> "RexChat"
-            RexRoute.NONE -> ""
-        }
+        val appName = route.displayName
 
         RexTheme(option = themeOption) {
             Crossfade(
@@ -160,6 +153,10 @@ fun RexApsApp(activity: Activity) {
 
                         RexRoute.REXCHAT -> com.rexaps.rexchat.RexChatScreen(
                             activity = activity,
+                            onExit = { route = RexRoute.NONE }
+                        )
+
+                        RexRoute.REXNUX -> RexNuxScreen(
                             onExit = { route = RexRoute.NONE }
                         )
 
@@ -226,12 +223,7 @@ fun RexApsApp(activity: Activity) {
                             onAppClick = { app ->
                                 if (!app.available) return@HomeContent
 
-                                val target = when (app.id) {
-                                    "rexfox" -> RexRoute.REXFOX
-                                    "rexpanel" -> RexRoute.REXPANEL
-                                    "rexchat" -> RexRoute.REXCHAT
-                                    else -> null
-                                }
+                                val target = RexRoute.fromModuleId(app.id)
 
                                 if (target != null) {
                                     route = target

@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun RexNuxScreen(
+    onExit: () -> Unit = {},
     viewModel: RexNuxViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -80,6 +81,7 @@ fun RexNuxScreen(
         else -> {
             RexNuxHomeScreen(
                 state = state,
+                onExit = onExit,
                 onDownload = viewModel::openDownloadScreen,
                 onSettings = viewModel::openSettings,
                 onOpenRexNux = viewModel::openRexNux
@@ -98,6 +100,7 @@ fun RexNuxScreen(
 @Composable
 private fun RexNuxHomeScreen(
     state: RexNuxUiState,
+    onExit: () -> Unit,
     onDownload: () -> Unit,
     onSettings: () -> Unit,
     onOpenRexNux: () -> Unit
@@ -110,6 +113,16 @@ private fun RexNuxHomeScreen(
                         text = "RexNux",
                         fontWeight = FontWeight.SemiBold
                     )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onExit
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Kembali ke RexAps"
+                        )
+                    }
                 },
                 actions = {
                     IconButton(

@@ -32,7 +32,7 @@ object RexAppRegistry {
             id = "rexnux",
             name = "RexNux",
             description = "Terminal & Linux",
-            available = false
+            available = true
         ),
         RexModule(
             id = "rexmusic",
