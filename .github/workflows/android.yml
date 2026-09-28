@@ -20,31 +20,28 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Build APK
         id: build
         continue-on-error: true
         run: |
           set -o pipefail
-
-          gradle assembleDebug --stacktrace 2>&1 | tee build.log
-
+          ./gradlew assembleDebug --stacktrace --refresh-dependencies 2>&1 | tee build.log
           exit ${PIPESTATUS[0]}
 
       - name: Prepare APK
         if: steps.build.outcome == 'success'
         run: |
           mkdir -p artifacts
-
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             artifacts/RexAps.apk
-
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/RexAps.apk
           cp build.log artifacts/build.log
 
       - name: Prepare Build Log (Build Failed)
         if: steps.build.outcome == 'failure'
         run: |
           mkdir -p artifacts
-
           cp build.log artifacts/build.log
 
       - name: Upload APK and Log
