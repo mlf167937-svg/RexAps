@@ -17,6 +17,12 @@ object RexAppRegistry {
             available = true
         ),
         RexModule(
+            id = "rextools",
+            name = "RexTools",
+            description = "Kumpulan tools harian",
+            available = true
+        ),
+        RexModule(
             id = "rexpanel",
             name = "RexPanel",
             description = "Monitoring dan kontrol SSH",

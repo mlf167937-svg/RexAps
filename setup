@@ -1,5 +1,8 @@
-export RexFox="$PWD/app/src/main/java/com/rexaps/rexfox"
+export rexfox="$PWD/app/src/main/java/com/rexaps/rexfox"
+export rextools="$PWD/app/src/main/java/com/rexaps/rextools"
+
 export Aps="$PWD/app/src/main/java/com/rexaps"
 
-echo "RexFox = $RexFox"
+echo "RexFox = $rexfox"
+echo "RexTools = $rextools"
 echo "Aps = $Aps"

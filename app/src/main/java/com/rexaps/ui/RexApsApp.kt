@@ -88,6 +88,9 @@ import androidx.compose.ui.unit.dp
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexnux.RexNuxScreen
 import kotlinx.coroutines.delay
+import com.rexaps.rexfox.RexFoxScreen
+import com.rexaps.rexnux.RexNuxScreen
+import com.rexaps.rextools.RexToolsScreen   // ← added
 
 private data class BottomTab(
     val label: String,
@@ -158,6 +161,13 @@ fun RexApsApp(activity: Activity) {
 
                         RexRoute.REXNUX -> RexNuxScreen(
                             onExit = { route = RexRoute.NONE }
+                        )
+                        RexRoute.REXTOOLS -> RexToolsScreen(          // ← added
+                            onToolClick = { toolRoute ->
+                                // TODO: navigate to the individual tool screen once
+                                // its route is registered here (search/downloader screens)
+                            },
+                            onBack = { route = RexRoute.NONE }
                         )
 
                         RexRoute.NONE -> Unit
