@@ -1,34 +1,40 @@
 package com.rexaps.rextools.utils
 
-/**
- * Placeholder networking layer for RexTools.
- * Swap the stub functions below for real Retrofit/Ktor calls to your
- * backend or the target platform's public API once you have endpoints.
- */
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Query
+import com.rexaps.rextools.PinterestResponse
+import java.util.concurrent.TimeUnit
+
+interface PinterestApiService {
+    @GET("faa/pinterest")
+    suspend fun searchPinterest(
+        @Query("q") query: String
+    ): PinterestResponse
+}
+
 object ApiClient {
+    private const val BASE_URL = "https://api-faa.my.id/"
 
-    sealed class Result<out T> {
-        data class Success<T>(val data: T) : Result<T>()
-        data class Error(val message: String) : Result<Nothing>()
+    private val logging = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BASIC
     }
 
-    suspend fun searchPinterest(query: String): Result<List<String>> {
-        // TODO: wire to real Pinterest search endpoint
-        return Result.Error("Not implemented yet")
-    }
+    private val client = OkHttpClient.Builder()
+        .addInterceptor(logging)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
-    suspend fun searchTiktok(query: String): Result<List<String>> {
-        // TODO: wire to real TikTok search endpoint
-        return Result.Error("Not implemented yet")
-    }
-
-    suspend fun searchSpotify(query: String): Result<List<String>> {
-        // TODO: wire to real Spotify Web API (requires OAuth client credentials)
-        return Result.Error("Not implemented yet")
-    }
-
-    suspend fun fetchDownloadInfo(url: String): Result<String> {
-        // TODO: resolve a media URL into a downloadable link via your backend
-        return Result.Error("Not implemented yet")
+    val pinterest: PinterestApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(PinterestApiService::class.java)
     }
 }

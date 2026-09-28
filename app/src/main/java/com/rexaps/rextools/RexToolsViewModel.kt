@@ -20,7 +20,7 @@ class RexToolsViewModel : ViewModel() {
     }
 
     fun toolsForSelected(): List<RexTool> {
-        val category = _uiState.value.selectedCategory ?: return emptyList()
+        val category = _uiState.value.selectedCategory ?: return RexToolRegistry.allTools
         return RexToolRegistry.toolsFor(category)
     }
 }
