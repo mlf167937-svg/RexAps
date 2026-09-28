@@ -1,19 +1,23 @@
 package com.rexaps.rextools.utils
 
+import com.rexaps.rexmusic.YtPlayResponse
+import com.rexaps.rextools.PinterestResponse
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
-import com.rexaps.rextools.PinterestResponse
 import java.util.concurrent.TimeUnit
 
 interface PinterestApiService {
     @GET("faa/pinterest")
-    suspend fun searchPinterest(
-        @Query("q") query: String
-    ): PinterestResponse
+    suspend fun searchPinterest(@Query("q") query: String): PinterestResponse
+}
+
+interface RexMusicApiService {
+    @GET("faa/ytplay")
+    suspend fun play(@Query("query") query: String): YtPlayResponse
 }
 
 object ApiClient {
@@ -29,12 +33,19 @@ object ApiClient {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    val pinterest: PinterestApiService by lazy {
+    private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(PinterestApiService::class.java)
+    }
+
+    val pinterest: PinterestApiService by lazy {
+        retrofit.create(PinterestApiService::class.java)
+    }
+
+    val rexMusic: RexMusicApiService by lazy {
+        retrofit.create(RexMusicApiService::class.java)
     }
 }

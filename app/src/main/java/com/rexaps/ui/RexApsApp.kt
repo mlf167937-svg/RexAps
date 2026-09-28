@@ -89,6 +89,7 @@ import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexnux.RexNuxScreen
 import kotlinx.coroutines.delay
 import com.rexaps.rextools.navigation.RexNavGraph
+import com.rexaps.rexmusic.RexMusicScreen
 
 private data class BottomTab(
     val label: String,
@@ -163,7 +164,9 @@ fun RexApsApp(activity: Activity) {
                         RexRoute.REXTOOLS -> RexNavGraph(
                             onBack = { route = RexRoute.NONE }
                         )
-
+                        RexRoute.REXMUSIC -> RexMusicScreen(
+                            onBack = { route = RexRoute.NONE }
+                        )
                         RexRoute.NONE -> Unit
                     }
                 }

@@ -1,3 +1,5 @@
+package com.rexaps.ui
+
 enum class RexRoute(
     val moduleId: String?,
     val displayName: String
@@ -7,7 +9,8 @@ enum class RexRoute(
     REXPANEL("rexpanel", "RexPanel"),
     REXCHAT("rexchat", "RexChat"),
     REXNUX("rexnux", "RexNux"),
-    REXTOOLS("rextools", "RexTools");   // ← added
+    REXTOOLS("rextools", "RexTools"),
+    REXMUSIC("rexmusic", "RexMusic");
 
     companion object {
         fun fromModuleId(id: String): RexRoute? =
