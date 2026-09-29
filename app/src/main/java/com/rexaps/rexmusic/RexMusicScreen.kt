@@ -6,7 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,13 +27,16 @@ fun RexMusicScreen(
     val state by vm.state.collectAsState()
     var showPlayer by remember { mutableStateOf(false) }
     var isLiked by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("RexMusic") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (showPlayer) { showPlayer = false } else { onBack() }
+                    }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "back")
                     }
                 }
@@ -41,14 +46,6 @@ fun RexMusicScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(pad)
         ) {
-            if (state.error != null) {
-                Text(
-                    text = "error: ${state.error}",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-
             if (showPlayer) {
                 val track = vm.currentTrack()
                 if (track != null) {
@@ -74,34 +71,114 @@ fun RexMusicScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
+                Column(modifier = Modifier.fillMaxSize()) {
+
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = {
+                            query = it
+                            if (it.isBlank()) vm.clearSearch() else vm.search(it)
+                        },
+                        label = { Text("cari lagu di spotify") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    query = ""
+                                    vm.clearSearch()
+                                }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "clear")
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        singleLine = true
+                    )
+
+                    if (state.loading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Text(
-                            text = "Rekomendasi",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            text = state.loadingText.ifBlank { "loading..." },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
                     }
-                    itemsIndexed(state.tracks, key = { _, t -> t.id }) { index, track ->
-                        ListItem(
-                            headlineContent = { Text(track.title) },
-                            supportingContent = { Text(track.artist) },
-                            leadingContent = {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            },
-                            modifier = Modifier.clickable {
-                                vm.play(index)
-                                showPlayer = true
-                            }
+
+                    if (state.error != null) {
+                        Text(
+                            text = "error: ${state.error}",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (state.searchResults.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Hasil Pencarian",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                            itemsIndexed(state.searchResults, key = { _, t -> "s-${t.id}" }) { idx, track ->
+                                TrackRow(
+                                    track = track,
+                                    onClick = {
+                                        vm.playFromSearch(idx)
+                                        showPlayer = true
+                                    }
+                                )
+                            }
+                            item { Spacer(Modifier.height(16.dp)) }
+                        }
+
+                        item {
+                            Text(
+                                text = "Rekomendasi",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                        itemsIndexed(state.tracks, key = { _, t -> "m-${t.id}" }) { idx, track ->
+                            TrackRow(
+                                track = track,
+                                onClick = {
+                                    vm.playFromMain(idx)
+                                    showPlayer = true
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TrackRow(
+    track: RexTrack,
+    onClick: () -> Unit
+) {
+    ListItem(
+        headlineContent = {
+            Text(track.title, maxLines = 1)
+        },
+        supportingContent = {
+            Text(track.artist, maxLines = 1)
+        },
+        leadingContent = {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+        },
+        modifier = Modifier.clickable(onClick = onClick)
+    )
 }

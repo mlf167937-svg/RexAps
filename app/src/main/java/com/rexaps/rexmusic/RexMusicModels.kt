@@ -4,15 +4,18 @@ data class RexTrack(
     val id: String,
     val title: String,
     val artist: String,
-    val album: String = "Songs",
+    val album: String = "Single",
     val cover: String = "",
     val audioUrl: String = "",
-    val durationSec: Int = 0
+    val spotifyUrl: String = "",
+    val durationText: String = ""
 )
 
 data class RexMusicUiState(
     val loading: Boolean = false,
+    val loadingText: String = "",
     val tracks: List<RexTrack> = emptyList(),
+    val searchResults: List<RexTrack> = emptyList(),
     val currentIndex: Int = 0,
     val isPlaying: Boolean = false,
     val positionMs: Long = 0L,
@@ -20,21 +23,27 @@ data class RexMusicUiState(
     val error: String? = null
 )
 
-data class YtPlayResponse(
+data class SpotifySearchResponse(
     val status: Boolean? = null,
-    val creator: String? = null,
-    val source: String? = null,
-    val result: YtPlayResult? = null
+    val result: List<SpotifySearchItem>? = null
 )
 
-data class YtPlayResult(
+data class SpotifySearchItem(
     val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
     val url: String? = null,
-    val mp3: String? = null,
     val thumbnail: String? = null,
-    val duration: Int? = null,
-    val duration_timestamp: String? = null,
-    val views: Long? = null,
-    val published: String? = null,
-    val author: String? = null
+    val duration: String? = null
+)
+
+data class SpotifyDownloadResponse(
+    val status: Boolean? = null,
+    val result: SpotifyDownloadResult? = null
+)
+
+data class SpotifyDownloadResult(
+    val url: String? = null,
+    val title: String? = null,
+    val artist: String? = null
 )

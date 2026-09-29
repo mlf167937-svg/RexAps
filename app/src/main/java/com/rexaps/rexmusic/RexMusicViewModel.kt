@@ -4,6 +4,8 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,30 +19,86 @@ class RexMusicViewModel : ViewModel() {
     val state: StateFlow<RexMusicUiState> = _state.asStateFlow()
 
     private var player: MediaPlayer? = null
-    private var progressJob: kotlinx.coroutines.Job? = null
+    private var progressJob: Job? = null
 
-    fun play(index: Int) {
-        val s = _state.value
-        val track = s.tracks.getOrNull(index) ?: return
-        _state.value = s.copy(loading = true, currentIndex = index, error = null)
-
+    fun search(query: String) {
+        if (query.isBlank()) {
+            _state.value = _state.value.copy(searchResults = emptyList())
+            return
+        }
+        _state.value = _state.value.copy(loading = true, loadingText = "mencari...")
         viewModelScope.launch {
-            RexMusicApi.play(track.title)
-                .onSuccess { fresh ->
-                    val updated = s.tracks.toMutableList().also { it[index] = fresh }
+            RexMusicApi.search(query)
+                .onSuccess { list ->
                     _state.value = _state.value.copy(
                         loading = false,
-                        tracks = updated,
-                        isPlaying = false,
-                        positionMs = 0L,
-                        durationMs = (fresh.durationSec * 1000L)
+                        loadingText = "",
+                        searchResults = list
                     )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        loadingText = "",
+                        error = e.message ?: "search gagal"
+                    )
+                }
+        }
+    }
+
+    fun clearSearch() {
+        _state.value = _state.value.copy(searchResults = emptyList())
+    }
+
+    fun playFromMain(index: Int) {
+        val track = _state.value.tracks.getOrNull(index) ?: return
+        playTrack(track, index, isSearch = false)
+    }
+
+    fun playFromSearch(index: Int) {
+        val track = _state.value.searchResults.getOrNull(index) ?: return
+        playTrack(track, index, isSearch = true)
+    }
+
+    private fun playTrack(track: RexTrack, index: Int, isSearch: Boolean) {
+        _state.value = _state.value.copy(
+            loading = true,
+            loadingText = "menyiapkan audio...",
+            currentIndex = index,
+            error = null
+        )
+
+        viewModelScope.launch {
+            RexMusicApi.resolveAudio(track)
+                .onSuccess { fresh ->
+                    if (isSearch) {
+                        val updated = _state.value.searchResults.toMutableList().also { it[index] = fresh }
+                        _state.value = _state.value.copy(
+                            loading = false,
+                            loadingText = "",
+                            searchResults = updated,
+                            isPlaying = false,
+                            positionMs = 0L,
+                            durationMs = 0L
+                        )
+                    } else {
+                        val updated = _state.value.tracks.toMutableList().also { it[index] = fresh }
+                        _state.value = _state.value.copy(
+                            loading = false,
+                            loadingText = "",
+                            tracks = updated,
+                            isPlaying = false,
+                            positionMs = 0L,
+                            durationMs = 0L
+                        )
+                    }
                     startPlayer(fresh.audioUrl)
                 }
                 .onFailure { e ->
                     _state.value = _state.value.copy(
                         loading = false,
-                        error = e.message ?: "gagal load audio"
+                        loadingText = "",
+                        error = e.message ?: "gagal resolve audio"
                     )
                 }
         }
@@ -87,12 +145,10 @@ class RexMusicViewModel : ViewModel() {
                 val mp = player ?: break
                 try {
                     if (mp.isPlaying) {
-                        _state.value = _state.value.copy(
-                            positionMs = mp.currentPosition.toLong()
-                        )
+                        _state.value = _state.value.copy(positionMs = mp.currentPosition.toLong())
                     }
                 } catch (_: Exception) {}
-                kotlinx.coroutines.delay(500)
+                delay(500)
             }
         }
     }
@@ -121,13 +177,13 @@ class RexMusicViewModel : ViewModel() {
     fun next() {
         val s = _state.value
         if (s.tracks.isEmpty()) return
-        play((s.currentIndex + 1) % s.tracks.size)
+        playFromMain((s.currentIndex + 1) % s.tracks.size)
     }
 
     fun prev() {
         val s = _state.value
         if (s.tracks.isEmpty()) return
-        play(if (s.currentIndex - 1 < 0) s.tracks.size - 1 else s.currentIndex - 1)
+        playFromMain(if (s.currentIndex - 1 < 0) s.tracks.size - 1 else s.currentIndex - 1)
     }
 
     fun currentTrack(): RexTrack? =
