@@ -32,40 +32,40 @@ object RexMusicRegistry {
             title = "Menari Nari",
             artist = "Raim Laode",
             album = "Single",
-            spotifyUrl = "",
-            cover = ""
-        ),
-        RexTrack(
-            id = "raim-duna-yang-nanti",
-            title = "Duna Yang Nanti",
-            artist = "Raim Laode",
-            album = "Single",
-            spotifyUrl = "",
-            cover = ""
+            spotifyUrl = "https://open.spotify.com/track/5kJ2lw9zz2BMMN7YcI4NZb",
+            cover = "https://i.scdn.co/image/ab67616d0000b273a9d1f9b5d3275b0625e13e79"
         ),
         RexTrack(
             id = "raim-iqro",
             title = "Iqro",
             artist = "Raim Laode",
             album = "Single",
-            spotifyUrl = "",
-            cover = ""
+            spotifyUrl = "https://open.spotify.com/track/2ImWVGyYTRMi64861WCCcq",
+            cover = "https://i.scdn.co/image/ab67616d0000b273a9d1f9b5d3275b0625e13e79"
+        ),
+        RexTrack(
+            id = "raim-dunia-yang-nanti",
+            title = "Dunia Yang Nanti",
+            artist = "Raim Laode",
+            album = "Single",
+            spotifyUrl = "https://open.spotify.com/track/1sVQuuvFDKu6vklPVeiUXT",
+            cover = "https://i.scdn.co/image/ab67616d0000b273a9d1f9b5d3275b0625e13e79"
         ),
         RexTrack(
             id = "hindia-cincin",
             title = "Cincin",
             artist = "Hindia",
             album = "Menari Dengan Bayangan",
-            spotifyUrl = "",
-            cover = ""
+            spotifyUrl = "https://open.spotify.com/track/7J0isBrUxhIYZVdrBOOlIh",
+            cover = "https://i.scdn.co/image/ab67616d0000b273d58121433ea3e6c4822ac494"
         ),
         RexTrack(
             id = "hindia-everything-u-are",
             title = "Everything U Are",
             artist = "Hindia",
             album = "Menari Dengan Bayangan",
-            spotifyUrl = "",
-            cover = ""
+            spotifyUrl = "https://open.spotify.com/track/5WOSNVChcadlsCRiqXE45K",
+            cover = "https://i.scdn.co/image/ab67616d0000b27305898628baab6ef07a0a4d03"
         )
     )
 }
