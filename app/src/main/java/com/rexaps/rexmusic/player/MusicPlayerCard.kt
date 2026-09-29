@@ -2,6 +2,7 @@ package com.rexaps.rexmusic.player
 
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -9,6 +10,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -41,8 +44,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -81,7 +86,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.rexaps.rexmusic.LoadPhase
 import com.rexaps.rexmusic.RexTrack
+import com.rexaps.rexmusic.isPlayerBusy
 import kotlin.math.roundToInt
 
 // ───────────────────────── Public entry ─────────────────────────
@@ -99,7 +106,9 @@ fun MusicPlayerCard(
     onPrev: () -> Unit,
     onSeek: (Float) -> Unit,
     onToggleLike: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    phase: LoadPhase = LoadPhase.Idle,
+    bufferedPercent: Int = 0
 ) {
     var accent by remember(track.cover) { mutableStateOf<Color?>(null) }
     PlayerCardContent(
@@ -107,7 +116,8 @@ fun MusicPlayerCard(
         accent = accent, onAccentFound = { accent = it },
         isPlaying = isPlaying, positionMs = positionMs, durationMs = durationMs,
         isLiked = isLiked, onPlayPause = onPlayPause, onNext = onNext, onPrev = onPrev,
-        onSeek = onSeek, onToggleLike = onToggleLike, modifier = modifier
+        onSeek = onSeek, onToggleLike = onToggleLike,
+        phase = phase, bufferedPercent = bufferedPercent, modifier = modifier
     )
 }
 
@@ -129,9 +139,12 @@ private fun PlayerCardContent(
     onPrev: () -> Unit,
     onSeek: (Float) -> Unit,
     onToggleLike: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    phase: LoadPhase = LoadPhase.Idle,
+    bufferedPercent: Int = 0
 ) {
     val brush = rememberPlayerBrush(accent)
+    val busy = phase.isPlayerBusy
     Column(
         modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
@@ -139,12 +152,20 @@ private fun PlayerCardContent(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        PlayerHeader(album)
-        AlbumPoster(cover, title, onAccentFound)
+        PlayerHeader(album, statusLabel(phase, bufferedPercent))
+        AlbumPoster(cover, title, busy, onAccentFound)
         TrackInfo(title, artist, isLiked, onToggleLike)
-        SeekSection(positionMs, durationMs, onSeek)
-        PlayerControls(isPlaying, onPlayPause, onNext, onPrev)
+        SeekSection(positionMs, durationMs, bufferedPercent, busy, onSeek)
+        PlayerControls(isPlaying, busy, onPlayPause, onNext, onPrev)
     }
+}
+
+/** Label status di header: berubah sesuai fase loading. */
+private fun statusLabel(phase: LoadPhase, percent: Int): String = when (phase) {
+    LoadPhase.Resolving -> "MENYIAPKAN"
+    LoadPhase.Preparing -> if (percent in 1..99) "MEMUAT $percent%" else "MEMUAT"
+    LoadPhase.Buffering -> "BUFFERING"
+    else -> "NOW PLAYING"
 }
 
 // ───────────────────────── Background ─────────────────────────
@@ -178,15 +199,17 @@ private fun Drawable.averageColor(): Color? = runCatching {
 
 // ───────────────────────── Header & poster ─────────────────────────
 
-/** Header: label "NOW PLAYING" kecil, nama album di tengah, ikon more. */
+/** Header: label status kecil (NOW PLAYING / MEMUAT / BUFFERING), nama album, ikon more. */
 @Composable
-private fun PlayerHeader(album: String) {
+private fun PlayerHeader(album: String, status: String) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.width(24.dp))
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("NOW PLAYING", style = MaterialTheme.typography.labelSmall,
-                color = muted, letterSpacing = 1.5.sp)
+            Crossfade(targetState = status, label = "status") { label ->
+                Text(label, style = MaterialTheme.typography.labelSmall,
+                    color = muted, letterSpacing = 1.5.sp)
+            }
             Text(album, style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -195,9 +218,14 @@ private fun PlayerHeader(album: String) {
     }
 }
 
-/** Poster 1:1 dengan shadow halus + border tipis; ekstrak warna saat gambar sukses dimuat. */
+/** Poster 1:1 dengan shadow halus + border tipis; scrim + spinner saat loading/buffering. */
 @Composable
-private fun AlbumPoster(cover: String, title: String, onAccentFound: (Color) -> Unit) {
+private fun AlbumPoster(
+    cover: String,
+    title: String,
+    busy: Boolean,
+    onAccentFound: (Color) -> Unit
+) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(20.dp)
     val request = remember(cover) {
@@ -220,6 +248,16 @@ private fun AlbumPoster(cover: String, title: String, onAccentFound: (Color) -> 
         } else {
             Icon(Icons.Default.MusicNote, contentDescription = null,
                 modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        AnimatedVisibility(visible = busy, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(44.dp)
+                )
+            }
         }
     }
 }
@@ -265,23 +303,50 @@ private fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
 
 // ───────────────────────── Seek bar ─────────────────────────
 
-/** Seek bar + label waktu. */
+/** Seek bar + label waktu. Indeterminate saat durasi belum diketahui. */
 @Composable
-private fun SeekSection(positionMs: Long, durationMs: Long, onSeek: (Float) -> Unit) {
+private fun SeekSection(
+    positionMs: Long,
+    durationMs: Long,
+    bufferedPercent: Int,
+    busy: Boolean,
+    onSeek: (Float) -> Unit
+) {
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
-        GradientSeekBar(progress.coerceIn(0f, 1f), onSeek)
+        if (durationMs <= 0L && busy) {
+            IndeterminateSeekBar()
+        } else {
+            GradientSeekBar(progress.coerceIn(0f, 1f), bufferedPercent / 100f, onSeek)
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(fmt(positionMs), style = MaterialTheme.typography.labelSmall, color = muted)
-            Text(fmt(durationMs), style = MaterialTheme.typography.labelSmall, color = muted)
+            Text(if (durationMs > 0) fmt(durationMs) else "--:--",
+                style = MaterialTheme.typography.labelSmall, color = muted)
         }
     }
 }
 
-/** Slider custom: track gradient, thumb besar + shadow. Mendukung tap dan drag. */
+/** Ditampilkan saat lagu sedang dimuat dan durasi belum diketahui. */
 @Composable
-private fun GradientSeekBar(progress: Float, onSeek: (Float) -> Unit) {
+private fun IndeterminateSeekBar() {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+            color = scheme.primary,
+            trackColor = scheme.onSurface.copy(alpha = 0.2f)
+        )
+    }
+}
+
+/** Slider custom: track gradient, segmen buffer, thumb besar + shadow. Mendukung tap dan drag. */
+@Composable
+private fun GradientSeekBar(progress: Float, buffered: Float, onSeek: (Float) -> Unit) {
     val currentOnSeek by rememberUpdatedState(onSeek)
     var widthPx by remember { mutableFloatStateOf(1f) }
     val scheme = MaterialTheme.colorScheme
@@ -307,6 +372,9 @@ private fun GradientSeekBar(progress: Float, onSeek: (Float) -> Unit) {
     ) {
         Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape)
             .background(scheme.onSurface.copy(alpha = 0.2f)))
+        // segmen yang sudah ter-buffer
+        Box(Modifier.fillMaxWidth(buffered.coerceIn(0f, 1f)).height(6.dp).clip(CircleShape)
+            .background(scheme.onSurface.copy(alpha = 0.22f)))
         Box(Modifier.fillMaxWidth(progress).height(6.dp).clip(CircleShape)
             .background(Brush.horizontalGradient(listOf(scheme.primary, scheme.tertiary))))
         Box(
@@ -319,10 +387,11 @@ private fun GradientSeekBar(progress: Float, onSeek: (Float) -> Unit) {
 
 // ───────────────────────── Controls ─────────────────────────
 
-/** Baris kontrol: prev, play/pause (besar), next. */
+/** Baris kontrol: prev, play/pause (besar, spinner saat loading), next. */
 @Composable
 private fun PlayerControls(
     isPlaying: Boolean,
+    loading: Boolean,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit
@@ -333,7 +402,7 @@ private fun PlayerControls(
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         SideControlButton(Icons.Default.SkipPrevious, "Lagu sebelumnya", onPrev)
-        PlayPauseButton(isPlaying, onPlayPause)
+        PlayPauseButton(isPlaying, loading, onPlayPause)
         SideControlButton(Icons.Default.SkipNext, "Lagu berikutnya", onNext)
     }
 }
@@ -359,9 +428,9 @@ private fun SideControlButton(
     }
 }
 
-/** Tombol play/pause 64dp: gradient, shadow berwarna, scale saat ditekan. */
+/** Tombol play/pause 64dp: gradient, shadow berwarna, scale saat ditekan, spinner saat loading. */
 @Composable
-private fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit) {
+private fun PlayPauseButton(isPlaying: Boolean, loading: Boolean, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val scale = rememberPressScale(source, pressed = 0.9f)
     val scheme = MaterialTheme.colorScheme
@@ -373,12 +442,23 @@ private fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit) {
             .shadow(12.dp, CircleShape, spotColor = scheme.primary)
             .background(Brush.linearGradient(listOf(scheme.primary, scheme.tertiary)), CircleShape)
     ) {
-        Crossfade(targetState = isPlaying, label = "playPauseIcon") { playing ->
-            Icon(
-                imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (playing) "Jeda" else "Putar",
-                tint = scheme.onPrimary, modifier = Modifier.size(32.dp)
-            )
+        Crossfade(
+            targetState = when {
+                loading -> 0
+                isPlaying -> 1
+                else -> 2
+            },
+            label = "playPauseIcon"
+        ) { s ->
+            when (s) {
+                0 -> CircularProgressIndicator(
+                    color = scheme.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(28.dp)
+                )
+                1 -> Icon(Icons.Default.Pause, contentDescription = "Jeda",
+                    tint = scheme.onPrimary, modifier = Modifier.size(32.dp))
+                else -> Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
+                    tint = scheme.onPrimary, modifier = Modifier.size(32.dp))
+            }
         }
     }
 }
@@ -411,7 +491,23 @@ private fun PlayerCardPreview() {
             accent = Color(0xFF6650A4), onAccentFound = {},
             isPlaying = true, positionMs = 72_000, durationMs = 215_000,
             isLiked = true, onPlayPause = {}, onNext = {}, onPrev = {}, onSeek = {},
-            onToggleLike = {}, modifier = Modifier.padding(16.dp)
+            onToggleLike = {}, modifier = Modifier.padding(16.dp),
+            phase = LoadPhase.Idle, bufferedPercent = 60
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun PlayerCardLoadingPreview() {
+    MaterialTheme {
+        PlayerCardContent(
+            title = "Jatuh Suka", artist = "Tulus", album = "Manusia", cover = "",
+            accent = Color(0xFF6650A4), onAccentFound = {},
+            isPlaying = false, positionMs = 0, durationMs = 0,
+            isLiked = false, onPlayPause = {}, onNext = {}, onPrev = {}, onSeek = {},
+            onToggleLike = {}, modifier = Modifier.padding(16.dp),
+            phase = LoadPhase.Preparing, bufferedPercent = 0
         )
     }
 }

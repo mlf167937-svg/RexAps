@@ -11,9 +11,20 @@ data class RexTrack(
     val durationText: String = ""
 )
 
+/** Fase loading real-time. */
+enum class LoadPhase { Idle, Searching, Resolving, Preparing, Buffering }
+
+/** True kalau player sedang sibuk (mencari audio, menyiapkan, atau buffering/lag). */
+val LoadPhase.isPlayerBusy: Boolean
+    get() = this == LoadPhase.Resolving ||
+        this == LoadPhase.Preparing ||
+        this == LoadPhase.Buffering
+
 data class RexMusicUiState(
     val loading: Boolean = false,
     val loadingText: String = "",
+    val phase: LoadPhase = LoadPhase.Idle,
+    val bufferedPercent: Int = 0,
     val tracks: List<RexTrack> = emptyList(),
     val searchResults: List<RexTrack> = emptyList(),
     val currentIndex: Int = 0,

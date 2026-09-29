@@ -32,11 +32,13 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
     private var seekJob: Job? = null
     private var seekPending = false
 
-    // search / resolve
+    // search / resolve / prepare / buffering flags
     private var searchJob: Job? = null
     private var playJob: Job? = null
     private var searching = false
     private var resolving = false
+    private var preparing = false
+    private var buffering = false
     private var resolveText = ""
 
     // queue: snapshot list yang sedang diputar (search ATAU rekomendasi)
@@ -118,7 +120,8 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 nowPlaying = track, currentIndex = queueIndex,
-                isPlaying = false, positionMs = 0L, durationMs = 0L, error = null
+                isPlaying = false, positionMs = 0L, durationMs = 0L,
+                bufferedPercent = 0, error = null
             )
         }
         publishLoading()
@@ -196,14 +199,32 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val mp = MediaPlayer()
             player = mp
+            preparing = true
+            publishLoading()
             mp.setAudioAttributes(audioAttrs)
             mp.setDataSource(url)
             mp.setOnPreparedListener {
                 if (player !== mp) return@setOnPreparedListener
                 prepared = true
+                preparing = false
+                buffering = false
                 _state.update { s -> s.copy(durationMs = mp.duration.toLong(), isPlaying = true) }
+                publishLoading()
                 mp.start()
                 startProgressLoop(mp)
+            }
+            mp.setOnBufferingUpdateListener { _, percent ->
+                if (player !== mp) return@setOnBufferingUpdateListener
+                _state.update { s -> s.copy(bufferedPercent = percent.coerceIn(0, 100)) }
+            }
+            mp.setOnInfoListener { _, what, _ ->
+                if (player === mp) {
+                    when (what) {
+                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> setBuffering(true)
+                        MediaPlayer.MEDIA_INFO_BUFFERING_END -> setBuffering(false)
+                    }
+                }
+                false
             }
             mp.setOnCompletionListener {
                 _state.update { s -> s.copy(isPlaying = false) }
@@ -221,25 +242,45 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun setBuffering(value: Boolean) {
+        if (buffering == value) return
+        buffering = value
+        publishLoading()
+    }
+
     private fun stopPlayer() {
         progressJob?.cancel()
         seekJob?.cancel()
         seekPending = false
         prepared = false
+        preparing = false
+        buffering = false
         runCatching { player?.release() }
         player = null
         abandonFocus()
     }
 
+    /** Progress + deteksi lag (fallback kalau device tidak mengirim MEDIA_INFO_BUFFERING_*). */
     private fun startProgressLoop(mp: MediaPlayer) {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
+            var lastPos = -1L
+            var stalledTicks = 0
             while (isActive && player === mp) {
                 if (!seekPending) {
                     runCatching {
                         if (mp.isPlaying) {
                             val pos = mp.currentPosition.toLong()
                             _state.update { it.copy(positionMs = pos) }
+                            if (pos == lastPos) {
+                                if (++stalledTicks >= STALL_TICKS) setBuffering(true)
+                            } else {
+                                stalledTicks = 0
+                                lastPos = pos
+                                setBuffering(false)
+                            }
+                        } else {
+                            stalledTicks = 0
                         }
                     }
                 }
@@ -278,11 +319,17 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun pauseInternal() {
         if (prepared) runCatching { player?.pause() }
+        buffering = false
         _state.update { it.copy(isPlaying = false) }
+        publishLoading()
     }
 
-    private fun fail(message: String) =
+    private fun fail(message: String) {
+        preparing = false
+        buffering = false
         _state.update { it.copy(error = message, isPlaying = false) }
+        publishLoading()
+    }
 
     // ───────────────────────── Audio focus ─────────────────────────
 
@@ -336,14 +383,27 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
 
     // ───────────────────────── Misc ─────────────────────────
 
-    /** loading = sedang search ATAU sedang resolve audio. */
+    /**
+     * loading = search / resolve / prepare.
+     * Buffering (lag saat memutar) hanya lewat [LoadPhase] supaya halaman browse tidak ikut loading.
+     */
     private fun publishLoading() = _state.update {
+        val phase = when {
+            resolving -> LoadPhase.Resolving
+            preparing -> LoadPhase.Preparing
+            buffering -> LoadPhase.Buffering
+            searching -> LoadPhase.Searching
+            else -> LoadPhase.Idle
+        }
         it.copy(
-            loading = searching || resolving,
-            loadingText = when {
-                resolving -> resolveText
-                searching -> "mencari..."
-                else -> ""
+            loading = searching || resolving || preparing,
+            phase = phase,
+            loadingText = when (phase) {
+                LoadPhase.Resolving -> resolveText
+                LoadPhase.Preparing -> "menyiapkan audio..."
+                LoadPhase.Buffering -> "buffering..."
+                LoadPhase.Searching -> "mencari..."
+                LoadPhase.Idle -> ""
             }
         )
     }
@@ -362,5 +422,6 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
         const val SEEK_DEBOUNCE_MS = 80L
         const val PROGRESS_INTERVAL_MS = 500L
         const val RESTART_THRESHOLD_MS = 3000L
+        const val STALL_TICKS = 2
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -95,6 +96,9 @@ fun RexMusicScreen(
     var isLiked by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
+    // id lagu yang sedang loading/buffering, untuk spinner di list
+    val loadingId = if (state.phase.isPlayerBusy) state.nowPlaying?.id else null
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { pad ->
         AnimatedContent(
             targetState = showPlayer,
@@ -102,12 +106,13 @@ fun RexMusicScreen(
             transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) },
             label = "screenSwitch"
         ) { playerVisible ->
-            val track = if (playerVisible) vm.currentTrack() else null
+            val track = if (playerVisible) state.nowPlaying else null
             if (playerVisible) {
                 if (track != null) {
                     PlayerPage(
                         track = track, isPlaying = state.isPlaying,
                         positionMs = state.positionMs, durationMs = state.durationMs,
+                        phase = state.phase, bufferedPercent = state.bufferedPercent,
                         isLiked = isLiked, onPlayPause = { vm.togglePlay() },
                         onNext = { vm.next() }, onPrev = { vm.prev() },
                         onSeek = { vm.seekTo(it) }, onToggleLike = { isLiked = !isLiked },
@@ -118,6 +123,7 @@ fun RexMusicScreen(
                 BrowsePage(
                     query = query, loading = state.loading, loadingText = state.loadingText,
                     error = state.error, searchResults = state.searchResults, tracks = state.tracks,
+                    loadingId = loadingId,
                     onQueryChange = {
                         query = it
                         if (it.isBlank()) vm.clearSearch() else vm.search(it)
@@ -141,6 +147,8 @@ private fun PlayerPage(
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
+    phase: LoadPhase,
+    bufferedPercent: Int,
     isLiked: Boolean,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -155,6 +163,7 @@ private fun PlayerPage(
             track = track, isPlaying = isPlaying, positionMs = positionMs,
             durationMs = durationMs, isLiked = isLiked, onPlayPause = onPlayPause,
             onNext = onNext, onPrev = onPrev, onSeek = onSeek, onToggleLike = onToggleLike,
+            phase = phase, bufferedPercent = bufferedPercent,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
         TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -172,6 +181,7 @@ private fun BrowsePage(
     error: String?,
     searchResults: List<RexTrack>,
     tracks: List<RexTrack>,
+    loadingId: String?,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
     onPlaySearch: (Int) -> Unit,
@@ -189,7 +199,7 @@ private fun BrowsePage(
         when {
             loading && noData -> SkeletonList()
             noData && error == null -> EmptyState(hasQuery = query.isNotBlank())
-            else -> TrackList(searchResults, tracks, onPlaySearch, onPlayMain)
+            else -> TrackList(searchResults, tracks, loadingId, onPlaySearch, onPlayMain)
         }
     }
 }
@@ -381,6 +391,7 @@ private fun SkeletonRow(brush: Brush) {
 private fun TrackList(
     searchResults: List<RexTrack>,
     tracks: List<RexTrack>,
+    loadingId: String?,
     onPlaySearch: (Int) -> Unit,
     onPlayMain: (Int) -> Unit
 ) {
@@ -389,8 +400,8 @@ private fun TrackList(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        trackSection("Hasil Pencarian", "s", searchResults, onPlaySearch)
-        trackSection("Rekomendasi", "m", tracks, onPlayMain)
+        trackSection("Hasil Pencarian", "s", searchResults, loadingId, onPlaySearch)
+        trackSection("Rekomendasi", "m", tracks, loadingId, onPlayMain)
     }
 }
 
@@ -399,6 +410,7 @@ private fun LazyListScope.trackSection(
     title: String,
     keyPrefix: String,
     tracks: List<RexTrack>,
+    loadingId: String?,
     onTrackClick: (Int) -> Unit
 ) {
     if (tracks.isEmpty()) return
@@ -407,7 +419,11 @@ private fun LazyListScope.trackSection(
     }
     itemsIndexed(tracks, key = { _, t -> "$keyPrefix-${t.id}" }) { idx, track ->
         StaggerIn(index = idx, key = "$keyPrefix-${track.id}") {
-            TrackCard(track = track, onClick = { onTrackClick(idx) })
+            TrackCard(
+                track = track,
+                loading = track.id == loadingId,
+                onClick = { onTrackClick(idx) }
+            )
         }
     }
 }
@@ -447,16 +463,17 @@ private fun CountBadge(count: Int) {
 
 /** Adapter dari RexTrack ke kartu stateless (supaya gampang di-preview). */
 @Composable
-private fun TrackCard(track: RexTrack, onClick: () -> Unit) {
+private fun TrackCard(track: RexTrack, loading: Boolean, onClick: () -> Unit) {
     TrackCardContent(
         title = track.title,
         artist = track.artist,
         cover = track.cover,
-        onClick = onClick
+        onClick = onClick,
+        loading = loading
     )
 }
 
-/** Kartu lagu: cover, teks, tombol play; ada ripple + scale saat ditekan. */
+/** Kartu lagu: cover, teks, tombol play/spinner; ada ripple + scale saat ditekan. */
 @Composable
 private fun TrackCardContent(
     title: String,
@@ -464,7 +481,8 @@ private fun TrackCardContent(
     cover: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    badge: String? = null
+    badge: String? = null,
+    loading: Boolean = false
 ) {
     val source = remember { MutableInteractionSource() }
     val scale = rememberPressScale(source)
@@ -488,7 +506,7 @@ private fun TrackCardContent(
         ) {
             CoverThumb(cover)
             TrackTexts(title, artist, badge, Modifier.weight(1f))
-            PlayBadgeButton()
+            PlayBadgeButton(loading)
         }
     }
 }
@@ -535,16 +553,23 @@ private fun TrackTexts(title: String, artist: String, badge: String?, modifier: 
     }
 }
 
-/** Lingkaran kecil dengan ikon play (dekoratif, aksi ada di kartu). */
+/** Lingkaran kecil: ikon play, atau spinner kalau lagu ini sedang dimuat. */
 @Composable
-private fun PlayBadgeButton() {
+private fun PlayBadgeButton(loading: Boolean) {
     Box(
         modifier = Modifier.size(36.dp).clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
-            tint = MaterialTheme.colorScheme.primary)
+        if (loading) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp, modifier = Modifier.size(18.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
+                tint = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
@@ -593,8 +618,9 @@ private fun greetingForHour(hour: Int): String = when (hour) {
 @Composable
 private fun TrackCardPreview() {
     MaterialTheme {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TrackCardContent("Judul Lagu Yang Cukup Panjang Sekali", "Nama Artis", "", {}, badge = "Popular")
+            TrackCardContent("Sedang Dimuat", "Nama Artis", "", {}, loading = true)
         }
     }
 }
