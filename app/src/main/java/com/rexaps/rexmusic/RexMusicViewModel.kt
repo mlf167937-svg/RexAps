@@ -26,7 +26,7 @@ class RexMusicViewModel : ViewModel() {
             _state.value = _state.value.copy(searchResults = emptyList())
             return
         }
-        _state.value = _state.value.copy(loading = true, loadingText = "mencari...")
+        _state.value = _state.value.copy(loading = true, loadingText = "mencari...", error = null)
         viewModelScope.launch {
             RexMusicApi.search(query)
                 .onSuccess { list ->
@@ -63,13 +63,18 @@ class RexMusicViewModel : ViewModel() {
     private fun playTrack(track: RexTrack, index: Int, isSearch: Boolean) {
         _state.value = _state.value.copy(
             loading = true,
-            loadingText = "menyiapkan audio...",
+            loadingText = if (track.spotifyUrl.isBlank())
+                "mencari ${track.title}..."
+            else
+                "menyiapkan audio...",
             currentIndex = index,
             error = null
         )
 
         viewModelScope.launch {
-            RexMusicApi.resolveAudio(track)
+            val resolved: Result<RexTrack> = resolveTrack(track)
+
+            resolved
                 .onSuccess { fresh ->
                     if (isSearch) {
                         val updated = _state.value.searchResults.toMutableList().also { it[index] = fresh }
@@ -98,13 +103,43 @@ class RexMusicViewModel : ViewModel() {
                     _state.value = _state.value.copy(
                         loading = false,
                         loadingText = "",
-                        error = e.message ?: "gagal resolve audio"
+                        error = e.message ?: "gagal memuat audio"
                     )
                 }
         }
     }
 
+    /**
+     * Kalo track punya spotifyUrl → langsung resolve audio.
+     * Kalo kosong (contoh: 8 lagu default) → search dulu pake "artist + title",
+     * ambil hasil pertama, lalu resolve audio-nya.
+     * Judul, artist, album asli dari registry tetap dipertahankan.
+     */
+    private suspend fun resolveTrack(track: RexTrack): Result<RexTrack> {
+        if (track.spotifyUrl.isNotBlank()) {
+            return RexMusicApi.resolveAudio(track)
+        }
+
+        val query = "${track.artist} ${track.title}".trim()
+        val searchRes = RexMusicApi.search(query)
+        val first = searchRes.getOrNull()?.firstOrNull()
+            ?: return Result.failure(Exception("lagu \"${track.title}\" tidak ditemukan"))
+
+        // pertahankan judul, artist, album asli dari registry
+        val merged = first.copy(
+            id = track.id,
+            title = track.title,
+            artist = track.artist,
+            album = track.album
+        )
+        return RexMusicApi.resolveAudio(merged)
+    }
+
     private fun startPlayer(url: String) {
+        if (url.isBlank()) {
+            _state.value = _state.value.copy(error = "URL audio kosong")
+            return
+        }
         try {
             player?.release()
             player = MediaPlayer().apply {
