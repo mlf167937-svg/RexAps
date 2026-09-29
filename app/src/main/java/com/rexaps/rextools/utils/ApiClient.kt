@@ -10,6 +10,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
+import com.rexaps.rextools.SsWebResponse
 
 interface PinterestApiService {
     @GET("faa/pinterest")
@@ -22,6 +23,16 @@ interface RexMusicApiService {
 
     @GET("downloader/spotify")
     suspend fun downloadSpotify(@Query("url") url: String): SpotifyDownloadResponse
+}
+
+interface SsWebApiService {
+    @GET("tools/ssweb")
+    suspend fun capture(
+        @Query("url") url: String,
+        @Query("width") width: Int,
+        @Query("height") height: Int,
+        @Query("device_scale") scale: Int
+    ): SsWebResponse
 }
 
 object ApiClient {
@@ -60,5 +71,8 @@ object ApiClient {
 
     val rexMusic: RexMusicApiService by lazy {
         rexMusicRetrofit.create(RexMusicApiService::class.java)
+    }
+    val ssweb: SsWebApiService by lazy {
+        rexMusicRetrofit.create(SsWebApiService::class.java)
     }
 }

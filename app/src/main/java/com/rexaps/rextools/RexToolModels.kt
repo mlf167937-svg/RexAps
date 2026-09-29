@@ -6,6 +6,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Language
 
 enum class ToolCategory(val displayName: String) {
     SEARCH("Search"),
@@ -37,4 +38,27 @@ data class PinterestUiState(
     val currentIndex: Int = 0,
     val query: String = "",
     val error: String? = null
+)
+
+data class SsWebResponse(
+    val status: Boolean? = null,
+    val creator: String? = null,
+    val result: SsWebResult? = null
+)
+
+data class SsWebResult(
+    val title: String? = null,
+    val description: String? = null,
+    val url: String? = null,
+    val file_url: String? = null,
+    val publisher: String? = null,
+    val lang: String? = null,
+    val screenshot: SsWebScreenshot? = null
+)
+
+data class SsWebScreenshot(
+    val url: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val size_pretty: String? = null
 )

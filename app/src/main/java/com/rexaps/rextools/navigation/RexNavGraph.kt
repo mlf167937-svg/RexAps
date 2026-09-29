@@ -8,6 +8,7 @@ import androidx.navigation.compose.rememberNavController
 import com.rexaps.rextools.RexToolRegistry
 import com.rexaps.rextools.RexToolsScreen
 import com.rexaps.rextools.search.PinterestScreen
+import com.rexaps.rextools.ssweb.SsWebScreen
 
 @Composable
 fun RexNavGraph(
@@ -29,6 +30,9 @@ fun RexNavGraph(
             composable(tool.route) {
                 when (tool.route) {
                     "pinterest" -> PinterestScreen(
+                        onBack = { navController.popBackStack() }
+                    )
+                    "ssweb" -> SsWebScreen(
                         onBack = { navController.popBackStack() }
                     )
                 }
