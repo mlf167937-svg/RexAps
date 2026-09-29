@@ -1,5 +1,6 @@
 package com.rexaps.rextools.ssweb
 
+import com.rexaps.rextools.SsWebResult
 import com.rexaps.rextools.utils.ApiClient
 
 object SsWebApi {
