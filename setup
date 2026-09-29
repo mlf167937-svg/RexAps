@@ -6,3 +6,72 @@ export Aps="$PWD/app/src/main/java/com/rexaps"
 echo "RexFox = $rexfox"
 echo "RexTools = $rextools"
 echo "Aps = $Aps"
+
+# ==========================================
+# CAT REX MODULE
+# ==========================================
+cat-rex() {
+    check_command termux-clipboard-set
+
+    local MODULE="${1:-ui}"
+    local BASE_DIR="$PWD/app/src/main/java/com/rexaps"
+    local TARGET_DIR=""
+
+    # biar bisa pakai 'ui' tetap jalan ke folder ui
+    if [[ "$MODULE" == "ui" ]]; then
+        TARGET_DIR="$BASE_DIR/ui"
+    else
+        TARGET_DIR="$BASE_DIR/$MODULE"
+    fi
+
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        echo "✗ Folder tidak ditemukan: $TARGET_DIR"
+        echo "  Available di $BASE_DIR:"
+        ls -1 "$BASE_DIR"
+        return 1
+    fi
+
+    local TEMP_FILE
+    TEMP_FILE="$(mktemp)"
+
+    # -type f -name "*.kt" recursive, jadi semua folder di dalam rexmusic ke-copy
+    find "$TARGET_DIR" -type f -name "*.kt" -print0 |
+    while IFS= read -r -d '' f; do
+        printf '\n===== FILE: %s =====\n\n' "$f" >> "$TEMP_FILE"
+        cat "$f" >> "$TEMP_FILE"
+        printf '\n\n' >> "$TEMP_FILE"
+    done
+
+    if [[ ! -s "$TEMP_FILE" ]]; then
+        echo "✗ Tidak ada file .kt di $TARGET_DIR"
+        rm -f "$TEMP_FILE"
+        return 1
+    fi
+
+    termux-clipboard-set < "$TEMP_FILE"
+    local COUNT
+    COUNT=$(grep -c "===== FILE:" "$TEMP_FILE")
+    rm -f "$TEMP_FILE"
+
+    echo "✓ $COUNT file dari $MODULE disalin ke clipboard ($TARGET_DIR)"
+}
+
+# alias biar command lama tetap work
+cat-ui() {
+    cat-rex ui
+}
+
+# wrapper untuk 'rex cat rexmusic'
+rex() {
+    case "$1" in
+        cat)
+            cat-rex "$2"
+            ;;
+        *)
+            echo "Usage: rex cat [module_name]"
+            echo "Contoh: rex cat rexmusic"
+            echo "        rex cat rexfox"
+            echo "        rex cat ui"
+            ;;
+    esac
+}

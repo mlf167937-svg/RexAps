@@ -17,6 +17,7 @@ data class RexMusicUiState(
     val tracks: List<RexTrack> = emptyList(),
     val searchResults: List<RexTrack> = emptyList(),
     val currentIndex: Int = 0,
+    val nowPlaying: RexTrack? = null,
     val isPlaying: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
