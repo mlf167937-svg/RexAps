@@ -2,8 +2,12 @@ export rexfox="$PWD/app/src/main/java/com/rexaps/rexfox"
 export rextools="$PWD/app/src/main/java/com/rexaps/rextools"
 
 export Aps="$PWD/app/src/main/java/com/rexaps"
+export AndroXml="$PWD/app/src/main/AndroidManifest.xml"
 
 echo "RexFox = $rexfox"
 echo "RexTools = $rextools"
 echo "Aps = $Aps"
+echo "AndroidManifest.xml = $AndroXml"
+
+alias copy="termux-clipboard-set"
 

@@ -10,6 +10,12 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
+    <!-- Added permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:theme="@style/AppTheme"
         android:label="RexAps"
@@ -29,6 +35,11 @@
                 android:resource="@xml/file_paths" />
 
         </provider>
+
+        <service
+            android:name="com.rexaps.rexmusic.RexMusicService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <activity
             android:name=".MainActivity"

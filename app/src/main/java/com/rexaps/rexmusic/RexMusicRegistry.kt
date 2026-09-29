@@ -24,8 +24,8 @@ object RexMusicRegistry {
             title = "Pamit",
             artist = "Tulus",
             album = "Manusia",
-            spotifyUrl = "https://open.spotify.com/track/7qF1tQY9j8zP1dVJxH6b4b",
-            cover = "https://i.scdn.co/image/ab67616d0000b273d34a0632f6861e8875d6899b"
+            spotifyUrl = "https://open.spotify.com/track/3B4VP6swG49n3scg2aMfA6",
+            cover = "https://i.scdn.co/image/ab67616d0000b27371c65edbeed32af70b900637"
         ),
         RexTrack(
             id = "raim-menari-nari",

@@ -6,8 +6,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -80,6 +86,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -145,15 +152,21 @@ private fun PlayerCardContent(
 ) {
     val brush = rememberPlayerBrush(accent)
     val busy = phase.isPlayerBusy
+    // Poster "bernapas": besar saat main, mengecil halus saat pause.
+    val posterScale = animateFloatAsState(
+        targetValue = if (isPlaying || busy) 1f else 0.9f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+        label = "posterScale"
+    )
     Column(
         modifier = modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(32.dp))
             .background(brush)
             .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        PlayerHeader(album, statusLabel(phase, bufferedPercent))
-        AlbumPoster(cover, title, busy, onAccentFound)
+        PlayerHeader(album, statusLabel(phase, bufferedPercent), isPlaying, busy)
+        AlbumPoster(cover, title, busy, accent, posterScale, onAccentFound)
         TrackInfo(title, artist, isLiked, onToggleLike)
         SeekSection(positionMs, durationMs, bufferedPercent, busy, onSeek)
         PlayerControls(isPlaying, busy, onPlayPause, onNext, onPrev)
@@ -179,8 +192,8 @@ private fun rememberPlayerBrush(accent: Color?): Brush {
     return remember(animated, surface) {
         Brush.verticalGradient(
             listOf(
-                animated.copy(alpha = 0.45f).compositeOver(surface),
-                animated.copy(alpha = 0.15f).compositeOver(surface),
+                animated.copy(alpha = 0.5f).compositeOver(surface),
+                animated.copy(alpha = 0.18f).compositeOver(surface),
                 surface
             )
         )
@@ -197,19 +210,54 @@ private fun Drawable.averageColor(): Color? = runCatching {
     Color((r / 256).toInt(), (g / 256).toInt(), (b / 256).toInt())
 }.getOrNull()
 
+// ───────────────────────── Equalizer (dipakai juga di layar utama) ─────────────────────────
+
+/** 3 batang equalizer kecil. Hanya tampilkan saat lagu benar-benar main (animasi kontinu). */
+@Composable
+fun EqualizerBars(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+    barWidth: Dp = 3.dp,
+    height: Dp = 14.dp
+) {
+    val transition = rememberInfiniteTransition(label = "eq")
+    val a by transition.animateFloat(
+        0.3f, 1f,
+        infiniteRepeatable(tween(420, easing = LinearEasing), RepeatMode.Reverse), label = "a"
+    )
+    val b by transition.animateFloat(
+        0.2f, 1f,
+        infiniteRepeatable(tween(560, easing = LinearEasing), RepeatMode.Reverse), label = "b"
+    )
+    val c by transition.animateFloat(
+        0.35f, 1f,
+        infiniteRepeatable(tween(340, easing = LinearEasing), RepeatMode.Reverse), label = "c"
+    )
+    Row(
+        modifier = modifier.height(height),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        listOf(a, b, c).forEach { fraction ->
+            Box(
+                Modifier.width(barWidth).fillMaxHeight(fraction)
+                    .clip(RoundedCornerShape(2.dp)).background(color)
+            )
+        }
+    }
+}
+
 // ───────────────────────── Header & poster ─────────────────────────
 
-/** Header: label status kecil (NOW PLAYING / MEMUAT / BUFFERING), nama album, ikon more. */
+/** Header: pill status (equalizer / spinner + label), nama album, ikon more. */
 @Composable
-private fun PlayerHeader(album: String, status: String) {
+private fun PlayerHeader(album: String, status: String, playing: Boolean, busy: Boolean) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.width(24.dp))
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Crossfade(targetState = status, label = "status") { label ->
-                Text(label, style = MaterialTheme.typography.labelSmall,
-                    color = muted, letterSpacing = 1.5.sp)
-            }
+            StatusPill(status, playing, busy)
+            Spacer(Modifier.height(6.dp))
             Text(album, style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -218,22 +266,53 @@ private fun PlayerHeader(album: String, status: String) {
     }
 }
 
-/** Poster 1:1 dengan shadow halus + border tipis; scrim + spinner saat loading/buffering. */
+@Composable
+private fun StatusPill(label: String, playing: Boolean, busy: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier.clip(CircleShape)
+            .background(scheme.onSurface.copy(alpha = 0.08f))
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        when {
+            busy -> CircularProgressIndicator(
+                strokeWidth = 1.5.dp, modifier = Modifier.size(10.dp), color = scheme.primary
+            )
+            playing -> EqualizerBars(color = scheme.primary, height = 10.dp, barWidth = 2.dp)
+            else -> Box(
+                Modifier.size(6.dp).clip(CircleShape)
+                    .background(scheme.onSurfaceVariant.copy(alpha = 0.6f))
+            )
+        }
+        Crossfade(targetState = label, label = "status") { text ->
+            Text(text, style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant, letterSpacing = 1.5.sp)
+        }
+    }
+}
+
+/** Poster 1:1: glow warna cover, border tipis, scale saat pause, scrim + spinner saat loading. */
 @Composable
 private fun AlbumPoster(
     cover: String,
     title: String,
     busy: Boolean,
+    accent: Color?,
+    scale: State<Float>,
     onAccentFound: (Color) -> Unit
 ) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(24.dp)
+    val glow = accent ?: MaterialTheme.colorScheme.primary
     val request = remember(cover) {
         ImageRequest.Builder(context).data(cover).allowHardware(false).crossfade(true).build()
     }
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-            .shadow(16.dp, shape)
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+            .shadow(24.dp, shape, ambientColor = glow, spotColor = glow)
             .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -270,9 +349,9 @@ private fun AlbumPoster(
 private fun TrackInfo(title: String, artist: String, isLiked: Boolean, onToggleLike: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.basicMarquee())
-            Text(artist, style = MaterialTheme.typography.bodyMedium,
+            Text(artist, style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -420,15 +499,15 @@ private fun SideControlButton(
     IconButton(
         onClick = onClick,
         interactionSource = source,
-        modifier = Modifier.size(52.dp)
+        modifier = Modifier.size(56.dp)
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
             .background(onSurface.copy(alpha = 0.08f), CircleShape)
     ) {
-        Icon(icon, contentDescription = description, tint = onSurface, modifier = Modifier.size(28.dp))
+        Icon(icon, contentDescription = description, tint = onSurface, modifier = Modifier.size(30.dp))
     }
 }
 
-/** Tombol play/pause 64dp: gradient, shadow berwarna, scale saat ditekan, spinner saat loading. */
+/** Tombol play/pause 72dp: gradient, shadow berwarna, scale saat ditekan, spinner saat loading. */
 @Composable
 private fun PlayPauseButton(isPlaying: Boolean, loading: Boolean, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
@@ -437,9 +516,9 @@ private fun PlayPauseButton(isPlaying: Boolean, loading: Boolean, onClick: () ->
     IconButton(
         onClick = onClick,
         interactionSource = source,
-        modifier = Modifier.size(64.dp)
+        modifier = Modifier.size(72.dp)
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
-            .shadow(12.dp, CircleShape, spotColor = scheme.primary)
+            .shadow(14.dp, CircleShape, spotColor = scheme.primary)
             .background(Brush.linearGradient(listOf(scheme.primary, scheme.tertiary)), CircleShape)
     ) {
         Crossfade(
@@ -452,12 +531,12 @@ private fun PlayPauseButton(isPlaying: Boolean, loading: Boolean, onClick: () ->
         ) { s ->
             when (s) {
                 0 -> CircularProgressIndicator(
-                    color = scheme.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(28.dp)
+                    color = scheme.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(30.dp)
                 )
                 1 -> Icon(Icons.Default.Pause, contentDescription = "Jeda",
-                    tint = scheme.onPrimary, modifier = Modifier.size(32.dp))
+                    tint = scheme.onPrimary, modifier = Modifier.size(36.dp))
                 else -> Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
-                    tint = scheme.onPrimary, modifier = Modifier.size(32.dp))
+                    tint = scheme.onPrimary, modifier = Modifier.size(36.dp))
             }
         }
     }

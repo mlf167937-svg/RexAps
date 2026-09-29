@@ -1,5 +1,10 @@
 package com.rexaps.rexmusic
 
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -14,7 +19,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -24,6 +32,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,9 +50,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -60,6 +76,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,16 +89,24 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.rexaps.rexmusic.player.EqualizerBars
 import com.rexaps.rexmusic.player.MusicPlayerCard
 import java.util.Calendar
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+
+private const val NOTIF_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 
 // ───────────────────────── Screen (stateful entry point) ─────────────────────────
 
@@ -91,13 +116,33 @@ fun RexMusicScreen(
     onBack: () -> Unit = {},
     vm: RexMusicViewModel = viewModel()
 ) {
-    val state by vm.state.collectAsState()
-    var showPlayer by remember { mutableStateOf(false) }
-    var isLiked by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
-    // id lagu yang sedang loading/buffering, untuk spinner di list
-    val loadingId = if (state.phase.isPlayerBusy) state.nowPlaying?.id else null
+    // State tanpa posisi -> tidak ikut recompose tiap 500ms. Posisi dibaca terpisah di leaf.
+    val state by remember(vm) {
+        vm.state.map { it.copy(positionMs = 0L) }.distinctUntilChanged()
+    }.collectAsState(initial = vm.state.value.copy(positionMs = 0L))
+    val positionState = remember(vm) {
+        vm.state.map { it.positionMs }.distinctUntilChanged()
+    }.collectAsState(initial = vm.state.value.positionMs)
+
+    var showPlayer by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val liked = remember { mutableStateMapOf<String, Boolean>() }
+
+    // Izin notifikasi (Android 13+), diminta saat pertama kali memutar lagu.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    val requestNotifications: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, NOTIF_PERMISSION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionLauncher.launch(NOTIF_PERMISSION)
+        }
+    }
+
+    BackHandler(enabled = showPlayer) { showPlayer = false }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { pad ->
         AnimatedContent(
@@ -110,27 +155,32 @@ fun RexMusicScreen(
             if (playerVisible) {
                 if (track != null) {
                     PlayerPage(
-                        track = track, isPlaying = state.isPlaying,
-                        positionMs = state.positionMs, durationMs = state.durationMs,
-                        phase = state.phase, bufferedPercent = state.bufferedPercent,
-                        isLiked = isLiked, onPlayPause = { vm.togglePlay() },
-                        onNext = { vm.next() }, onPrev = { vm.prev() },
-                        onSeek = { vm.seekTo(it) }, onToggleLike = { isLiked = !isLiked },
+                        track = track, state = state, positionState = positionState,
+                        isLiked = liked[track.id] == true,
+                        onPlayPause = { vm.togglePlay() },
+                        onNext = { vm.next() },
+                        onPrev = { vm.prev() },
+                        onOpenPrevious = { vm.prev(force = true) },
+                        onSeek = { vm.seekTo(it) },
+                        onToggleLike = { liked[track.id] = !(liked[track.id] ?: false) },
                         onClose = { showPlayer = false }
                     )
                 }
             } else {
                 BrowsePage(
-                    query = query, loading = state.loading, loadingText = state.loadingText,
-                    error = state.error, searchResults = state.searchResults, tracks = state.tracks,
-                    loadingId = loadingId,
+                    state = state, positionState = positionState, query = query,
                     onQueryChange = {
                         query = it
                         if (it.isBlank()) vm.clearSearch() else vm.search(it)
                     },
                     onClear = { query = ""; vm.clearSearch() },
-                    onPlaySearch = { vm.playFromSearch(it); showPlayer = true },
-                    onPlayMain = { vm.playFromMain(it); showPlayer = true },
+                    onPlaySearch = { requestNotifications(); vm.playFromSearch(it); showPlayer = true },
+                    onPlayHistory = { requestNotifications(); vm.playFromHistory(it); showPlayer = true },
+                    onPlayMain = { requestNotifications(); vm.playFromMain(it); showPlayer = true },
+                    onDismissError = { vm.dismissError() },
+                    onTogglePlay = { vm.togglePlay() },
+                    onNext = { vm.next() },
+                    onOpenPlayer = { showPlayer = true },
                     onBack = onBack
                 )
             }
@@ -140,67 +190,280 @@ fun RexMusicScreen(
 
 // ───────────────────────── Pages ─────────────────────────
 
-/** Halaman pemutar: header + kartu player + tombol tutup. */
+/** Halaman pemutar: top bar + kartu player + error + lagu sebelumnya/berikutnya. */
 @Composable
 private fun PlayerPage(
     track: RexTrack,
-    isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
-    phase: LoadPhase,
-    bufferedPercent: Int,
+    state: RexMusicUiState,
+    positionState: State<Long>,
     isLiked: Boolean,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
+    onOpenPrevious: () -> Unit,
     onSeek: (Float) -> Unit,
     onToggleLike: () -> Unit,
     onClose: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenHeader(greeting = "Sedang diputar", title = "RexMusic", onBack = onClose)
+        PlayerTopBar(onClose)
         MusicPlayerCard(
-            track = track, isPlaying = isPlaying, positionMs = positionMs,
-            durationMs = durationMs, isLiked = isLiked, onPlayPause = onPlayPause,
+            track = track, isPlaying = state.isPlaying, positionMs = positionState.value,
+            durationMs = state.durationMs, isLiked = isLiked, onPlayPause = onPlayPause,
             onNext = onNext, onPrev = onPrev, onSeek = onSeek, onToggleLike = onToggleLike,
-            phase = phase, bufferedPercent = bufferedPercent,
+            phase = state.phase, bufferedPercent = state.bufferedPercent,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
-        TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("Tutup player")
+        PlayerError(state.error, onRetry = onPlayPause)
+        NeighborSection(state.previous, state.upNext, onOpenPrevious, onNext)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Top bar player: tombol tutup (panah bawah) + judul di tengah. */
+@Composable
+private fun PlayerTopBar(onClose: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Tutup player",
+                modifier = Modifier.size(32.dp))
+        }
+        Text("RexMusic", modifier = Modifier.weight(1f), textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(48.dp))
+    }
+}
+
+/** Banner error di halaman player dengan tombol "Coba lagi" (putar ulang lewat API). */
+@Composable
+private fun PlayerError(error: String?, onRetry: () -> Unit) {
+    AnimatedVisibility(visible = !error.isNullOrBlank()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.errorContainer
+        ) {
+            Row(
+                Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Warning, contentDescription = "Error",
+                    tint = MaterialTheme.colorScheme.onErrorContainer)
+                Spacer(Modifier.width(8.dp))
+                Text(error.orEmpty(), modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onRetry) {
+                    Icon(Icons.Default.Refresh, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Coba lagi")
+                }
+            }
         }
     }
 }
 
-/** Halaman browse: header, search, status (loading/error), lalu list/empty/skeleton. */
+/** Dua baris: lagu sebelumnya (dari riwayat) dan berikutnya (dari antrian). */
+@Composable
+private fun NeighborSection(
+    previous: RexTrack?,
+    upNext: RexTrack?,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    if (previous == null && upNext == null) return
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (previous != null) {
+            NeighborRow("SEBELUMNYA", previous, Icons.Default.SkipPrevious, onPrevious)
+        }
+        if (upNext != null) {
+            NeighborRow("SELANJUTNYA", upNext, Icons.Default.SkipNext, onNext)
+        }
+    }
+}
+
+@Composable
+private fun NeighborRow(
+    label: String,
+    track: RexTrack,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Row(
+            Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CoverThumb(track.cover, 48.dp)
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary)
+                Text(track.title, style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.artist, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Halaman browse: header, search, status, list/empty/skeleton, dan mini player di bawah. */
 @Composable
 private fun BrowsePage(
+    state: RexMusicUiState,
+    positionState: State<Long>,
     query: String,
-    loading: Boolean,
-    loadingText: String,
-    error: String?,
-    searchResults: List<RexTrack>,
-    tracks: List<RexTrack>,
-    loadingId: String?,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
     onPlaySearch: (Int) -> Unit,
+    onPlayHistory: (Int) -> Unit,
     onPlayMain: (Int) -> Unit,
+    onDismissError: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPlayer: () -> Unit,
     onBack: () -> Unit
 ) {
     val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val noData = searchResults.isEmpty() && tracks.isEmpty()
+    val noData = state.searchResults.isEmpty() && state.tracks.isEmpty() && state.history.isEmpty()
+    val loadingId = if (state.phase.isPlayerBusy) state.nowPlaying?.id else null
+    val nowPlaying = state.nowPlaying
 
-    Column(Modifier.fillMaxSize()) {
-        ScreenHeader(greetingForHour(hour), "RexMusic", onBack)
-        RexSearchBar(query, onQueryChange, onClear, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-        LoadingHint(loading, loadingText)
-        ErrorBanner(error)
-        when {
-            loading && noData -> SkeletonList()
-            noData && error == null -> EmptyState(hasQuery = query.isNotBlank())
-            else -> TrackList(searchResults, tracks, loadingId, onPlaySearch, onPlayMain)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            ScreenHeader(greetingForHour(hour), "RexMusic", onBack)
+            RexSearchBar(query, onQueryChange, onClear, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            LoadingHint(state.loading, state.loadingText)
+            ErrorBanner(state.error, onDismissError)
+            when {
+                state.loading && noData -> SkeletonList()
+                noData && state.error == null -> EmptyState(hasQuery = query.isNotBlank())
+                else -> TrackList(
+                    searchResults = state.searchResults,
+                    history = state.history,
+                    tracks = state.tracks,
+                    nowId = nowPlaying?.id,
+                    isPlaying = state.isPlaying,
+                    loadingId = loadingId,
+                    bottomPadding = if (nowPlaying != null) 112.dp else 32.dp,
+                    onPlaySearch = onPlaySearch,
+                    onPlayHistory = onPlayHistory,
+                    onPlayMain = onPlayMain
+                )
+            }
         }
+
+        AnimatedVisibility(
+            visible = nowPlaying != null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut()
+        ) {
+            if (nowPlaying != null) {
+                MiniPlayer(
+                    track = nowPlaying, isPlaying = state.isPlaying,
+                    busy = state.phase.isPlayerBusy, durationMs = state.durationMs,
+                    positionState = positionState, onToggle = onTogglePlay,
+                    onNext = onNext, onOpen = onOpenPlayer
+                )
+            }
+        }
+    }
+}
+
+// ───────────────────────── Mini player ─────────────────────────
+
+/** Mini player melayang di bawah halaman browse: cover, judul, play/pause, next, progres tipis. */
+@Composable
+private fun MiniPlayer(
+    track: RexTrack,
+    isPlaying: Boolean,
+    busy: Boolean,
+    durationMs: Long,
+    positionState: State<Long>,
+    onToggle: () -> Unit,
+    onNext: () -> Unit,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = scheme.surfaceVariant,
+        tonalElevation = 3.dp,
+        shadowElevation = 12.dp,
+        border = BorderStroke(1.dp, scheme.onSurface.copy(alpha = 0.08f))
+    ) {
+        Column {
+            Row(
+                Modifier.padding(start = 10.dp, end = 6.dp, top = 10.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CoverThumb(track.cover, 48.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(track.title, style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.artist, style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(
+                    onClick = onToggle,
+                    modifier = Modifier.size(42.dp)
+                        .background(Brush.linearGradient(listOf(scheme.primary, scheme.tertiary)), CircleShape)
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(
+                            color = scheme.onPrimary, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Jeda" else "Putar",
+                            tint = scheme.onPrimary
+                        )
+                    }
+                }
+                IconButton(onClick = onNext) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Lagu berikutnya")
+                }
+            }
+            MiniProgress(positionState, durationMs)
+        }
+    }
+}
+
+/** Garis progres tipis. Membaca posisi sendiri supaya hanya bagian ini yang recompose. */
+@Composable
+private fun MiniProgress(positionState: State<Long>, durationMs: Long) {
+    val scheme = MaterialTheme.colorScheme
+    val progress = if (durationMs > 0) {
+        (positionState.value.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Box(Modifier.fillMaxWidth().height(3.dp).background(scheme.onSurface.copy(alpha = 0.1f))) {
+        Box(
+            Modifier.fillMaxWidth(progress).fillMaxHeight()
+                .background(Brush.horizontalGradient(listOf(scheme.primary, scheme.tertiary)))
+        )
     }
 }
 
@@ -294,22 +557,30 @@ private fun LoadingHint(loading: Boolean, loadingText: String) {
     }
 }
 
-/** Banner error ringkas, muncul hanya kalau ada pesan. */
+/** Banner error ringkas dengan tombol tutup, muncul hanya kalau ada pesan. */
 @Composable
-private fun ErrorBanner(error: String?) {
+private fun ErrorBanner(error: String?, onDismiss: () -> Unit) {
     AnimatedVisibility(visible = !error.isNullOrBlank()) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.errorContainer
         ) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(Icons.Default.Warning, contentDescription = "Error",
                     tint = MaterialTheme.colorScheme.onErrorContainer)
                 Spacer(Modifier.width(8.dp))
                 Text("Terjadi masalah: ${error.orEmpty()}",
+                    modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     style = MaterialTheme.typography.bodySmall)
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Tutup pesan",
+                        tint = MaterialTheme.colorScheme.onErrorContainer)
+                }
             }
         }
     }
@@ -386,22 +657,48 @@ private fun SkeletonRow(brush: Brush) {
 
 // ───────────────────────── List & sections ─────────────────────────
 
-/** Satu LazyColumn untuk dua section (tanpa nested lazy). */
+/** Satu LazyColumn: hasil pencarian, riwayat (baris horizontal), lalu rekomendasi. */
 @Composable
 private fun TrackList(
     searchResults: List<RexTrack>,
+    history: List<RexTrack>,
     tracks: List<RexTrack>,
+    nowId: String?,
+    isPlaying: Boolean,
     loadingId: String?,
+    bottomPadding: Dp,
     onPlaySearch: (Int) -> Unit,
+    onPlayHistory: (Int) -> Unit,
     onPlayMain: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        trackSection("Hasil Pencarian", "s", searchResults, loadingId, onPlaySearch)
-        trackSection("Rekomendasi", "m", tracks, loadingId, onPlayMain)
+        trackSection("Hasil Pencarian", "s", searchResults, nowId, isPlaying, loadingId, onPlaySearch)
+
+        if (history.isNotEmpty()) {
+            item(key = "header-h") {
+                SectionHeader("Terakhir Diputar", history.size, Modifier.padding(top = 14.dp, bottom = 2.dp))
+            }
+            item(key = "row-h") {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    itemsIndexed(history, key = { _, t -> "h-${t.id}" }) { idx, track ->
+                        val active = track.id == nowId
+                        HistoryCard(
+                            track = track, active = active, playing = active && isPlaying,
+                            onClick = { onPlayHistory(idx) }
+                        )
+                    }
+                }
+            }
+        }
+
+        trackSection("Rekomendasi", "m", tracks, nowId, isPlaying, loadingId, onPlayMain)
     }
 }
 
@@ -410,6 +707,8 @@ private fun LazyListScope.trackSection(
     title: String,
     keyPrefix: String,
     tracks: List<RexTrack>,
+    nowId: String?,
+    isPlaying: Boolean,
     loadingId: String?,
     onTrackClick: (Int) -> Unit
 ) {
@@ -418,9 +717,12 @@ private fun LazyListScope.trackSection(
         SectionHeader(title, tracks.size, Modifier.padding(top = 14.dp, bottom = 2.dp))
     }
     itemsIndexed(tracks, key = { _, t -> "$keyPrefix-${t.id}" }) { idx, track ->
+        val active = track.id == nowId
         StaggerIn(index = idx, key = "$keyPrefix-${track.id}") {
             TrackCard(
                 track = track,
+                active = active,
+                playing = active && isPlaying,
                 loading = track.id == loadingId,
                 onClick = { onTrackClick(idx) }
             )
@@ -459,21 +761,91 @@ private fun CountBadge(count: Int) {
     }
 }
 
+// ───────────────────────── History card (horizontal) ─────────────────────────
+
+/** Kartu besar untuk baris "Terakhir Diputar". Tap = putar ulang (audio diambil lagi lewat API). */
+@Composable
+private fun HistoryCard(track: RexTrack, active: Boolean, playing: Boolean, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(source)
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        interactionSource = source,
+        modifier = Modifier.width(140.dp).graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
+        },
+        shape = RoundedCornerShape(20.dp),
+        color = Color.Transparent
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.size(140.dp).clip(RoundedCornerShape(20.dp)).background(scheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (track.cover.isNotBlank()) {
+                    AsyncImage(
+                        model = track.cover, contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Default.MusicNote, contentDescription = null,
+                        tint = scheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                }
+                if (active) {
+                    Box(
+                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (playing) EqualizerBars(color = Color.White, height = 22.dp, barWidth = 4.dp)
+                        else Icon(Icons.Default.PlayArrow, contentDescription = "Putar", tint = Color.White)
+                    }
+                }
+                Box(
+                    Modifier.align(Alignment.BottomEnd).padding(8.dp).size(30.dp)
+                        .clip(CircleShape).background(scheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null,
+                        tint = scheme.onPrimary, modifier = Modifier.size(18.dp))
+                }
+            }
+            Column(Modifier.padding(horizontal = 4.dp)) {
+                Text(track.title, style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (active) scheme.primary else scheme.onSurface,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.artist, style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
 // ───────────────────────── Track card ─────────────────────────
 
 /** Adapter dari RexTrack ke kartu stateless (supaya gampang di-preview). */
 @Composable
-private fun TrackCard(track: RexTrack, loading: Boolean, onClick: () -> Unit) {
+private fun TrackCard(
+    track: RexTrack,
+    active: Boolean,
+    playing: Boolean,
+    loading: Boolean,
+    onClick: () -> Unit
+) {
     TrackCardContent(
         title = track.title,
         artist = track.artist,
         cover = track.cover,
         onClick = onClick,
-        loading = loading
+        loading = loading,
+        active = active,
+        playing = playing
     )
 }
 
-/** Kartu lagu: cover, teks, tombol play/spinner; ada ripple + scale saat ditekan. */
+/** Kartu lagu: cover, teks, badge play/equalizer/spinner; highlight kalau sedang aktif. */
 @Composable
 private fun TrackCardContent(
     title: String,
@@ -482,7 +854,9 @@ private fun TrackCardContent(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badge: String? = null,
-    loading: Boolean = false
+    loading: Boolean = false,
+    active: Boolean = false,
+    playing: Boolean = false
 ) {
     val source = remember { MutableInteractionSource() }
     val scale = rememberPressScale(source)
@@ -495,7 +869,9 @@ private fun TrackCardContent(
             scaleY = scale.value
         },
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        color = if (active) primary.copy(alpha = 0.14f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = if (active) BorderStroke(1.dp, primary.copy(alpha = 0.35f)) else null
     ) {
         Row(
             modifier = Modifier
@@ -505,17 +881,17 @@ private fun TrackCardContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             CoverThumb(cover)
-            TrackTexts(title, artist, badge, Modifier.weight(1f))
-            PlayBadgeButton(loading)
+            TrackTexts(title, artist, badge, active, Modifier.weight(1f))
+            PlayBadgeButton(loading, active && playing)
         }
     }
 }
 
-/** Thumbnail 56dp rounded 12dp; fallback ikon kalau cover kosong. */
+/** Thumbnail rounded 12dp (ukuran bisa diatur); fallback ikon kalau cover kosong. */
 @Composable
-private fun CoverThumb(cover: String) {
+private fun CoverThumb(cover: String, size: Dp = 56.dp) {
     Box(
-        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
+        modifier = Modifier.size(size).clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
@@ -533,10 +909,17 @@ private fun CoverThumb(cover: String) {
 
 /** Judul (+ badge opsional) dan artist, masing-masing 1 baris ellipsis. */
 @Composable
-private fun TrackTexts(title: String, artist: String, badge: String?, modifier: Modifier = Modifier) {
+private fun TrackTexts(
+    title: String,
+    artist: String,
+    badge: String?,
+    active: Boolean,
+    modifier: Modifier = Modifier
+) {
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (badge != null) {
                 Spacer(Modifier.width(6.dp))
@@ -553,21 +936,21 @@ private fun TrackTexts(title: String, artist: String, badge: String?, modifier: 
     }
 }
 
-/** Lingkaran kecil: ikon play, atau spinner kalau lagu ini sedang dimuat. */
+/** Lingkaran kecil: spinner (loading), equalizer (sedang main), atau ikon play. */
 @Composable
-private fun PlayBadgeButton(loading: Boolean) {
+private fun PlayBadgeButton(loading: Boolean, playing: Boolean) {
     Box(
         modifier = Modifier.size(36.dp).clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center
     ) {
-        if (loading) {
-            CircularProgressIndicator(
+        when {
+            loading -> CircularProgressIndicator(
                 strokeWidth = 2.dp, modifier = Modifier.size(18.dp),
                 color = MaterialTheme.colorScheme.primary
             )
-        } else {
-            Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
+            playing -> EqualizerBars(color = MaterialTheme.colorScheme.primary)
+            else -> Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
                 tint = MaterialTheme.colorScheme.primary)
         }
     }
@@ -621,6 +1004,7 @@ private fun TrackCardPreview() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TrackCardContent("Judul Lagu Yang Cukup Panjang Sekali", "Nama Artis", "", {}, badge = "Popular")
             TrackCardContent("Sedang Dimuat", "Nama Artis", "", {}, loading = true)
+            TrackCardContent("Sedang Diputar", "Nama Artis", "", {}, active = true, playing = true)
         }
     }
 }
