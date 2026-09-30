@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.PowerManager
+import java.io.File
+import java.io.FileInputStream
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -59,9 +61,12 @@ object RexPlayerController {
     private var buffering = false
     private var resolveText = ""
 
-    // konteks: daftar asal lagu (search / rekomendasi / riwayat), dipakai saat autoplay mati
+    // konteks: daftar asal lagu (search / rekomendasi / riwayat / perpustakaan offline)
     private var queue: List<RexTrack> = emptyList()
     private var queueIndex = 0
+
+    // true = tombol next mengikuti urutan konteks (dipakai perpustakaan offline), bukan autoplay acak
+    private var followContext = false
 
     // antrian buatan pengguna (metadata saja) + autoplay pintar
     private val userQueue = mutableListOf<RexTrack>()
@@ -91,15 +96,55 @@ object RexPlayerController {
         userQueue.addAll(queueStore.load())
         autoplay = taste.autoplay
         _state.update { it.copy(popularCount = RexPopularSongs.tracks.size) }
+
+        RexOfflineManager.init(appContext)
+        scope.launch { RexOfflineManager.state.collect { onOfflineChanged(it) } }
+        scope.launch { RexOfflineManager.messages.collect { postNotice(it) } }
+
         publishQueueInfo()
         publishTaste()
     }
 
+    private fun offlineMode(): Boolean = RexOfflineManager.state.value.enabled
+
+    private fun onOfflineChanged(o: OfflineState) {
+        val modeChanged = _state.value.offline.enabled != o.enabled
+        _state.update { it.copy(offline = o) }
+        if (modeChanged) publishQueueInfo()
+    }
+
+    // ───────────────────────── Offline mode ─────────────────────────
+
+    fun setOfflineMode(on: Boolean) {
+        RexOfflineManager.setOfflineMode(on)
+        clearSearch()
+        postNotice(if (on) "Mode offline aktif. Hanya lagu unduhan yang diputar" else "Kembali online")
+    }
+
+    /** Putar lagu dari perpustakaan offline; Next mengikuti urutan perpustakaan. */
+    fun playFromOffline(track: RexTrack) {
+        val list = RexOfflineManager.state.value.entries.map { it.track }
+        val index = list.indexOfFirst { it.id == track.id }
+        if (index < 0) return
+        startQueue(list, index, follow = true)
+    }
+
+    /** "Putar semua" / "Acak" di perpustakaan offline. */
+    fun playOfflineAll(shuffle: Boolean) {
+        val list = RexOfflineManager.state.value.entries.map { it.track }
+        if (list.isEmpty()) {
+            postNotice("Belum ada lagu offline")
+            return
+        }
+        startQueue(if (shuffle) list.shuffled() else list, 0, follow = true)
+    }
+
     // ───────────────────────── Search ─────────────────────────
 
-    /** Debounced: aman dipanggil di tiap ketikan. */
+    /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
     fun search(query: String) {
         searchJob?.cancel()
+        if (offlineMode()) return
         val q = query.trim()
         if (q.isEmpty()) {
             clearSearch()
@@ -156,23 +201,25 @@ object RexPlayerController {
         startQueue(list, index)
     }
 
-    /** index mengacu ke state.history (terbaru di depan). Audio diambil ulang lewat API. */
+    /** index mengacu ke state.history (terbaru di depan). Lagu yang sudah diunduh diputar dari file. */
     fun playFromHistory(index: Int) {
         val list = _state.value.history
         if (index !in list.indices) return
         startQueue(list, index)
     }
 
-    private fun startQueue(list: List<RexTrack>, index: Int) {
+    private fun startQueue(list: List<RexTrack>, index: Int, follow: Boolean = false) {
         cancelPending()
         queue = list
         queueIndex = index
+        followContext = follow
         beginTrack(list[index])
     }
 
-    /** Mix pintar: langsung pilih lagu dari artis favorit / populer. */
+    /** Mix pintar: langsung pilih lagu dari artis favorit / populer (atau dari unduhan saat offline). */
     fun playMix() {
         cancelPending()
+        followContext = false
         playSmart()
     }
 
@@ -253,7 +300,7 @@ object RexPlayerController {
     /**
      * Kembali:
      * - Lagu sudah jalan > 3 detik (dan tidak force) -> ulang dari awal.
-     * - Ada riwayat -> putar lagu sebelumnya (nama disimpan, audio diambil ulang lewat API).
+     * - Ada riwayat -> putar lagu sebelumnya (nama disimpan, audio diambil ulang lewat API / dari file offline).
      * - Tidak ada riwayat -> mundur di daftar asal.
      */
     fun prev(force: Boolean = false) {
@@ -282,15 +329,20 @@ object RexPlayerController {
 
     fun currentTrack(): RexTrack? = _state.value.nowPlaying
 
-    /** Urutan: antrian pengguna -> autoplay pintar -> daftar asal. */
+    /**
+     * Urutan: antrian pengguna -> autoplay pintar -> daftar asal.
+     * Saat offline, lagu yang belum diunduh dilewati.
+     */
     private fun advance() {
-        if (userQueue.isNotEmpty()) {
-            val track = userQueue.removeAt(0)
+        val offline = offlineMode()
+        val queued = userQueue.indexOfFirst { !offline || RexOfflineManager.isDownloaded(it) }
+        if (queued >= 0) {
+            val track = userQueue.removeAt(queued)
             persistQueue()
             beginTrack(track)
             return
         }
-        if (autoplay) {
+        if (autoplay && !followContext) {
             playSmart()
             return
         }
@@ -299,8 +351,16 @@ object RexPlayerController {
 
     private fun playContextNext() {
         if (queue.isEmpty()) return
-        queueIndex = (queueIndex + 1) % queue.size
-        queue.getOrNull(queueIndex)?.let { beginTrack(it) }
+        val offline = offlineMode()
+        for (i in queue.indices) {
+            queueIndex = (queueIndex + 1) % queue.size
+            val track = queue[queueIndex]
+            if (!offline || RexOfflineManager.isDownloaded(track)) {
+                beginTrack(track)
+                return
+            }
+        }
+        _state.update { it.copy(error = "tidak ada lagu offline lain untuk diputar") }
     }
 
     /** Pastikan target ada di antrian konteks & queueIndex menunjuk ke sana. */
@@ -332,13 +392,17 @@ object RexPlayerController {
     private fun markTrack(track: RexTrack) {
         tasteCounted = false
         resolving = true
-        resolveText = if (track.spotifyUrl.isBlank()) "mencari ${track.title}..." else "menyiapkan audio..."
+        resolveText = when {
+            RexOfflineManager.isDownloaded(track) -> "membuka dari penyimpanan..."
+            track.spotifyUrl.isBlank() -> "mencari ${track.title}..."
+            else -> "menyiapkan audio..."
+        }
         _state.update {
             it.copy(
                 nowPlaying = track, currentIndex = queueIndex,
                 isPlaying = false, positionMs = 0L, durationMs = 0L,
                 bufferedPercent = 0, seekVersion = it.seekVersion + 1, error = null,
-                repeatTotal = 0, repeatLeft = 0
+                repeatTotal = 0, repeatLeft = 0, nowPlayingOffline = false
             )
         }
         publishLoading()
@@ -346,9 +410,27 @@ object RexPlayerController {
         RexMusicService.start(appContext)
     }
 
-    /** true = audio berhasil di-resolve dan player dimulai. */
+    /**
+     * File offline dipakai kalau ada (tanpa internet). Kalau belum diunduh: saat mode offline gagal
+     * dengan pesan jelas, saat online diambil lewat API. true = pemutaran dimulai.
+     */
     private suspend fun resolveAndStart(track: RexTrack): Boolean {
-        val result = resolveTrack(track)
+        val local = RexOfflineManager.audioFile(track)
+        if (local != null) {
+            resolving = false
+            _state.update { it.copy(nowPlayingOffline = true) }
+            publishLoading()
+            startPlayer(local.absolutePath, local = true)
+            return true
+        }
+        if (offlineMode()) {
+            resolving = false
+            _state.update { it.copy(error = "Mode offline: \"${track.title}\" belum diunduh") }
+            publishLoading()
+            return false
+        }
+
+        val result = RexTrackResolver.resolve(track)
         resolving = false
         val fresh = result.getOrNull()
         if (fresh == null) {
@@ -360,30 +442,6 @@ object RexPlayerController {
         publishLoading()
         startPlayer(fresh.audioUrl)
         return true
-    }
-
-    /**
-     * 1) spotifyUrl ada -> langsung resolve audio.
-     * 2) Gagal / kosong -> search "artist + title", ambil hasil pertama, resolve.
-     * id/title/artist/album/cover asli dipertahankan.
-     */
-    private suspend fun resolveTrack(track: RexTrack): Result<RexTrack> {
-        if (track.spotifyUrl.isNotBlank()) {
-            val direct = RexMusicApi.resolveAudio(track)
-            if (direct.isSuccess) return direct
-        }
-
-        val list = RexMusicApi.search("${track.artist} ${track.title}".trim())
-            .getOrElse { return Result.failure(it) }
-        val first = list.firstOrNull()
-            ?: return Result.failure(Exception("lagu \"${track.title}\" tidak ditemukan"))
-
-        return RexMusicApi.resolveAudio(
-            first.copy(
-                id = track.id, title = track.title, artist = track.artist,
-                album = track.album, cover = track.cover.ifBlank { first.cover }
-            )
-        )
     }
 
     /** Update track di queue + semua list berdasarkan id (bukan index, jadi anti out-of-bounds). */
@@ -409,7 +467,8 @@ object RexPlayerController {
         _state.update {
             it.copy(
                 isPlaying = false, positionMs = 0L, durationMs = 0L, bufferedPercent = 0,
-                seekVersion = it.seekVersion + 1, error = null, repeatTotal = 0, repeatLeft = 0
+                seekVersion = it.seekVersion + 1, error = null, repeatTotal = 0, repeatLeft = 0,
+                nowPlayingOffline = false
             )
         }
         publishLoading()
@@ -428,10 +487,11 @@ object RexPlayerController {
             if (attempts == 0) {
                 resolving = false
                 publishLoading()
-                if (queue.isNotEmpty()) {
-                    playContextNext()
-                } else {
-                    _state.update {
+                when {
+                    offlineMode() && RexOfflineManager.state.value.entries.isEmpty() ->
+                        _state.update { it.copy(error = "belum ada lagu offline. Unduh lagu dulu saat online") }
+                    queue.isNotEmpty() -> playContextNext()
+                    else -> _state.update {
                         it.copy(error = "belum ada lagu berikutnya. Isi RexPopularSongs atau putar dari daftar")
                     }
                 }
@@ -442,11 +502,14 @@ object RexPlayerController {
     }
 
     /**
-     * ~65% dari artis favorit (kalau sudah ada selera terbaca), selain itu acak dari populer.
+     * Online: ~65% dari artis favorit (kalau selera sudah terbaca), selain itu acak dari populer.
+     * Offline: sama, tapi hanya dari lagu yang sudah diunduh (tanpa internet).
      * Lagu yang baru diputar dihindari.
      */
     private suspend fun smartPick(exclude: Set<String>): RexTrack? {
         val avoid = recentKeys() + exclude
+        if (offlineMode()) return offlinePick(avoid)
+
         val favorite = taste.pickFavorite()
         if (favorite != null && Random.nextFloat() < TASTE_CHANCE) {
             pickFromArtist(favorite, avoid)?.let { return it }
@@ -454,6 +517,21 @@ object RexPlayerController {
         popularPick(avoid)?.let { return it }
         if (favorite != null) pickFromArtist(favorite, avoid)?.let { return it }
         return null
+    }
+
+    private fun offlinePick(avoid: Set<String>): RexTrack? {
+        val all = RexOfflineManager.state.value.entries.map { it.track }
+        if (all.isEmpty()) return null
+        val favorite = taste.pickFavorite()
+        if (favorite != null && Random.nextFloat() < TASTE_CHANCE) {
+            all.filter {
+                primaryArtist(it.artist).equals(favorite, ignoreCase = true) && songKey(it) !in avoid
+            }.randomOrNull()?.let { return it }
+        }
+        val nowKey = _state.value.nowPlaying?.let { songKey(it) }
+        return all.filter { songKey(it) !in avoid }.randomOrNull()
+            ?: all.filter { songKey(it) != nowKey }.randomOrNull()
+            ?: all.randomOrNull()
     }
 
     private suspend fun pickFromArtist(artist: String, avoid: Set<String>): RexTrack? {
@@ -506,7 +584,7 @@ object RexPlayerController {
         publishQueueInfo()
     }
 
-    /** Lagu tepat sebelum lagu yang sedang diputar di riwayat. */
+    /** Lagu tepat sebelum lagu yang sedang diputar di riwayat (saat offline: hanya yang sudah diunduh). */
     private fun previousTarget(now: RexTrack?): RexTrack? {
         val last = history.lastOrNull()
         val list = if (now != null && last != null && sameSong(last, now)) {
@@ -514,14 +592,16 @@ object RexPlayerController {
         } else {
             history
         }
-        return list.lastOrNull()
+        val offline = offlineMode()
+        return list.lastOrNull { !offline || RexOfflineManager.isDownloaded(it) }
     }
 
     private fun publishQueueInfo() {
         val now = _state.value.nowPlaying
         val hist = history.asReversed().filter { now == null || !sameSong(it, now) }
+        val contextNext = !autoplay || followContext
         val up = userQueue.firstOrNull()
-            ?: if (!autoplay && queue.size > 1) queue[(queueIndex + 1) % queue.size] else null
+            ?: if (contextNext && queue.size > 1) queue[(queueIndex + 1) % queue.size] else null
         _state.update {
             it.copy(
                 history = hist,
@@ -535,8 +615,9 @@ object RexPlayerController {
 
     // ───────────────────────── Player ─────────────────────────
 
-    private fun startPlayer(url: String) {
-        if (url.isBlank()) return fail("URL audio kosong")
+    /** [source] = URL audio (online) atau path file (local = true). */
+    private fun startPlayer(source: String, local: Boolean = false) {
+        if (source.isBlank()) return fail("URL audio kosong")
         stopPlayer()
         if (!requestFocus()) return fail("audio sedang dipakai aplikasi lain")
         try {
@@ -546,7 +627,11 @@ object RexPlayerController {
             publishLoading()
             mp.setAudioAttributes(audioAttrs)
             runCatching { mp.setWakeMode(appContext, PowerManager.PARTIAL_WAKE_LOCK) }
-            mp.setDataSource(url)
+            if (local) {
+                FileInputStream(File(source)).use { mp.setDataSource(it.fd) }
+            } else {
+                mp.setDataSource(source)
+            }
             mp.setOnPreparedListener {
                 if (player !== mp) return@setOnPreparedListener
                 prepared = true
@@ -596,7 +681,7 @@ object RexPlayerController {
             mp.setOnErrorListener { _, what, _ ->
                 queue.getOrNull(queueIndex)?.let { RexMusicApi.invalidateAudio(it) }
                 _state.value.nowPlaying?.let { RexMusicApi.invalidateAudio(it) }
-                stopPlayer() // supaya tombol play bisa mencoba ulang lewat API
+                stopPlayer() // supaya tombol play bisa mencoba ulang
                 fail("gagal memutar audio (kode $what)")
                 true
             }
@@ -673,7 +758,7 @@ object RexPlayerController {
         }
     }
 
-    /** Play/pause. Kalau player sudah mati (error / ditutup) -> putar ulang lagu ini lewat API. */
+    /** Play/pause. Kalau player sudah mati (error / ditutup) -> putar ulang lagu ini. */
     fun togglePlay() {
         val mp = player
         if (mp == null) {

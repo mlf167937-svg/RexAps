@@ -5,8 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * ViewModel tipis. Semua logika player ada di [RexPlayerController] (hidup di level aplikasi)
- * supaya musik + notifikasi tetap jalan walau layar ditutup.
+ * ViewModel tipis. Semua logika player ada di [RexPlayerController] dan unduhan di
+ * [RexOfflineManager] (hidup di level aplikasi) supaya musik + notifikasi tetap jalan walau layar ditutup.
  */
 class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -35,6 +35,16 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setRepeat(times: Int) = RexPlayerController.setRepeat(times)
     fun toggleAutoplay() = RexPlayerController.setAutoplay(!state.value.autoplay)
+
+    // offline
+    fun setOfflineMode(on: Boolean) = RexPlayerController.setOfflineMode(on)
+    fun playFromOffline(track: RexTrack) = RexPlayerController.playFromOffline(track)
+    fun playOfflineAll(shuffle: Boolean) = RexPlayerController.playOfflineAll(shuffle)
+    fun refreshOffline() = RexOfflineManager.refresh()
+    fun download(track: RexTrack) = RexOfflineManager.download(track)
+    fun cancelDownload(track: RexTrack) = RexOfflineManager.cancel(track)
+    fun deleteDownload(track: RexTrack) = RexOfflineManager.delete(track)
+    fun deleteAllDownloads() = RexOfflineManager.deleteAll()
 
     fun next() = RexPlayerController.next()
     fun prev(force: Boolean = false) = RexPlayerController.prev(force)

@@ -20,6 +20,36 @@ val LoadPhase.isPlayerBusy: Boolean
         this == LoadPhase.Preparing ||
         this == LoadPhase.Buffering
 
+// ───────────────────────── Offline / download ─────────────────────────
+
+enum class DownloadStage { Queued, Resolving, Downloading }
+
+/** Status satu unduhan yang sedang berjalan. percent = -1 kalau ukuran file belum diketahui. */
+data class DownloadStatus(
+    val track: RexTrack,
+    val stage: DownloadStage = DownloadStage.Queued,
+    val percent: Int = -1
+)
+
+/** Satu lagu yang sudah tersimpan di Download/RexAps/Music. key = nama folder. */
+data class OfflineEntry(
+    val key: String,
+    val track: RexTrack,
+    val sizeBytes: Long = 0L,
+    val savedAt: Long = 0L
+)
+
+data class OfflineState(
+    /** Mode offline: hanya lagu unduhan yang ditampilkan dan diputar. */
+    val enabled: Boolean = false,
+    /** Izin akses penyimpanan sudah diberikan. */
+    val hasAccess: Boolean = false,
+    val entries: List<OfflineEntry> = emptyList(),
+    val keys: Set<String> = emptySet(),
+    val downloads: Map<String, DownloadStatus> = emptyMap(),
+    val totalBytes: Long = 0L
+)
+
 data class RexMusicUiState(
     val loading: Boolean = false,
     val loadingText: String = "",
@@ -40,6 +70,10 @@ data class RexMusicUiState(
     val favoriteArtists: List<String> = emptyList(),
     /** Jumlah lagu yang terisi di RexPopularSongs. */
     val popularCount: Int = 0,
+    /** Data offline: daftar unduhan, progres unduhan, mode offline. */
+    val offline: OfflineState = OfflineState(),
+    /** True kalau lagu yang sedang diputar dibuka dari file offline. */
+    val nowPlayingOffline: Boolean = false,
     /** Pesan singkat satu kali (snackbar). */
     val notice: String? = null,
     val currentIndex: Int = 0,

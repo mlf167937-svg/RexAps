@@ -1,7 +1,11 @@
 package com.rexaps.rexmusic
 
+import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +37,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,12 +50,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -58,17 +65,26 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -110,6 +126,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -133,6 +150,37 @@ import kotlinx.coroutines.flow.map
 
 private const val NOTIF_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 
+/** Semua aksi yang dipakai halaman browse, dibungkus supaya parameter tidak berantakan. */
+private class LibraryActions(
+    val onPlaySearch: (Int) -> Unit,
+    val onPlayHistory: (Int) -> Unit,
+    val onPlayMain: (Int) -> Unit,
+    val onPlayOffline: (RexTrack) -> Unit,
+    val onPlayOfflineAll: (Boolean) -> Unit,
+    val onAddQueue: (RexTrack) -> Unit,
+    val onPlayMix: () -> Unit,
+    val onOpenQueue: () -> Unit,
+    val onDownload: (RexTrack) -> Unit,
+    val onCancelDownload: (RexTrack) -> Unit,
+    val onDelete: (RexTrack) -> Unit,
+    val onDeleteAll: () -> Unit,
+    val onRequestAccess: () -> Unit,
+    val onSetOffline: (Boolean) -> Unit,
+    val onDismissError: () -> Unit,
+    val onTogglePlay: () -> Unit,
+    val onNext: () -> Unit,
+    val onOpenPlayer: () -> Unit
+)
+
+private enum class CoverOverlay { None, Loading, Playing, Paused }
+
+private fun overlayFor(active: Boolean, playing: Boolean, loading: Boolean): CoverOverlay = when {
+    loading -> CoverOverlay.Loading
+    active && playing -> CoverOverlay.Playing
+    active -> CoverOverlay.Paused
+    else -> CoverOverlay.None
+}
+
 // ───────────────────────── Screen (stateful entry point) ─────────────────────────
 
 /** Layar utama RexMusic. Semua state UI lokal ada di sini, child cuma stateless. */
@@ -154,9 +202,16 @@ fun RexMusicScreen(
     var showPlayer by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showRepeat by remember { mutableStateOf(false) }
+    var showStorageDialog by remember { mutableStateOf(false) }
+    var showDeleteAll by remember { mutableStateOf(false) }
+    var pendingDownload by remember { mutableStateOf<RexTrack?>(null) }
+    var deleteTarget by remember { mutableStateOf<RexTrack?>(null) }
     var query by remember { mutableStateOf("") }
     val liked = remember { mutableStateMapOf<String, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
+
+    // Muat ulang daftar unduhan saat layar dibuka.
+    LaunchedEffect(vm) { vm.refreshOffline() }
 
     // Pesan singkat dari controller (mis. "Ditambahkan ke antrian").
     LaunchedEffect(vm) {
@@ -167,18 +222,88 @@ fun RexMusicScreen(
     }
 
     // Izin notifikasi (Android 13+), diminta saat pertama kali memutar lagu.
-    val permissionLauncher = rememberLauncherForActivityResult(
+    val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
     val requestNotifications: () -> Unit = {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, NOTIF_PERMISSION) != PackageManager.PERMISSION_GRANTED
         ) {
-            permissionLauncher.launch(NOTIF_PERMISSION)
+            notifLauncher.launch(NOTIF_PERMISSION)
+        }
+    }
+
+    // Izin penyimpanan untuk Download/RexAps/Music.
+    val settingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { vm.refreshOffline() }
+    val storageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { vm.refreshOffline() }
+    val openStorageSettings: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val appIntent = Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+            try {
+                settingsLauncher.launch(appIntent)
+            } catch (_: Exception) {
+                settingsLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+        } else {
+            storageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }
+
+    // Izin sudah diberikan -> lanjutkan unduhan yang tertunda.
+    LaunchedEffect(state.offline.hasAccess) {
+        val pending = pendingDownload
+        if (state.offline.hasAccess && pending != null) {
+            pendingDownload = null
+            showStorageDialog = false
+            vm.download(pending)
+        }
+    }
+
+    val downloadTrack: (RexTrack) -> Unit = { track ->
+        if (RexOfflineManager.hasAccess(context)) {
+            vm.download(track)
+        } else {
+            pendingDownload = track
+            showStorageDialog = true
         }
     }
 
     BackHandler(enabled = showPlayer) { showPlayer = false }
+
+    val actions = LibraryActions(
+        onPlaySearch = { requestNotifications(); vm.playFromSearch(it); showPlayer = true },
+        onPlayHistory = { requestNotifications(); vm.playFromHistory(it); showPlayer = true },
+        onPlayMain = { requestNotifications(); vm.playFromMain(it); showPlayer = true },
+        onPlayOffline = { requestNotifications(); vm.playFromOffline(it); showPlayer = true },
+        onPlayOfflineAll = { shuffle ->
+            requestNotifications(); vm.playOfflineAll(shuffle); showPlayer = true
+        },
+        onAddQueue = { vm.addToQueue(it) },
+        onPlayMix = { requestNotifications(); vm.playMix(); showPlayer = true },
+        onOpenQueue = { showQueue = true },
+        onDownload = downloadTrack,
+        onCancelDownload = { vm.cancelDownload(it) },
+        onDelete = { deleteTarget = it },
+        onDeleteAll = { showDeleteAll = true },
+        onRequestAccess = { pendingDownload = null; showStorageDialog = true },
+        onSetOffline = { on ->
+            if (on != state.offline.enabled) {
+                query = ""
+                vm.setOfflineMode(on)
+            }
+        },
+        onDismissError = { vm.dismissError() },
+        onTogglePlay = { vm.togglePlay() },
+        onNext = { vm.next() },
+        onOpenPlayer = { showPlayer = true }
+    )
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -212,6 +337,9 @@ fun RexMusicScreen(
                         onRepeat = { showRepeat = true },
                         onAutoplay = { vm.toggleAutoplay() },
                         onQueue = { showQueue = true },
+                        onDownload = { downloadTrack(track) },
+                        onCancelDownload = { vm.cancelDownload(track) },
+                        onDelete = { deleteTarget = track },
                         onClose = { showPlayer = false }
                     )
                 } else {
@@ -220,21 +348,14 @@ fun RexMusicScreen(
             } else {
                 BrowsePage(
                     state = state, positionState = positionState, query = query,
+                    actions = actions,
                     onQueryChange = {
                         query = it
-                        if (it.isBlank()) vm.clearSearch() else vm.search(it)
+                        if (!state.offline.enabled) {
+                            if (it.isBlank()) vm.clearSearch() else vm.search(it)
+                        }
                     },
                     onClear = { query = ""; vm.clearSearch() },
-                    onPlaySearch = { requestNotifications(); vm.playFromSearch(it); showPlayer = true },
-                    onPlayHistory = { requestNotifications(); vm.playFromHistory(it); showPlayer = true },
-                    onPlayMain = { requestNotifications(); vm.playFromMain(it); showPlayer = true },
-                    onAddQueue = { vm.addToQueue(it) },
-                    onPlayMix = { requestNotifications(); vm.playMix(); showPlayer = true },
-                    onOpenQueue = { showQueue = true },
-                    onDismissError = { vm.dismissError() },
-                    onTogglePlay = { vm.togglePlay() },
-                    onNext = { vm.next() },
-                    onOpenPlayer = { showPlayer = true },
                     onBack = onBack
                 )
             }
@@ -261,6 +382,69 @@ fun RexMusicScreen(
             onDismiss = { showRepeat = false }
         )
     }
+
+    if (showStorageDialog) {
+        AlertDialog(
+            onDismissRequest = { showStorageDialog = false; pendingDownload = null },
+            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+            title = { Text("Izinkan akses penyimpanan") },
+            text = {
+                Text(
+                    "Lagu yang diunduh disimpan di ${RexOfflineManager.DISPLAY_PATH}/ " +
+                        "supaya mudah kamu buka dan hapus lewat aplikasi File. " +
+                        "Aplikasi butuh izin akses penyimpanan untuk itu."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { openStorageSettings() }) { Text("Buka pengaturan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStorageDialog = false; pendingDownload = null }) {
+                    Text("Nanti")
+                }
+            }
+        )
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            title = { Text("Hapus dari offline?") },
+            text = {
+                Text(
+                    "\"${target.title}\" akan dihapus dari ${RexOfflineManager.DISPLAY_PATH}/. " +
+                        "Kamu tetap bisa memutarnya lagi saat online."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteDownload(target); deleteTarget = null }) {
+                    Text("Hapus", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Batal") } }
+        )
+    }
+
+    if (showDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAll = false },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            title = { Text("Hapus semua lagu offline?") },
+            text = {
+                Text(
+                    "${state.offline.entries.size} lagu " +
+                        "(${formatBytes(state.offline.totalBytes)}) akan dihapus dari perangkat."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteAllDownloads(); showDeleteAll = false }) {
+                    Text("Hapus semua", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteAll = false }) { Text("Batal") } }
+        )
+    }
 }
 
 // ───────────────────────── Player page ─────────────────────────
@@ -281,12 +465,29 @@ private fun PlayerPage(
     onRepeat: () -> Unit,
     onAutoplay: () -> Unit,
     onQueue: () -> Unit,
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onDelete: () -> Unit,
     onClose: () -> Unit
 ) {
     var accent by remember(track.cover) { mutableStateOf<Color?>(null) }
+    val dlKey = remember(track.title, track.artist) { offlineKey(track) }
+    val downloaded = state.offline.isDownloaded(track, dlKey)
+    val status = state.offline.downloads[dlKey]
+
     Box(Modifier.fillMaxSize().playerBackground(accent)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            PlayerTopBar(state.userQueue.size, onQueue, onClose)
+            PlayerTopBar(
+                queueCount = state.userQueue.size,
+                offlinePlaying = state.nowPlayingOffline,
+                onQueue = onQueue,
+                onClose = onClose,
+                downloadSlot = {
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        DownloadButton(downloaded, status, onDownload, onCancelDownload, onDelete)
+                    }
+                }
+            )
             MusicPlayerCard(
                 track = track, isPlaying = state.isPlaying, positionState = positionState,
                 durationMs = state.durationMs, isLiked = isLiked,
@@ -307,9 +508,15 @@ private fun PlayerPage(
     }
 }
 
-/** Top bar player: tutup (panah bawah), judul, dan tombol antrian dengan badge. */
+/** Top bar player: tutup, judul (+ penanda offline), slot unduh, dan tombol antrian dengan badge. */
 @Composable
-private fun PlayerTopBar(queueCount: Int, onQueue: () -> Unit, onClose: () -> Unit) {
+private fun PlayerTopBar(
+    queueCount: Int,
+    offlinePlaying: Boolean,
+    onQueue: () -> Unit,
+    onClose: () -> Unit,
+    downloadSlot: @Composable () -> Unit = {}
+) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -318,8 +525,21 @@ private fun PlayerTopBar(queueCount: Int, onQueue: () -> Unit, onClose: () -> Un
             Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Tutup player",
                 modifier = Modifier.size(32.dp))
         }
-        Text("RexMusic", modifier = Modifier.weight(1f), textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("RexMusic", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (offlinePlaying) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(Icons.Default.OfflinePin, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                    Text("DIPUTAR OFFLINE", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                }
+            }
+        }
+        downloadSlot()
         IconButton(onClick = onQueue) {
             BadgedBox(badge = { if (queueCount > 0) Badge { Text("$queueCount") } }) {
                 Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Antrian")
@@ -332,7 +552,7 @@ private fun PlayerTopBar(queueCount: Int, onQueue: () -> Unit, onClose: () -> Un
 @Composable
 private fun PlayerPlaceholder(loadingText: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        PlayerTopBar(0, {}, onClose)
+        PlayerTopBar(0, false, {}, onClose)
         Column(
             Modifier.fillMaxSize().padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -346,7 +566,7 @@ private fun PlayerPlaceholder(loadingText: String, onClose: () -> Unit) {
     }
 }
 
-/** Banner error di halaman player dengan tombol "Coba lagi" (putar ulang lewat API). */
+/** Banner error di halaman player dengan tombol "Coba lagi". */
 @Composable
 private fun PlayerError(error: String?, onRetry: () -> Unit) {
     AnimatedVisibility(visible = !error.isNullOrBlank()) {
@@ -393,7 +613,7 @@ private fun NeighborSection(state: RexMusicUiState, onPrevious: () -> Unit, onNe
             val label = if (state.userQueue.isNotEmpty()) "DI ANTRIAN" else "SELANJUTNYA"
             NeighborRow(label, upNext, Icons.Default.SkipNext, onNext)
         } else if (state.autoplay) {
-            AutoplayRow(state.favoriteArtists, state.popularCount, onNext)
+            AutoplayRow(state.favoriteArtists, state.popularCount, state.offline.enabled, onNext)
         }
     }
 }
@@ -428,9 +648,15 @@ private fun NeighborRow(label: String, track: RexTrack, icon: ImageVector, onCli
 
 /** Kartu pengganti "selanjutnya" saat lagu berikutnya dipilih otomatis oleh autoplay pintar. */
 @Composable
-private fun AutoplayRow(favorites: List<String>, popularCount: Int, onClick: () -> Unit) {
+private fun AutoplayRow(
+    favorites: List<String>,
+    popularCount: Int,
+    offlineMode: Boolean,
+    onClick: () -> Unit
+) {
     val scheme = MaterialTheme.colorScheme
     val subtitle = when {
+        offlineMode -> "Dipilih dari lagu unduhanmu"
         favorites.isNotEmpty() -> "Dicampur dari ${favorites.joinToString(", ")} & lagu populer"
         popularCount > 0 -> "Dipilih acak dari lagu populer"
         else -> "Dipilih otomatis untukmu"
@@ -468,49 +694,48 @@ private fun AutoplayRow(favorites: List<String>, popularCount: Int, onClick: () 
 
 // ───────────────────────── Browse page ─────────────────────────
 
-/** Halaman browse: header, search, status, list/empty/skeleton, dan mini player di bawah. */
+/** Halaman browse: header + tombol mode, search, lalu daftar online ATAU perpustakaan offline, + mini player. */
 @Composable
 private fun BrowsePage(
     state: RexMusicUiState,
     positionState: State<Long>,
     query: String,
+    actions: LibraryActions,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
-    onPlaySearch: (Int) -> Unit,
-    onPlayHistory: (Int) -> Unit,
-    onPlayMain: (Int) -> Unit,
-    onAddQueue: (RexTrack) -> Unit,
-    onPlayMix: () -> Unit,
-    onOpenQueue: () -> Unit,
-    onDismissError: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onNext: () -> Unit,
-    onOpenPlayer: () -> Unit,
     onBack: () -> Unit
 ) {
     val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    val offlineMode = state.offline.enabled
     val noData = state.searchResults.isEmpty() && state.tracks.isEmpty() && state.history.isEmpty()
     val nowPlaying = state.nowPlaying
+    val bottomPadding = if (nowPlaying != null) 112.dp else 32.dp
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader(greetingForHour(hour), "RexMusic", onBack)
-            RexSearchBar(query, onQueryChange, onClear, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-            LoadingHint(state.loading, state.loadingText)
-            ErrorBanner(state.error, onDismissError)
+            ScreenHeader(
+                greeting = greetingForHour(hour),
+                title = "RexMusic",
+                offline = offlineMode,
+                onSetOffline = actions.onSetOffline,
+                onBack = onBack
+            )
+            RexSearchBar(
+                query, onQueryChange, onClear,
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                placeholder = if (offlineMode) "Cari di lagu offline" else "Cari lagu di Spotify"
+            )
+            if (!offlineMode) LoadingHint(state.loading, state.loadingText)
+            ErrorBanner(state.error, actions.onDismissError)
             when {
+                offlineMode -> OfflineLibrary(state, query, bottomPadding, actions)
                 state.loading && noData -> SkeletonList()
                 noData && state.error == null -> EmptyState(hasQuery = query.isNotBlank())
                 else -> TrackList(
                     state = state,
                     showMix = query.isBlank(),
-                    bottomPadding = if (nowPlaying != null) 112.dp else 32.dp,
-                    onPlaySearch = onPlaySearch,
-                    onPlayHistory = onPlayHistory,
-                    onPlayMain = onPlayMain,
-                    onAddQueue = onAddQueue,
-                    onPlayMix = onPlayMix,
-                    onOpenQueue = onOpenQueue
+                    bottomPadding = bottomPadding,
+                    actions = actions
                 )
             }
         }
@@ -525,8 +750,8 @@ private fun BrowsePage(
                 MiniPlayer(
                     track = nowPlaying, isPlaying = state.isPlaying,
                     busy = state.phase.isPlayerBusy, durationMs = state.durationMs,
-                    positionState = positionState, onToggle = onTogglePlay,
-                    onNext = onNext, onOpen = onOpenPlayer
+                    positionState = positionState, onToggle = actions.onTogglePlay,
+                    onNext = actions.onNext, onOpen = actions.onOpenPlayer
                 )
             }
         }
@@ -623,6 +848,306 @@ private fun QueueSummaryCard(queue: List<RexTrack>, onClick: () -> Unit) {
     }
 }
 
+// ───────────────────────── Offline library ─────────────────────────
+
+/** Mode offline: ringkasan, unduhan berjalan, dan daftar lagu yang tersimpan (putar / hapus). */
+@Composable
+private fun OfflineLibrary(
+    state: RexMusicUiState,
+    query: String,
+    bottomPadding: Dp,
+    actions: LibraryActions
+) {
+    val offline = state.offline
+    val q = query.trim()
+    val shown = remember(offline.entries, q) {
+        if (q.isEmpty()) offline.entries
+        else offline.entries.filter {
+            it.track.title.contains(q, ignoreCase = true) || it.track.artist.contains(q, ignoreCase = true)
+        }
+    }
+    val nowId = state.nowPlaying?.id
+    val loadingId = if (state.phase.isPlayerBusy) nowId else null
+    val queuedIds = remember(state.userQueue) { state.userQueue.map { it.id }.toSet() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item(key = "off-hero") {
+            OfflineHeroCard(
+                count = offline.entries.size,
+                bytes = offline.totalBytes,
+                enabled = offline.entries.isNotEmpty(),
+                onPlayAll = { actions.onPlayOfflineAll(false) },
+                onShuffle = { actions.onPlayOfflineAll(true) }
+            )
+        }
+        if (!offline.hasAccess) {
+            item(key = "off-permission") { PermissionCard(actions.onRequestAccess) }
+        }
+
+        downloadsSection(offline.downloads, actions.onCancelDownload)
+
+        if (offline.hasAccess && shown.isEmpty()) {
+            item(key = "off-empty") { OfflineEmpty(hasQuery = q.isNotEmpty()) }
+        } else if (shown.isNotEmpty()) {
+            item(key = "off-header") {
+                SectionHeader("Lagu Offline", shown.size, Modifier.padding(top = 14.dp, bottom = 2.dp))
+            }
+            itemsIndexed(shown, key = { _, e -> "o-${e.key}" }) { idx, entry ->
+                val track = entry.track
+                val active = track.id == nowId
+                StaggerIn(index = idx, key = "o-${entry.key}") {
+                    TrackCardContent(
+                        title = track.title,
+                        artist = "${track.artist} · ${formatBytes(entry.sizeBytes)}",
+                        cover = track.cover,
+                        onClick = { actions.onPlayOffline(track) },
+                        overlay = overlayFor(active, active && state.isPlaying, track.id == loadingId),
+                        active = active
+                    ) {
+                        QueueAddButton(track.id in queuedIds) { actions.onAddQueue(track) }
+                        DeleteButton { actions.onDelete(track) }
+                    }
+                }
+            }
+            item(key = "off-delete-all") {
+                TextButton(
+                    onClick = actions.onDeleteAll,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Hapus semua unduhan")
+                }
+            }
+        }
+    }
+}
+
+/** Kartu besar mode offline: jumlah lagu, ukuran, lokasi folder, tombol Putar semua / Acak. */
+@Composable
+private fun OfflineHeroCard(
+    count: Int,
+    bytes: Long,
+    enabled: Boolean,
+    onPlayAll: () -> Unit,
+    onShuffle: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(scheme.tertiary, scheme.primary)))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Default.OfflinePin, contentDescription = null,
+                    tint = scheme.onPrimary, modifier = Modifier.size(16.dp))
+                Text("MODE OFFLINE", style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onPrimary.copy(alpha = 0.85f), letterSpacing = 1.5.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (count == 0) "Belum ada unduhan" else "$count lagu tersimpan",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold, color = scheme.onPrimary
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "${formatBytes(bytes)} · ${RexOfflineManager.DISPLAY_PATH}",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onPrimary.copy(alpha = 0.85f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HeroButton("Putar semua", Icons.Default.PlayArrow, filled = true, enabled = enabled,
+                onClick = onPlayAll, modifier = Modifier.weight(1f))
+            HeroButton("Acak", Icons.Default.Shuffle, filled = false, enabled = enabled,
+                onClick = onShuffle, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun HeroButton(
+    label: String,
+    icon: ImageVector,
+    filled: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    val bg = if (filled) scheme.onPrimary else scheme.onPrimary.copy(alpha = 0.18f)
+    val fg = if (filled) scheme.primary else scheme.onPrimary
+    Row(
+        modifier = modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
+            .clip(CircleShape)
+            .background(bg)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Ajakan memberi izin penyimpanan (tanpa izin, folder unduhan tidak bisa dibaca). */
+@Composable
+private fun PermissionCard(onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.errorContainer.copy(alpha = 0.6f)
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.Folder, contentDescription = null, tint = scheme.onErrorContainer)
+            Column(Modifier.weight(1f)) {
+                Text("Izin penyimpanan dibutuhkan", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold, color = scheme.onErrorContainer)
+                Text("Ketuk untuk mengizinkan akses ke ${RexOfflineManager.DISPLAY_PATH}",
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onErrorContainer)
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null,
+                tint = scheme.onErrorContainer)
+        }
+    }
+}
+
+@Composable
+private fun OfflineEmpty(hasQuery: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp, horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier.size(88.dp).clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.CloudOff, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(if (hasQuery) "Tidak ada lagu yang cocok" else "Belum ada lagu offline",
+            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (hasQuery) "Coba kata kunci lain."
+            else "Pindah ke mode Online, lalu tekan tombol unduh pada lagu yang kamu suka.",
+            style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** Pintasan di mode online menuju perpustakaan offline. */
+@Composable
+private fun OfflineShortcutCard(count: Int, bytes: Long, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.tertiaryContainer.copy(alpha = 0.5f)
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                Modifier.size(44.dp).clip(CircleShape).background(scheme.tertiary.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.OfflinePin, contentDescription = null, tint = scheme.tertiary)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Lagu offline · $count lagu", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold)
+                Text("${formatBytes(bytes)} · ketuk untuk membuka", style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Buka mode offline",
+                tint = scheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Daftar unduhan yang sedang berjalan (dipakai di mode online dan offline). */
+private fun LazyListScope.downloadsSection(
+    downloads: Map<String, DownloadStatus>,
+    onCancel: (RexTrack) -> Unit
+) {
+    if (downloads.isEmpty()) return
+    item(key = "dl-header") {
+        SectionHeader("Sedang Diunduh", downloads.size, Modifier.padding(top = 14.dp, bottom = 2.dp))
+    }
+    items(downloads.entries.toList(), key = { "dl-${it.key}" }) { entry ->
+        DownloadRow(entry.value) { onCancel(entry.value.track) }
+    }
+}
+
+@Composable
+private fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val label = when (status.stage) {
+        DownloadStage.Queued -> "Menunggu giliran..."
+        DownloadStage.Resolving -> "Menyiapkan..."
+        DownloadStage.Downloading ->
+            if (status.percent >= 0) "Mengunduh ${status.percent}%" else "Mengunduh..."
+    }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = scheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CoverThumb(status.track.cover, 44.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(status.track.title, style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.primary)
+                }
+                IconButton(onClick = onCancel) {
+                    Icon(Icons.Default.Close, contentDescription = "Batalkan unduhan")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (status.stage == DownloadStage.Downloading && status.percent >= 0) {
+                LinearProgressIndicator(
+                    progress = status.percent / 100f,
+                    modifier = Modifier.fillMaxWidth().clip(CircleShape)
+                )
+            } else {
+                LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape))
+            }
+        }
+    }
+}
+
 // ───────────────────────── Mini player ─────────────────────────
 
 /** Mini player melayang di bawah halaman browse: cover, judul, play/pause, next, progres tipis. */
@@ -704,28 +1229,72 @@ private fun MiniProgress(positionState: State<Long>, durationMs: Long) {
     }
 }
 
-// ───────────────────────── Header & Search ─────────────────────────
+// ───────────────────────── Header, mode switch & search ─────────────────────────
 
-/** Header custom dengan gradient tipis dari warna primary + sapaan. */
+/** Header custom dengan gradient tipis, sapaan, dan saklar Online / Offline. */
 @Composable
-private fun ScreenHeader(greeting: String, title: String, onBack: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
-    val brush = remember(primary) {
-        Brush.verticalGradient(listOf(primary.copy(alpha = 0.18f), Color.Transparent))
-    }
+private fun ScreenHeader(
+    greeting: String,
+    title: String,
+    offline: Boolean,
+    onSetOffline: (Boolean) -> Unit,
+    onBack: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val accent by animateColorAsState(
+        if (offline) scheme.tertiary else scheme.primary, tween(400), label = "headerAccent"
+    )
     Row(
-        modifier = Modifier.fillMaxWidth().background(brush)
-            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+        modifier = Modifier.fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.18f), Color.Transparent)))
+            .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Kembali")
         }
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(greeting, style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
+        Spacer(Modifier.width(8.dp))
+        ModeSwitch(offline, onSetOffline)
+    }
+}
+
+/** Saklar dua segmen: Online / Offline. */
+@Composable
+private fun ModeSwitch(offline: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .padding(3.dp)
+    ) {
+        ModeSegment("Online", Icons.Default.Cloud, selected = !offline) { onChange(false) }
+        ModeSegment("Offline", Icons.Default.CloudOff, selected = offline) { onChange(true) }
+    }
+}
+
+@Composable
+private fun ModeSegment(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val bg by animateColorAsState(
+        if (selected) scheme.primary else Color.Transparent, label = "segBg"
+    )
+    val fg by animateColorAsState(
+        if (selected) scheme.onPrimary else scheme.onSurfaceVariant, label = "segFg"
+    )
+    Row(
+        Modifier.clip(CircleShape)
+            .background(bg)
+            .clickable(role = Role.Tab) { if (!selected) onClick() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -735,7 +1304,8 @@ private fun RexSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholder: String = "Cari lagu di Spotify"
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -746,7 +1316,7 @@ private fun RexSearchBar(
         TextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Cari lagu di Spotify") },
+            placeholder = { Text(placeholder) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cari") },
             trailingIcon = { ClearButton(visible = query.isNotEmpty(), onClear = onClear) },
             singleLine = true,
@@ -892,20 +1462,15 @@ private fun SkeletonRow(brush: Brush) {
     }
 }
 
-// ───────────────────────── List & sections ─────────────────────────
+// ───────────────────────── Online list & sections ─────────────────────────
 
-/** Satu LazyColumn: Mix, ringkasan antrian, hasil pencarian, riwayat (horizontal), rekomendasi. */
+/** Satu LazyColumn: Mix, pintasan offline, unduhan, antrian, hasil pencarian, riwayat, rekomendasi. */
 @Composable
 private fun TrackList(
     state: RexMusicUiState,
     showMix: Boolean,
     bottomPadding: Dp,
-    onPlaySearch: (Int) -> Unit,
-    onPlayHistory: (Int) -> Unit,
-    onPlayMain: (Int) -> Unit,
-    onAddQueue: (RexTrack) -> Unit,
-    onPlayMix: () -> Unit,
-    onOpenQueue: () -> Unit
+    actions: LibraryActions
 ) {
     val queuedIds = remember(state.userQueue) { state.userQueue.map { it.id }.toSet() }
     val nowId = state.nowPlaying?.id
@@ -918,16 +1483,26 @@ private fun TrackList(
     ) {
         if (showMix) {
             item(key = "mix") {
-                MixHeroCard(state.favoriteArtists, state.popularCount, onPlayMix)
+                MixHeroCard(state.favoriteArtists, state.popularCount, actions.onPlayMix)
+            }
+            if (state.offline.entries.isNotEmpty()) {
+                item(key = "offline-shortcut") {
+                    OfflineShortcutCard(
+                        state.offline.entries.size, state.offline.totalBytes
+                    ) { actions.onSetOffline(true) }
+                }
             }
         }
+
+        downloadsSection(state.offline.downloads, actions.onCancelDownload)
+
         if (state.userQueue.isNotEmpty()) {
-            item(key = "queue") { QueueSummaryCard(state.userQueue, onOpenQueue) }
+            item(key = "queue") { QueueSummaryCard(state.userQueue, actions.onOpenQueue) }
         }
 
         trackSection(
             "Hasil Pencarian", "s", state.searchResults, nowId, state.isPlaying,
-            loadingId, queuedIds, onPlaySearch, onAddQueue
+            loadingId, queuedIds, state.offline, actions, actions.onPlaySearch
         )
 
         if (state.history.isNotEmpty()) {
@@ -943,7 +1518,7 @@ private fun TrackList(
                         val active = track.id == nowId
                         HistoryCard(
                             track = track, active = active, playing = active && state.isPlaying,
-                            onClick = { onPlayHistory(idx) }
+                            onClick = { actions.onPlayHistory(idx) }
                         )
                     }
                 }
@@ -952,7 +1527,7 @@ private fun TrackList(
 
         trackSection(
             "Rekomendasi", "m", state.tracks, nowId, state.isPlaying,
-            loadingId, queuedIds, onPlayMain, onAddQueue
+            loadingId, queuedIds, state.offline, actions, actions.onPlayMain
         )
     }
 }
@@ -966,8 +1541,9 @@ private fun LazyListScope.trackSection(
     isPlaying: Boolean,
     loadingId: String?,
     queuedIds: Set<String>,
-    onTrackClick: (Int) -> Unit,
-    onAddQueue: (RexTrack) -> Unit
+    offline: OfflineState,
+    actions: LibraryActions,
+    onTrackClick: (Int) -> Unit
 ) {
     if (tracks.isEmpty()) return
     item(key = "header-$keyPrefix") {
@@ -975,6 +1551,7 @@ private fun LazyListScope.trackSection(
     }
     itemsIndexed(tracks, key = { _, t -> "$keyPrefix-${t.id}" }) { idx, track ->
         val active = track.id == nowId
+        val dlKey = remember(track.title, track.artist) { offlineKey(track) }
         StaggerIn(index = idx, key = "$keyPrefix-${track.id}") {
             TrackCard(
                 track = track,
@@ -982,8 +1559,13 @@ private fun LazyListScope.trackSection(
                 playing = active && isPlaying,
                 loading = track.id == loadingId,
                 queued = track.id in queuedIds,
+                downloaded = offline.isDownloaded(track, dlKey),
+                status = offline.downloads[dlKey],
                 onClick = { onTrackClick(idx) },
-                onQueue = { onAddQueue(track) }
+                onQueue = { actions.onAddQueue(track) },
+                onDownload = { actions.onDownload(track) },
+                onCancel = { actions.onCancelDownload(track) },
+                onDelete = { actions.onDelete(track) }
             )
         }
     }
@@ -1022,7 +1604,7 @@ private fun CountBadge(count: Int) {
 
 // ───────────────────────── History card (horizontal) ─────────────────────────
 
-/** Kartu besar untuk baris "Terakhir Diputar". Tap = putar ulang (audio diambil lagi lewat API). */
+/** Kartu besar untuk baris "Terakhir Diputar". Tap = putar ulang (file offline kalau ada, atau lewat API). */
 @Composable
 private fun HistoryCard(track: RexTrack, active: Boolean, playing: Boolean, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
@@ -1084,7 +1666,7 @@ private fun HistoryCard(track: RexTrack, active: Boolean, playing: Boolean, onCl
 
 // ───────────────────────── Track card ─────────────────────────
 
-/** Adapter dari RexTrack ke kartu stateless (supaya gampang di-preview). */
+/** Adapter dari RexTrack ke kartu stateless: tombol + antrian dan tombol unduh / batal / hapus. */
 @Composable
 private fun TrackCard(
     track: RexTrack,
@@ -1092,23 +1674,29 @@ private fun TrackCard(
     playing: Boolean,
     loading: Boolean,
     queued: Boolean,
+    downloaded: Boolean,
+    status: DownloadStatus?,
     onClick: () -> Unit,
-    onQueue: () -> Unit
+    onQueue: () -> Unit,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit
 ) {
     TrackCardContent(
         title = track.title,
         artist = track.artist,
         cover = track.cover,
         onClick = onClick,
-        loading = loading,
-        active = active,
-        playing = playing,
-        queued = queued,
-        onQueue = onQueue
-    )
+        badge = if (downloaded) "Offline" else null,
+        overlay = overlayFor(active, playing, loading),
+        active = active
+    ) {
+        QueueAddButton(queued, onQueue)
+        DownloadButton(downloaded, status, onDownload, onCancel, onDelete)
+    }
 }
 
-/** Kartu lagu: cover, teks, tombol tambah-antrian, badge play/equalizer/spinner. */
+/** Kartu lagu: cover (dengan overlay loading / equalizer), teks, dan slot tombol aksi di kanan. */
 @Composable
 private fun TrackCardContent(
     title: String,
@@ -1117,11 +1705,9 @@ private fun TrackCardContent(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badge: String? = null,
-    loading: Boolean = false,
+    overlay: CoverOverlay = CoverOverlay.None,
     active: Boolean = false,
-    playing: Boolean = false,
-    queued: Boolean = false,
-    onQueue: (() -> Unit)? = null
+    actions: @Composable RowScope.() -> Unit = {}
 ) {
     val source = remember { MutableInteractionSource() }
     val scale = rememberPressScale(source)
@@ -1145,10 +1731,9 @@ private fun TrackCardContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            CoverThumb(cover)
+            CoverThumb(cover, overlay = overlay)
             TrackTexts(title, artist, badge, active, Modifier.weight(1f))
-            if (onQueue != null) QueueAddButton(queued, onQueue)
-            PlayBadgeButton(loading, active && playing)
+            actions()
         }
     }
 }
@@ -1171,9 +1756,75 @@ private fun QueueAddButton(queued: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Thumbnail rounded 12dp (ukuran bisa diatur); fallback ikon kalau cover kosong. */
+/**
+ * Tombol unduh dengan 3 keadaan:
+ * - belum diunduh : ikon unduh (tap = mulai)
+ * - mengunduh     : cincin progres + X (tap = batalkan)
+ * - sudah diunduh : ikon centang unduhan (tap = hapus dari offline)
+ */
 @Composable
-private fun CoverThumb(cover: String, size: Dp = 56.dp) {
+private fun DownloadButton(
+    downloaded: Boolean,
+    status: DownloadStatus?,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val bg = if (downloaded) scheme.primary.copy(alpha = 0.16f) else scheme.onSurface.copy(alpha = 0.07f)
+    Box(
+        Modifier.size(36.dp).clip(CircleShape).background(bg)
+            .clickable(role = Role.Button) {
+                when {
+                    downloaded -> onDelete()
+                    status != null -> onCancel()
+                    else -> onDownload()
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            status != null -> {
+                if (status.stage == DownloadStage.Downloading && status.percent >= 0) {
+                    CircularProgressIndicator(
+                        progress = status.percent / 100f,
+                        strokeWidth = 2.dp, color = scheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp, color = scheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Icon(Icons.Default.Close, contentDescription = "Batalkan unduhan",
+                    tint = scheme.primary, modifier = Modifier.size(11.dp))
+            }
+            downloaded -> Icon(Icons.Default.DownloadDone, contentDescription = "Hapus dari offline",
+                tint = scheme.primary, modifier = Modifier.size(18.dp))
+            else -> Icon(Icons.Default.Download, contentDescription = "Unduh untuk offline",
+                tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/** Tombol hapus di perpustakaan offline. */
+@Composable
+private fun DeleteButton(onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(36.dp).clip(CircleShape)
+            .background(scheme.error.copy(alpha = 0.10f))
+    ) {
+        Icon(Icons.Default.Delete, contentDescription = "Hapus dari offline",
+            tint = scheme.error, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** Thumbnail rounded 12dp; overlay gelap dengan spinner / equalizer / ikon play untuk lagu aktif. */
+@Composable
+private fun CoverThumb(cover: String, size: Dp = 56.dp, overlay: CoverOverlay = CoverOverlay.None) {
     Box(
         modifier = Modifier.size(size).clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -1187,6 +1838,22 @@ private fun CoverThumb(cover: String, size: Dp = 56.dp) {
         } else {
             Icon(Icons.Default.MusicNote, contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (overlay != CoverOverlay.None) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                when (overlay) {
+                    CoverOverlay.Loading -> CircularProgressIndicator(
+                        color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
+                    )
+                    CoverOverlay.Playing -> EqualizerBars(color = Color.White, height = 16.dp, barWidth = 3.dp)
+                    CoverOverlay.Paused -> Icon(Icons.Default.PlayArrow, contentDescription = null,
+                        tint = Color.White)
+                    CoverOverlay.None -> Unit
+                }
+            }
         }
     }
 }
@@ -1217,26 +1884,6 @@ private fun TrackTexts(
         Text(artist, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-/** Lingkaran kecil: spinner (loading), equalizer (sedang main), atau ikon play. */
-@Composable
-private fun PlayBadgeButton(loading: Boolean, playing: Boolean) {
-    Box(
-        modifier = Modifier.size(36.dp).clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center
-    ) {
-        when {
-            loading -> CircularProgressIndicator(
-                strokeWidth = 2.dp, modifier = Modifier.size(18.dp),
-                color = MaterialTheme.colorScheme.primary
-            )
-            playing -> EqualizerBars(color = MaterialTheme.colorScheme.primary)
-            else -> Icon(Icons.Default.PlayArrow, contentDescription = "Putar",
-                tint = MaterialTheme.colorScheme.primary)
-        }
     }
 }
 
@@ -1272,7 +1919,9 @@ private fun QueueSheet(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            AutoplayToggleRow(state.autoplay, state.favoriteArtists, state.popularCount, onAutoplay)
+            AutoplayToggleRow(
+                state.autoplay, state.favoriteArtists, state.popularCount, state.offline.enabled, onAutoplay
+            )
 
             state.nowPlaying?.let { now ->
                 Spacer(Modifier.height(12.dp))
@@ -1315,11 +1964,13 @@ private fun AutoplayToggleRow(
     autoplay: Boolean,
     favorites: List<String>,
     popularCount: Int,
+    offlineMode: Boolean,
     onToggle: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
     val subtitle = when {
         !autoplay -> "Mati: lagu berikutnya mengikuti urutan daftar"
+        offlineMode -> "Lagu berikutnya dipilih dari unduhanmu"
         favorites.isNotEmpty() -> "Dicampur dari ${favorites.joinToString(", ")} & lagu populer"
         popularCount > 0 -> "Lagu berikutnya acak dari lagu populer"
         else -> "Lagu berikutnya dipilih otomatis"
@@ -1533,6 +2184,13 @@ private fun greetingForHour(hour: Int): String = when (hour) {
     else -> "Selamat malam"
 }
 
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.2f GB".format(bytes / 1073741824.0)
+    bytes >= 1L shl 20 -> "%.1f MB".format(bytes / 1048576.0)
+    bytes >= 1L shl 10 -> "%d KB".format(bytes shr 10)
+    else -> "$bytes B"
+}
+
 // ───────────────────────── Previews ─────────────────────────
 
 @Preview(showBackground = true)
@@ -1541,10 +2199,26 @@ private fun TrackCardPreview() {
     MaterialTheme {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TrackCardContent("Judul Lagu Yang Cukup Panjang Sekali", "Nama Artis", "", {},
-                badge = "Popular", onQueue = {})
-            TrackCardContent("Sedang Dimuat", "Nama Artis", "", {}, loading = true, onQueue = {})
-            TrackCardContent("Sedang Diputar", "Nama Artis", "", {}, active = true, playing = true,
-                queued = true, onQueue = {})
+                badge = "Offline") {
+                QueueAddButton(false) {}
+                DownloadButton(downloaded = true, status = null, onDownload = {}, onCancel = {}, onDelete = {})
+            }
+            TrackCardContent("Sedang Mengunduh", "Nama Artis", "", {}) {
+                QueueAddButton(false) {}
+                DownloadButton(
+                    downloaded = false,
+                    status = DownloadStatus(
+                        RexTrack("1", "Sedang Mengunduh", "Nama Artis"),
+                        DownloadStage.Downloading, 45
+                    ),
+                    onDownload = {}, onCancel = {}, onDelete = {}
+                )
+            }
+            TrackCardContent("Sedang Diputar", "Nama Artis", "", {},
+                overlay = CoverOverlay.Playing, active = true) {
+                QueueAddButton(true) {}
+                DownloadButton(downloaded = false, status = null, onDownload = {}, onCancel = {}, onDelete = {})
+            }
         }
     }
 }
@@ -1555,17 +2229,18 @@ private fun MixHeroPreview() {
     MaterialTheme {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MixHeroCard(listOf("Tulus", "Hindia"), 30) {}
-            MixHeroCard(emptyList(), 0) {}
+            OfflineHeroCard(count = 12, bytes = 54_300_000L, enabled = true, onPlayAll = {}, onShuffle = {})
+            OfflineShortcutCard(12, 54_300_000L) {}
         }
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-private fun SearchAndHeaderPreview() {
+private fun HeaderPreview() {
     MaterialTheme {
         Column {
-            ScreenHeader("Selamat malam", "RexMusic") {}
+            ScreenHeader("Selamat malam", "RexMusic", offline = true, onSetOffline = {}, onBack = {})
             RexSearchBar("dewa", {}, {}, Modifier.padding(20.dp))
             SectionHeader("Rekomendasi", 8, Modifier.padding(horizontal = 20.dp), "Lihat semua")
         }
