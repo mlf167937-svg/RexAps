@@ -37,9 +37,7 @@ dependencies {
 
     implementation("com.github.mwiede:jsch:0.2.18")
 
-    // Compose BOM: aligns every androidx.compose.* artifact below
-    // to one mutually-compatible version set. Do not add explicit
-    // version numbers to any androidx.compose.* line below this.
+    // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
 
@@ -55,25 +53,25 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Fixes: Unresolved reference 'viewModel' / 'compose'
+    // Lifecycle / ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-
-    // Used by RexNuxViewModel/RexNuxTerminalViewModel's
-    // viewModelScope.launch(Dispatchers.IO) calls
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // ... dependency lu yang udah ada tetap ...
-
-    // Compose BOM sudah ada, jadi jangan tambah versi di bawah ini
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
-    // network
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Archive / 7z / XZ
+    implementation("org.apache.commons:commons-compress:1.26.2")
+    implementation("org.tukaani:xz:1.9")
+
+    // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // image loader
+    // Image loader
     implementation("io.coil-kt:coil-compose:2.6.0")
 }
