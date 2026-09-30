@@ -21,6 +21,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,12 +43,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,21 +67,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -96,18 +105,25 @@ import coil.request.ImageRequest
 import com.rexaps.rexmusic.LoadPhase
 import com.rexaps.rexmusic.RexTrack
 import com.rexaps.rexmusic.isPlayerBusy
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 // ───────────────────────── Public entry ─────────────────────────
 
-/** Kartu player. Menyimpan warna aksen hasil ekstraksi cover, sisanya stateless. */
+/**
+ * Isi pemutar (tanpa background; background digambar halaman lewat [playerBackground]).
+ * Posisi dibaca lewat State supaya hanya seek bar yang recompose tiap 500ms.
+ */
 @Composable
 fun MusicPlayerCard(
     track: RexTrack,
     isPlaying: Boolean,
-    positionMs: Long,
+    positionState: State<Long>,
     durationMs: Long,
     isLiked: Boolean,
+    accent: Color?,
+    onAccentFound: (Color) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -115,20 +131,30 @@ fun MusicPlayerCard(
     onToggleLike: () -> Unit,
     modifier: Modifier = Modifier,
     phase: LoadPhase = LoadPhase.Idle,
-    bufferedPercent: Int = 0
+    bufferedPercent: Int = 0,
+    repeatTotal: Int = 0,
+    repeatLeft: Int = 0,
+    autoplay: Boolean = true,
+    queueCount: Int = 0,
+    onRepeat: () -> Unit = {},
+    onAutoplay: () -> Unit = {},
+    onQueue: () -> Unit = {},
+    onSwipePrev: () -> Unit = onPrev
 ) {
-    var accent by remember(track.cover) { mutableStateOf<Color?>(null) }
     PlayerCardContent(
         title = track.title, artist = track.artist, album = track.album, cover = track.cover,
-        accent = accent, onAccentFound = { accent = it },
-        isPlaying = isPlaying, positionMs = positionMs, durationMs = durationMs,
+        accent = accent, onAccentFound = onAccentFound,
+        isPlaying = isPlaying, positionState = positionState, durationMs = durationMs,
         isLiked = isLiked, onPlayPause = onPlayPause, onNext = onNext, onPrev = onPrev,
         onSeek = onSeek, onToggleLike = onToggleLike,
-        phase = phase, bufferedPercent = bufferedPercent, modifier = modifier
+        phase = phase, bufferedPercent = bufferedPercent,
+        repeatTotal = repeatTotal, repeatLeft = repeatLeft, autoplay = autoplay,
+        queueCount = queueCount, onRepeat = onRepeat, onAutoplay = onAutoplay, onQueue = onQueue,
+        onSwipePrev = onSwipePrev, modifier = modifier
     )
 }
 
-/** Isi kartu tanpa ketergantungan ke RexTrack (mudah di-preview). */
+/** Isi tanpa ketergantungan ke RexTrack (mudah di-preview). */
 @Composable
 private fun PlayerCardContent(
     title: String,
@@ -138,7 +164,7 @@ private fun PlayerCardContent(
     accent: Color?,
     onAccentFound: (Color) -> Unit,
     isPlaying: Boolean,
-    positionMs: Long,
+    positionState: State<Long>,
     durationMs: Long,
     isLiked: Boolean,
     onPlayPause: () -> Unit,
@@ -148,9 +174,16 @@ private fun PlayerCardContent(
     onToggleLike: () -> Unit,
     modifier: Modifier = Modifier,
     phase: LoadPhase = LoadPhase.Idle,
-    bufferedPercent: Int = 0
+    bufferedPercent: Int = 0,
+    repeatTotal: Int = 0,
+    repeatLeft: Int = 0,
+    autoplay: Boolean = true,
+    queueCount: Int = 0,
+    onRepeat: () -> Unit = {},
+    onAutoplay: () -> Unit = {},
+    onQueue: () -> Unit = {},
+    onSwipePrev: () -> Unit = onPrev
 ) {
-    val brush = rememberPlayerBrush(accent)
     val busy = phase.isPlayerBusy
     // Poster "bernapas": besar saat main, mengecil halus saat pause.
     val posterScale = animateFloatAsState(
@@ -159,17 +192,15 @@ private fun PlayerCardContent(
         label = "posterScale"
     )
     Column(
-        modifier = modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(brush)
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         PlayerHeader(album, statusLabel(phase, bufferedPercent), isPlaying, busy)
-        AlbumPoster(cover, title, busy, accent, posterScale, onAccentFound)
+        AlbumPoster(cover, title, busy, accent, posterScale, onAccentFound, onNext, onSwipePrev)
         TrackInfo(title, artist, isLiked, onToggleLike)
-        SeekSection(positionMs, durationMs, bufferedPercent, busy, onSeek)
+        SeekSection(positionState, durationMs, bufferedPercent, busy, onSeek)
         PlayerControls(isPlaying, busy, onPlayPause, onNext, onPrev)
+        SecondaryControls(repeatTotal, repeatLeft, autoplay, queueCount, onRepeat, onAutoplay, onQueue)
     }
 }
 
@@ -183,18 +214,24 @@ private fun statusLabel(phase: LoadPhase, percent: Int): String = when (phase) {
 
 // ───────────────────────── Background ─────────────────────────
 
-/** Gradient dari warna cover (atau primary) ke surface. Tanpa blur, ringan di HP low-end. */
+/**
+ * Background halaman: gradient dari warna cover ke background.
+ * Warna dianimasikan dan dibaca di fase draw, jadi transisi warna tidak memicu recompose.
+ */
 @Composable
-private fun rememberPlayerBrush(accent: Color?): Brush {
-    val surface = MaterialTheme.colorScheme.surface
+fun Modifier.playerBackground(accent: Color?): Modifier {
+    val bg = MaterialTheme.colorScheme.background
     val base = accent ?: MaterialTheme.colorScheme.primary
-    val animated by animateColorAsState(base, tween(600), label = "accent")
-    return remember(animated, surface) {
-        Brush.verticalGradient(
-            listOf(
-                animated.copy(alpha = 0.5f).compositeOver(surface),
-                animated.copy(alpha = 0.18f).compositeOver(surface),
-                surface
+    val animated = animateColorAsState(base, tween(700), label = "accent")
+    return this.drawBehind {
+        val c = animated.value
+        drawRect(
+            Brush.verticalGradient(
+                listOf(
+                    c.copy(alpha = 0.55f).compositeOver(bg),
+                    c.copy(alpha = 0.20f).compositeOver(bg),
+                    bg
+                )
             )
         )
     }
@@ -249,20 +286,15 @@ fun EqualizerBars(
 
 // ───────────────────────── Header & poster ─────────────────────────
 
-/** Header: pill status (equalizer / spinner + label), nama album, ikon more. */
+/** Header: pill status (equalizer / spinner + label) dan nama album. */
 @Composable
 private fun PlayerHeader(album: String, status: String, playing: Boolean, busy: Boolean) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Spacer(Modifier.width(24.dp))
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            StatusPill(status, playing, busy)
-            Spacer(Modifier.height(6.dp))
-            Text(album, style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        }
-        Icon(Icons.Default.MoreVert, contentDescription = "Opsi lainnya", tint = muted)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        StatusPill(status, playing, busy)
+        Spacer(Modifier.height(6.dp))
+        Text(album, style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 
@@ -293,7 +325,10 @@ private fun StatusPill(label: String, playing: Boolean, busy: Boolean) {
     }
 }
 
-/** Poster 1:1: glow warna cover, border tipis, scale saat pause, scrim + spinner saat loading. */
+/**
+ * Poster 1:1: glow warna cover, scale saat pause, scrim + spinner saat loading.
+ * Geser ke kiri = lagu berikutnya, geser ke kanan = lagu sebelumnya.
+ */
 @Composable
 private fun AlbumPoster(
     cover: String,
@@ -301,18 +336,49 @@ private fun AlbumPoster(
     busy: Boolean,
     accent: Color?,
     scale: State<Float>,
-    onAccentFound: (Color) -> Unit
+    onAccentFound: (Color) -> Unit,
+    onSwipeNext: () -> Unit,
+    onSwipePrev: () -> Unit
 ) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(24.dp)
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    val threshold = with(LocalDensity.current) { 72.dp.toPx() }
+    val currentNext by rememberUpdatedState(onSwipeNext)
+    val currentPrev by rememberUpdatedState(onSwipePrev)
+    val shape = RoundedCornerShape(28.dp)
     val glow = accent ?: MaterialTheme.colorScheme.primary
     val request = remember(cover) {
         ImageRequest.Builder(context).data(cover).allowHardware(false).crossfade(true).build()
     }
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
-            .shadow(24.dp, shape, ambientColor = glow, spotColor = glow)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                translationX = offset.value * 0.5f
+                rotationZ = offset.value / 90f
+                alpha = 1f - (abs(offset.value) / 1200f).coerceIn(0f, 0.4f)
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        val v = offset.value
+                        scope.launch {
+                            offset.animateTo(
+                                0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow)
+                            )
+                        }
+                        if (v < -threshold) currentNext() else if (v > threshold) currentPrev()
+                    },
+                    onDragCancel = { scope.launch { offset.animateTo(0f) } },
+                    onHorizontalDrag = { change, dx ->
+                        change.consume()
+                        scope.launch { offset.snapTo(offset.value + dx) }
+                    }
+                )
+            }
+            .shadow(28.dp, shape, ambientColor = glow, spotColor = glow)
             .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -382,15 +448,16 @@ private fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
 
 // ───────────────────────── Seek bar ─────────────────────────
 
-/** Seek bar + label waktu. Indeterminate saat durasi belum diketahui. */
+/** Seek bar + label waktu. Posisi dibaca di sini saja, jadi hanya bagian ini yang recompose. */
 @Composable
 private fun SeekSection(
-    positionMs: Long,
+    positionState: State<Long>,
     durationMs: Long,
     bufferedPercent: Int,
     busy: Boolean,
     onSeek: (Float) -> Unit
 ) {
+    val positionMs = positionState.value
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
@@ -488,11 +555,7 @@ private fun PlayerControls(
 
 /** Tombol prev/next: lingkaran subtle dengan scale saat ditekan. */
 @Composable
-private fun SideControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    onClick: () -> Unit
-) {
+private fun SideControlButton(icon: ImageVector, description: String, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val scale = rememberPressScale(source)
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -542,6 +605,76 @@ private fun PlayPauseButton(isPlaying: Boolean, loading: Boolean, onClick: () ->
     }
 }
 
+/** Baris bawah: Ulangi (1-50x), Autoplay pintar, Antrian. */
+@Composable
+private fun SecondaryControls(
+    repeatTotal: Int,
+    repeatLeft: Int,
+    autoplay: Boolean,
+    queueCount: Int,
+    onRepeat: () -> Unit,
+    onAutoplay: () -> Unit,
+    onQueue: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val repeatOn = repeatTotal > 0
+        ActionPill(
+            icon = if (repeatOn) Icons.Default.RepeatOne else Icons.Default.Repeat,
+            label = if (repeatOn) "$repeatLeft/$repeatTotal×" else "Ulangi",
+            description = if (repeatOn) "Ulangi lagu, sisa $repeatLeft dari $repeatTotal kali" else "Atur ulangi lagu",
+            active = repeatOn, onClick = onRepeat, modifier = Modifier.weight(1f)
+        )
+        ActionPill(
+            icon = Icons.Default.AutoAwesome,
+            label = "Autoplay",
+            description = if (autoplay) "Autoplay pintar aktif" else "Autoplay pintar mati",
+            active = autoplay, onClick = onAutoplay, modifier = Modifier.weight(1f)
+        )
+        ActionPill(
+            icon = Icons.AutoMirrored.Filled.QueueMusic,
+            label = if (queueCount > 0) "Antrian $queueCount" else "Antrian",
+            description = "Buka antrian",
+            active = queueCount > 0, onClick = onQueue, modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun ActionPill(
+    icon: ImageVector,
+    label: String,
+    description: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    val bg by animateColorAsState(
+        if (active) scheme.primary.copy(alpha = 0.18f) else scheme.onSurface.copy(alpha = 0.07f),
+        label = "pillBg"
+    )
+    val fg by animateColorAsState(
+        if (active) scheme.primary else scheme.onSurfaceVariant, label = "pillFg"
+    )
+    Row(
+        modifier = modifier.clip(CircleShape).background(bg)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 11.dp)
+            .semantics { contentDescription = description },
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 /** Scale kecil saat ditekan; return State supaya dibaca di graphicsLayer. */
 @Composable
 private fun rememberPressScale(source: MutableInteractionSource, pressed: Float = 0.92f): State<Float> {
@@ -564,15 +697,19 @@ private fun fmt(ms: Long): String {
 @Composable
 private fun PlayerCardPreview() {
     MaterialTheme {
-        PlayerCardContent(
-            title = "Judul Lagu Yang Sangat Panjang Sekali Sampai Marquee",
-            artist = "Nama Artis", album = "Nama Album", cover = "",
-            accent = Color(0xFF6650A4), onAccentFound = {},
-            isPlaying = true, positionMs = 72_000, durationMs = 215_000,
-            isLiked = true, onPlayPause = {}, onNext = {}, onPrev = {}, onSeek = {},
-            onToggleLike = {}, modifier = Modifier.padding(16.dp),
-            phase = LoadPhase.Idle, bufferedPercent = 60
-        )
+        val position = remember { mutableStateOf(72_000L) }
+        Box(Modifier.playerBackground(Color(0xFF6650A4))) {
+            PlayerCardContent(
+                title = "Judul Lagu Yang Sangat Panjang Sekali Sampai Marquee",
+                artist = "Nama Artis", album = "Nama Album", cover = "",
+                accent = Color(0xFF6650A4), onAccentFound = {},
+                isPlaying = true, positionState = position, durationMs = 215_000,
+                isLiked = true, onPlayPause = {}, onNext = {}, onPrev = {}, onSeek = {},
+                onToggleLike = {}, modifier = Modifier.padding(24.dp),
+                phase = LoadPhase.Idle, bufferedPercent = 60,
+                repeatTotal = 5, repeatLeft = 3, queueCount = 4
+            )
+        }
     }
 }
 
@@ -580,12 +717,13 @@ private fun PlayerCardPreview() {
 @Composable
 private fun PlayerCardLoadingPreview() {
     MaterialTheme {
+        val position = remember { mutableStateOf(0L) }
         PlayerCardContent(
             title = "Jatuh Suka", artist = "Tulus", album = "Manusia", cover = "",
             accent = Color(0xFF6650A4), onAccentFound = {},
-            isPlaying = false, positionMs = 0, durationMs = 0,
+            isPlaying = false, positionState = position, durationMs = 0,
             isLiked = false, onPlayPause = {}, onNext = {}, onPrev = {}, onSeek = {},
-            onToggleLike = {}, modifier = Modifier.padding(16.dp),
+            onToggleLike = {}, modifier = Modifier.padding(24.dp),
             phase = LoadPhase.Preparing, bufferedPercent = 0
         )
     }

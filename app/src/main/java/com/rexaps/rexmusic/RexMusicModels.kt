@@ -27,8 +27,21 @@ data class RexMusicUiState(
     val bufferedPercent: Int = 0,
     val tracks: List<RexTrack> = emptyList(),
     val searchResults: List<RexTrack> = emptyList(),
-    /** Riwayat lagu (terbaru di depan, tanpa lagu yang sedang diputar). Hanya metadata, bukan mp3. */
+    /** Riwayat lagu (terbaru di depan, tanpa lagu yang sedang diputar). Hanya metadata. */
     val history: List<RexTrack> = emptyList(),
+    /** Antrian buatan pengguna (metadata saja, disimpan di cache). */
+    val userQueue: List<RexTrack> = emptyList(),
+    /** Autoplay pintar: lagu berikutnya dipilih dari populer + artis favorit. */
+    val autoplay: Boolean = true,
+    /** Ulangi lagu yang sedang diputar: total (0 = mati, maks 50) dan sisa. */
+    val repeatTotal: Int = 0,
+    val repeatLeft: Int = 0,
+    /** Artis favorit hasil belajar dari kebiasaan mendengar. */
+    val favoriteArtists: List<String> = emptyList(),
+    /** Jumlah lagu yang terisi di RexPopularSongs. */
+    val popularCount: Int = 0,
+    /** Pesan singkat satu kali (snackbar). */
+    val notice: String? = null,
     val currentIndex: Int = 0,
     val nowPlaying: RexTrack? = null,
     val isPlaying: Boolean = false,
@@ -36,7 +49,7 @@ data class RexMusicUiState(
     val durationMs: Long = 0L,
     /** Naik tiap seek / ganti lagu, dipakai notifikasi untuk sinkron posisi. */
     val seekVersion: Int = 0,
-    /** Lagu berikutnya di antrian (null kalau antrian cuma 1). */
+    /** Lagu berikutnya yang sudah pasti (antrian atau daftar). Null kalau autoplay yang memilih. */
     val upNext: RexTrack? = null,
     /** Lagu sebelumnya dari riwayat (null kalau belum ada). */
     val previous: RexTrack? = null,
