@@ -146,7 +146,9 @@ data class LyricsResult(
 )
 
 data class LyricsData(
-    val plain_lyrics: String? = null,
-    val synced_lyrics: String? = null,
+    @com.google.gson.annotations.SerializedName("plain_lyrics")
+    val plainLyrics: String? = null,
+    @com.google.gson.annotations.SerializedName("synced_lyrics")
+    val syncedLyrics: String? = null,
     val duration: Int? = null
 )

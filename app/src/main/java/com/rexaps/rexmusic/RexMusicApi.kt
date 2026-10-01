@@ -105,8 +105,8 @@ object RexMusicApi {
         return runApi {
             val res = withRetry { ApiClient.rexMusic.searchLyrics(query) }
             val data = res.result?.lyrics
-            val plain = data?.plain_lyrics.orEmpty()
-            val synced = parseSyncedLyrics(data?.synced_lyrics.orEmpty())
+            val plain = data?.plainLyrics.orEmpty()
+            val synced = parseSyncedLyrics(data?.syncedLyrics.orEmpty())
             val lyrics = Lyrics(plain = plain, synced = synced)
             if (lyrics.isEmpty) error("lirik tidak tersedia")
             synchronized(lyricsCache) { lyricsCache[key] = CachedLyrics(lyrics) }

@@ -61,11 +61,20 @@ object ApiClient {
             .build()
     }
 
+    private val rexMusicGson: com.google.gson.Gson by lazy {
+        com.google.gson.GsonBuilder()
+            .registerTypeAdapter(
+                com.rexaps.rexmusic.LyricsData::class.java,
+                com.rexaps.rexmusic.LyricsDataAdapter()
+            )
+            .create()
+    }
+
     private val rexMusicRetrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(NEXRAY_BASE)
             .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(rexMusicGson))
             .build()
     }
 
