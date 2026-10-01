@@ -385,6 +385,7 @@ object RexPlayerController {
     private fun beginTrack(track: RexTrack) {
         stopPlayer()
         markTrack(track)
+        loadLyrics(track)
         playJob = scope.launch { resolveAndStart(track) }
     }
 
@@ -444,6 +445,32 @@ object RexPlayerController {
         return true
     }
 
+    // ───────────────────────── Lyrics ─────────────────────────
+
+    private var lyricsJob: Job? = null
+
+    private fun loadLyrics(track: RexTrack) {
+        lyricsJob?.cancel()
+        _state.update {
+            it.copy(lyrics = Lyrics(), lyricsLoading = true, lyricsError = null)
+        }
+        val q = "${track.artist} ${track.title}".trim()
+        lyricsJob = scope.launch {
+            RexMusicApi.fetchLyrics(q)
+                .onSuccess { lyr ->
+                    _state.update { it.copy(lyrics = lyr, lyricsLoading = false) }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(lyricsLoading = false, lyricsError = e.message ?: "gagal memuat lirik")
+                    }
+                }
+        }
+    }
+
+    fun toggleLyrics() = _state.update { it.copy(lyricsVisible = !it.lyricsVisible) }
+
+    fun closeLyrics() = _state.update { it.copy(lyricsVisible = false) }
     /** Update track di queue + semua list berdasarkan id (bukan index, jadi anti out-of-bounds). */
     private fun replaceTrack(fresh: RexTrack) {
         queue = queue.replaceById(fresh)

@@ -129,3 +129,62 @@ object RexMusicApi {
         else -> e.message ?: "terjadi kesalahan"
     }
 }
+
+// ───────────────────────── Lyrics ─────────────────────────
+
+private const val LYRICS_TTL_MS = 24 * 60 * 60_000L
+private const val MAX_LYRICS_CACHE = 40
+
+private class CachedLyrics(val value: Lyrics, val at: Long = System.currentTimeMillis()) {
+    fun fresh() = System.currentTimeMillis() - at < LYRICS_TTL_MS
+}
+
+private val lyricsCache =
+    object : LinkedHashMap<String, CachedLyrics>(48, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, CachedLyrics>?
+        ) = size > MAX_LYRICS_CACHE
+    }
+
+suspend fun fetchLyrics(query: String): Result<Lyrics> {
+    val key = query.trim().lowercase()
+    if (key.isBlank()) return Result.failure(Exception("query kosong"))
+
+    synchronized(lyricsCache) { lyricsCache[key] }
+        ?.takeIf { it.fresh() }
+        ?.let { return Result.success(it.value) }
+
+    return runApi {
+        val res = withRetry { ApiClient.rexMusic.searchLyrics(query) }
+        val data = res.result?.lyrics
+        val plain = data?.plain_lyrics.orEmpty()
+        val synced = parseSyncedLyrics(data?.synced_lyrics.orEmpty())
+        val lyrics = Lyrics(plain = plain, synced = synced)
+        if (lyrics.isEmpty) error("lirik tidak tersedia")
+        synchronized(lyricsCache) { lyricsCache[key] = CachedLyrics(lyrics) }
+        lyrics
+    }
+}
+
+private val SYNCED_REGEX = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?]\s*(.*)""")
+
+private fun parseSyncedLyrics(raw: String): List<LyricLine> {
+    if (raw.isBlank()) return emptyList()
+    val out = ArrayList<LyricLine>(128)
+    raw.lineSequence().forEach { line ->
+        val m = SYNCED_REGEX.find(line) ?: return@forEach
+        val min = m.groupValues[1].toLongOrNull() ?: return@forEach
+        val sec = m.groupValues[2].toLongOrNull() ?: return@forEach
+        val fracRaw = m.groupValues[3]
+        val frac = fracRaw.toLongOrNull() ?: 0L
+        val fracMs = when (fracRaw.length) {
+            3 -> frac
+            2 -> frac * 10
+            else -> 0L
+        }
+        val text = m.groupValues[4].trim()
+        if (text.isEmpty()) return@forEach
+        out += LyricLine(min * 60_000 + sec * 1000 + fracMs, text)
+    }
+    return out
+}

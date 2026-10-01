@@ -67,6 +67,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     val state by remember(vm) {
         vm.state.map { it.copy(positionMs = 0L) }.distinctUntilChanged()
     }.collectAsState(initial = vm.state.value.copy(positionMs = 0L))
+
     val positionState = remember(vm) {
         vm.state.map { it.positionMs }.distinctUntilChanged()
     }.collectAsState(initial = vm.state.value.positionMs)
@@ -83,6 +84,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     var pendingDownload by remember { mutableStateOf<RexTrack?>(null) }
     var deleteTarget by remember { mutableStateOf<RexTrack?>(null) }
     var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
+
     val liked = remember { mutableStateMapOf<String, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
 
@@ -90,17 +92,24 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     val searchList = rememberLazyListState()
     val libraryList = rememberLazyListState()
 
-    LaunchedEffect(vm) { vm.refreshOffline() }
+    LaunchedEffect(vm) {
+        vm.refreshOffline()
+    }
 
     LaunchedEffect(vm) {
-        vm.state.map { it.notice }.distinctUntilChanged().filterNotNull().collectLatest { message ->
-            vm.consumeNotice()
-            snackbar.showSnackbar(message)
-        }
+        vm.state
+            .map { it.notice }
+            .distinctUntilChanged()
+            .filterNotNull()
+            .collectLatest { message ->
+                vm.consumeNotice()
+                snackbar.showSnackbar(message)
+            }
     }
 
     LaunchedEffect(query) {
         typing = query.isNotBlank()
+
         if (typing) {
             delay(450)
             typing = false
@@ -110,9 +119,14 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+
     val requestNotifications: () -> Unit = {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, NOTIF_PERMISSION) != PackageManager.PERMISSION_GRANTED
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                NOTIF_PERMISSION
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             notifLauncher.launch(NOTIF_PERMISSION)
         }
@@ -120,28 +134,40 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
     val settingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { vm.refreshOffline() }
+    ) {
+        vm.refreshOffline()
+    }
+
     val storageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { vm.refreshOffline() }
+    ) {
+        vm.refreshOffline()
+    }
+
     val openStorageSettings: () -> Unit = {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val appIntent = Intent(
                 Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:${context.packageName}")
             )
+
             try {
                 settingsLauncher.launch(appIntent)
             } catch (_: Exception) {
-                settingsLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                settingsLauncher.launch(
+                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                )
             }
         } else {
-            storageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            storageLauncher.launch(
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
         }
     }
 
     LaunchedEffect(state.offline.hasAccess) {
         val pending = pendingDownload
+
         if (state.offline.hasAccess && pending != null) {
             pendingDownload = null
             showStorageDialog = false
@@ -158,105 +184,266 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
         }
     }
 
-    BackHandler(enabled = showPlayer) { showPlayer = false }
-    BackHandler(enabled = !showPlayer && tab != TAB_HOME) { tab = TAB_HOME }
+    BackHandler(enabled = showPlayer) {
+        showPlayer = false
+    }
+
+    BackHandler(enabled = !showPlayer && tab != TAB_HOME) {
+        tab = TAB_HOME
+    }
 
     val actions = RexActions(
-        playSearch = { requestNotifications(); vm.playFromSearch(it); showPlayer = true },
-        playHistory = { requestNotifications(); vm.playFromHistory(it); showPlayer = true },
-        playMain = { requestNotifications(); vm.playFromMain(it); showPlayer = true },
-        playOffline = { requestNotifications(); vm.playFromOffline(it); showPlayer = true },
-        playOfflineAll = { shuffle ->
-            requestNotifications(); vm.playOfflineAll(shuffle); showPlayer = true
+        playSearch = {
+            requestNotifications()
+            vm.playFromSearch(it)
+            showPlayer = true
         },
-        playMix = { requestNotifications(); vm.playMix(); showPlayer = true },
-        playQueue = { requestNotifications(); vm.playFromQueue(it); showPlayer = true },
-        addQueue = { vm.addToQueue(it) },
-        removeQueue = { vm.removeFromQueue(it) },
-        moveQueueTop = { vm.moveQueueToTop(it) },
-        clearQueue = { vm.clearQueue() },
+
+        playHistory = {
+            requestNotifications()
+            vm.playFromHistory(it)
+            showPlayer = true
+        },
+
+        playMain = {
+            requestNotifications()
+            vm.playFromMain(it)
+            showPlayer = true
+        },
+
+        playOffline = {
+            requestNotifications()
+            vm.playFromOffline(it)
+            showPlayer = true
+        },
+
+        playOfflineAll = { shuffle ->
+            requestNotifications()
+            vm.playOfflineAll(shuffle)
+            showPlayer = true
+        },
+
+        playMix = {
+            requestNotifications()
+            vm.playMix()
+            showPlayer = true
+        },
+
+        playQueue = {
+            requestNotifications()
+            vm.playFromQueue(it)
+            showPlayer = true
+        },
+
+        addQueue = {
+            vm.addToQueue(it)
+        },
+
+        removeQueue = {
+            vm.removeFromQueue(it)
+        },
+
+        moveQueueTop = {
+            vm.moveQueueToTop(it)
+        },
+
+        clearQueue = {
+            vm.clearQueue()
+        },
+
         download = downloadTrack,
-        cancelDownload = { vm.cancelDownload(it) },
-        delete = { deleteTarget = it },
-        deleteAll = { showDeleteAll = true },
-        clearHistory = { vm.clearHistory() },
-        requestAccess = { pendingDownload = null; showStorageDialog = true },
+
+        cancelDownload = {
+            vm.cancelDownload(it)
+        },
+
+        delete = {
+            deleteTarget = it
+        },
+
+        deleteAll = {
+            showDeleteAll = true
+        },
+
+        clearHistory = {
+            vm.clearHistory()
+        },
+
+        requestAccess = {
+            pendingDownload = null
+            showStorageDialog = true
+        },
+
         setOffline = { on ->
             if (on != state.offline.enabled) {
                 query = ""
                 vm.setOfflineMode(on)
             }
         },
-        toggleAutoplay = { vm.toggleAutoplay() },
+
+        toggleAutoplay = {
+            vm.toggleAutoplay()
+        },
+
         searchArtist = { name ->
             tab = TAB_SEARCH
             query = name
-            if (!state.offline.enabled) vm.search(name)
+
+            if (!state.offline.enabled) {
+                vm.search(name)
+            }
         },
-        goLibrary = { tab = TAB_LIBRARY; libTab = 0 },
-        openMenu = { menuTarget = it },
-        dismissError = { vm.dismissError() }
+
+        goLibrary = {
+            tab = TAB_LIBRARY
+            libTab = 0
+        },
+
+        openMenu = {
+            menuTarget = it
+        },
+
+        dismissError = {
+            vm.dismissError()
+        }
     )
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { SnackbarHost(snackbar) },
+
+            snackbarHost = {
+                SnackbarHost(snackbar)
+            },
+
             bottomBar = {
                 Column {
                     val now = state.nowPlaying
+
                     if (now != null) {
                         MiniPlayer(
                             track = now,
                             state = state,
                             positionState = positionState,
-                            onToggle = { vm.togglePlay() },
-                            onNext = { vm.next() },
-                            onOpen = { showPlayer = true }
+                            onToggle = {
+                                vm.togglePlay()
+                            },
+                            onNext = {
+                                vm.next()
+                            },
+                            onOpen = {
+                                showPlayer = true
+                            }
                         )
                     }
+
                     NavigationBar {
                         NavigationBarItem(
                             selected = tab == TAB_HOME,
-                            onClick = { tab = TAB_HOME },
-                            icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                            label = { Text("Beranda") }
+                            onClick = {
+                                tab = TAB_HOME
+                            },
+                            icon = {
+                                Icon(
+                                    Icons.Default.Home,
+                                    contentDescription = null
+                                )
+                            },
+                            label = {
+                                Text("Beranda")
+                            }
                         )
+
                         NavigationBarItem(
                             selected = tab == TAB_SEARCH,
-                            onClick = { tab = TAB_SEARCH },
-                            icon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            label = { Text("Cari") }
+                            onClick = {
+                                tab = TAB_SEARCH
+                            },
+                            icon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null
+                                )
+                            },
+                            label = {
+                                Text("Cari")
+                            }
                         )
+
                         NavigationBarItem(
                             selected = tab == TAB_LIBRARY,
-                            onClick = { tab = TAB_LIBRARY },
-                            icon = { Icon(Icons.Default.LibraryMusic, contentDescription = null) },
-                            label = { Text("Koleksi") }
+                            onClick = {
+                                tab = TAB_LIBRARY
+                            },
+                            icon = {
+                                Icon(
+                                    Icons.Default.LibraryMusic,
+                                    contentDescription = null
+                                )
+                            },
+                            label = {
+                                Text("Koleksi")
+                            }
                         )
                     }
                 }
             }
         ) { pad ->
-            Box(Modifier.fillMaxSize().padding(pad)) {
+
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(pad)
+            ) {
                 when (tab) {
-                    TAB_HOME -> HomeTab(state, actions, homeList, onBack)
-                    TAB_SEARCH -> SearchTab(
-                        state = state,
-                        query = query,
-                        typing = typing && !state.offline.enabled,
-                        onQueryChange = {
-                            query = it
-                            if (!state.offline.enabled) {
-                                if (it.isBlank()) vm.clearSearch() else vm.search(it)
-                            }
-                        },
-                        onClear = { query = ""; vm.clearSearch() },
-                        actions = actions,
-                        listState = searchList
-                    )
-                    else -> LibraryTab(state, libTab, { libTab = it }, actions, libraryList)
+                    TAB_HOME -> {
+                        HomeTab(
+                            state,
+                            actions,
+                            homeList,
+                            onBack
+                        )
+                    }
+
+                    TAB_SEARCH -> {
+                        SearchTab(
+                            state = state,
+                            query = query,
+                            typing = typing && !state.offline.enabled,
+
+                            onQueryChange = {
+                                query = it
+
+                                if (!state.offline.enabled) {
+                                    if (it.isBlank()) {
+                                        vm.clearSearch()
+                                    } else {
+                                        vm.search(it)
+                                    }
+                                }
+                            },
+
+                            onClear = {
+                                query = ""
+                                vm.clearSearch()
+                            },
+
+                            actions = actions,
+                            listState = searchList
+                        )
+                    }
+
+                    else -> {
+                        LibraryTab(
+                            state,
+                            libTab,
+                            { libTab = it },
+                            actions,
+                            libraryList
+                        )
+                    }
                 }
+
                 ErrorCard(
                     error = state.error,
                     onDismiss = actions.dismissError,
@@ -267,47 +454,141 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
         AnimatedVisibility(
             visible = showPlayer,
-            enter = slideInVertically(tween(280)) { it } + fadeIn(tween(200)),
-            exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(160))
+            enter = slideInVertically(tween(280)) { it } +
+                fadeIn(tween(200)),
+            exit = slideOutVertically(tween(220)) { it } +
+                fadeOut(tween(160))
         ) {
             val track = state.nowPlaying
+
             if (track != null) {
-                var accent by remember(track.cover) { mutableStateOf<Color?>(null) }
-                val dlKey = remember(track.title, track.artist) { offlineKey(track) }
+                var accent by remember(track.cover) {
+                    mutableStateOf<Color?>(null)
+                }
+
+                val dlKey = remember(track.title, track.artist) {
+                    offlineKey(track)
+                }
+
                 MusicPlayerCard(
                     track = track,
                     state = state,
                     positionState = positionState,
                     isLiked = liked[track.id] == true,
-                    downloaded = state.offline.isDownloaded(track, dlKey),
+                    downloaded = state.offline.isDownloaded(
+                        track,
+                        dlKey
+                    ),
                     downloadStatus = state.offline.downloads[dlKey],
                     accent = accent,
-                    onAccentFound = { accent = it },
+                    onAccentFound = {
+                        accent = it
+                    },
+
                     actions = PlayerActions(
-                        onClose = { showPlayer = false },
-                        onMore = { menuTarget = MenuTarget(track, null) },
-                        onPlayPause = { vm.togglePlay() },
-                        onNext = { vm.next() },
-                        onPrev = { vm.prev() },
-                        onOpenPrevious = { vm.prev(force = true) },
-                        onSeek = { vm.seekTo(it) },
-                        onToggleLike = { liked[track.id] = liked[track.id] != true },
-                        onRepeat = { showRepeat = true },
-                        onAutoplay = { vm.toggleAutoplay() },
-                        onQueue = { showQueue = true },
-                        onDownload = { downloadTrack(track) },
-                        onCancelDownload = { vm.cancelDownload(track) },
-                        onDelete = { deleteTarget = track }
+                        onClose = {
+                            showPlayer = false
+                        },
+
+                        onLyrics = {
+                            vm.toggleLyrics()
+                        },
+
+                        onMore = {
+                            menuTarget = MenuTarget(track, null)
+                        },
+
+                        onPlayPause = {
+                            vm.togglePlay()
+                        },
+
+                        onNext = {
+                            vm.next()
+                        },
+
+                        onPrev = {
+                            vm.prev()
+                        },
+
+                        onOpenPrevious = {
+                            vm.prev(force = true)
+                        },
+
+                        onSeek = {
+                            vm.seekTo(it)
+                        },
+
+                        onToggleLike = {
+                            liked[track.id] = liked[track.id] != true
+                        },
+
+                        onRepeat = {
+                            showRepeat = true
+                        },
+
+                        onAutoplay = {
+                            vm.toggleAutoplay()
+                        },
+
+                        onQueue = {
+                            showQueue = true
+                        },
+
+                        onDownload = {
+                            downloadTrack(track)
+                        },
+
+                        onCancelDownload = {
+                            vm.cancelDownload(track)
+                        },
+
+                        onDelete = {
+                            deleteTarget = track
+                        }
                     )
                 )
             } else {
-                PlayerPlaceholder(state.loadingText, state.error) { showPlayer = false }
+                PlayerPlaceholder(
+                    state.loadingText,
+                    state.error
+                ) {
+                    showPlayer = false
+                }
             }
+        }
+
+        AnimatedVisibility(
+            visible = state.lyricsVisible,
+            enter = fadeIn(tween(240)),
+            exit = fadeOut(tween(180))
+        ) {
+            RexLyricsOverlay(
+                track = state.nowPlaying
+                    ?: RexTrack(
+                        id = "",
+                        title = "",
+                        artist = ""
+                    ),
+                lyrics = state.lyrics,
+                loading = state.lyricsLoading,
+                error = state.lyricsError,
+                accent = null,
+                positionState = positionState,
+                durationMs = state.durationMs,
+                onClose = {
+                    vm.closeLyrics()
+                }
+            )
         }
     }
 
     if (showQueue) {
-        QueueSheet(state, actions) { showQueue = false }
+        QueueSheet(
+            state,
+            actions
+        ) {
+            showQueue = false
+        }
     }
 
     if (showRepeat) {
@@ -315,32 +596,69 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             total = state.repeatTotal,
             left = state.repeatLeft,
             title = state.nowPlaying?.title.orEmpty(),
-            onSet = { vm.setRepeat(it) },
-            onDismiss = { showRepeat = false }
+            onSet = {
+                vm.setRepeat(it)
+            },
+            onDismiss = {
+                showRepeat = false
+            }
         )
     }
 
     menuTarget?.let { target ->
-        TrackMenuSheet(target, state, actions) { menuTarget = null }
+        TrackMenuSheet(
+            target,
+            state,
+            actions
+        ) {
+            menuTarget = null
+        }
     }
 
     if (showStorageDialog) {
         AlertDialog(
-            onDismissRequest = { showStorageDialog = false; pendingDownload = null },
-            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-            title = { Text("Izinkan akses penyimpanan") },
+            onDismissRequest = {
+                showStorageDialog = false
+                pendingDownload = null
+            },
+
+            icon = {
+                Icon(
+                    Icons.Default.Folder,
+                    contentDescription = null
+                )
+            },
+
+            title = {
+                Text("Izinkan akses penyimpanan")
+            },
+
             text = {
                 Text(
-                    "Lagu yang diunduh disimpan di ${RexOfflineManager.DISPLAY_PATH}/ " +
+                    "Lagu yang diunduh disimpan di " +
+                        "${RexOfflineManager.DISPLAY_PATH}/ " +
                         "supaya mudah kamu buka dan hapus lewat aplikasi File. " +
                         "Aplikasi butuh izin akses penyimpanan untuk itu."
                 )
             },
+
             confirmButton = {
-                TextButton(onClick = { openStorageSettings() }) { Text("Buka pengaturan") }
+                TextButton(
+                    onClick = {
+                        openStorageSettings()
+                    }
+                ) {
+                    Text("Buka pengaturan")
+                }
             },
+
             dismissButton = {
-                TextButton(onClick = { showStorageDialog = false; pendingDownload = null }) {
+                TextButton(
+                    onClick = {
+                        showStorageDialog = false
+                        pendingDownload = null
+                    }
+                ) {
                     Text("Nanti")
                 }
             }
@@ -349,53 +667,121 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
     deleteTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-            title = { Text("Hapus dari offline?") },
+            onDismissRequest = {
+                deleteTarget = null
+            },
+
+            icon = {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null
+                )
+            },
+
+            title = {
+                Text("Hapus dari offline?")
+            },
+
             text = {
                 Text(
-                    "\"${target.title}\" akan dihapus dari ${RexOfflineManager.DISPLAY_PATH}/. " +
+                    "\"${target.title}\" akan dihapus dari " +
+                        "${RexOfflineManager.DISPLAY_PATH}/. " +
                         "Kamu tetap bisa memutarnya lagi saat online."
                 )
             },
+
             confirmButton = {
-                TextButton(onClick = { vm.deleteDownload(target); deleteTarget = null }) {
-                    Text("Hapus", color = MaterialTheme.colorScheme.error)
+                TextButton(
+                    onClick = {
+                        vm.deleteDownload(target)
+                        deleteTarget = null
+                    }
+                ) {
+                    Text(
+                        "Hapus",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Batal") } }
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        deleteTarget = null
+                    }
+                ) {
+                    Text("Batal")
+                }
+            }
         )
     }
 
     if (showDeleteAll) {
         AlertDialog(
-            onDismissRequest = { showDeleteAll = false },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-            title = { Text("Hapus semua lagu offline?") },
+            onDismissRequest = {
+                showDeleteAll = false
+            },
+
+            icon = {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null
+                )
+            },
+
+            title = {
+                Text("Hapus semua lagu offline?")
+            },
+
             text = {
                 Text(
                     "${state.offline.entries.size} lagu " +
-                        "(${formatBytes(state.offline.totalBytes)}) akan dihapus dari perangkat."
+                        "(${formatBytes(state.offline.totalBytes)}) " +
+                        "akan dihapus dari perangkat."
                 )
             },
+
             confirmButton = {
-                TextButton(onClick = { vm.deleteAllDownloads(); showDeleteAll = false }) {
-                    Text("Hapus semua", color = MaterialTheme.colorScheme.error)
+                TextButton(
+                    onClick = {
+                        vm.deleteAllDownloads()
+                        showDeleteAll = false
+                    }
+                ) {
+                    Text(
+                        "Hapus semua",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
-            dismissButton = { TextButton(onClick = { showDeleteAll = false }) { Text("Batal") } }
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAll = false
+                    }
+                ) {
+                    Text("Batal")
+                }
+            }
         )
     }
 }
 
 @Composable
-private fun PlayerPlaceholder(loadingText: String, error: String?, onClose: () -> Unit) {
+private fun PlayerPlaceholder(
+    loadingText: String,
+    error: String?,
+    onClose: () -> Unit
+) {
     Column(
         Modifier
             .fillMaxSize()
             .background(RexPlayerBase)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = remember {
+                    MutableInteractionSource()
+                },
                 indication = null,
                 onClick = {}
             )
@@ -403,25 +789,45 @@ private fun PlayerPlaceholder(loadingText: String, error: String?, onClose: () -
             .navigationBarsPadding()
     ) {
         RexIconButton(
-            Icons.Default.KeyboardArrowDown, "Tutup player", onClose,
-            Modifier.padding(4.dp), size = 48.dp, iconSize = 32.dp, tint = Color.White
+            Icons.Default.KeyboardArrowDown,
+            "Tutup player",
+            onClose,
+            Modifier.padding(4.dp),
+            size = 48.dp,
+            iconSize = 32.dp,
+            tint = Color.White
         )
+
         Column(
-            Modifier.fillMaxSize().padding(32.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(32.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (error.isNullOrBlank()) {
-                CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(44.dp))
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(44.dp)
+                )
+
                 Spacer(Modifier.height(16.dp))
+
                 Text(
                     loadingText.ifBlank { "Memuat..." },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.7f)
                 )
             } else {
-                Icon(Icons.Default.Warning, contentDescription = "Error", tint = Color.White)
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = "Error",
+                    tint = Color.White
+                )
+
                 Spacer(Modifier.height(12.dp))
+
                 Text(
                     error,
                     style = MaterialTheme.typography.bodyMedium,
@@ -444,6 +850,7 @@ private fun MiniPlayer(
 ) {
     val scheme = MaterialTheme.colorScheme
     val busy = state.phase.isPlayerBusy
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -453,47 +860,110 @@ private fun MiniPlayer(
             .clickable(onClick = onOpen)
     ) {
         Row(
-            Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.padding(
+                start = 8.dp,
+                end = 4.dp,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CoverThumb(track.cover, 44.dp)
+            CoverThumb(
+                track.cover,
+                44.dp
+            )
+
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+
+            Column(
+                Modifier.weight(1f)
+            ) {
                 Text(
-                    track.title, style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    track.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+
                 Text(
-                    track.artist, style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+
             if (busy) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                Box(
+                    Modifier.size(44.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             } else {
                 RexIconButton(
-                    if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    if (state.isPlaying) "Jeda" else "Putar",
+                    if (state.isPlaying) {
+                        Icons.Default.Pause
+                    } else {
+                        Icons.Default.PlayArrow
+                    },
+
+                    if (state.isPlaying) {
+                        "Jeda"
+                    } else {
+                        "Putar"
+                    },
+
                     onToggle
                 )
             }
-            RexIconButton(Icons.Default.SkipNext, "Lagu berikutnya", onNext)
+
+            RexIconButton(
+                Icons.Default.SkipNext,
+                "Lagu berikutnya",
+                onNext
+            )
         }
-        MiniProgress(positionState, state.durationMs)
+
+        MiniProgress(
+            positionState,
+            state.durationMs
+        )
     }
 }
 
 @Composable
-private fun MiniProgress(positionState: State<Long>, durationMs: Long) {
+private fun MiniProgress(
+    positionState: State<Long>,
+    durationMs: Long
+) {
     val scheme = MaterialTheme.colorScheme
+
     val progress = if (durationMs > 0) {
-        (positionState.value.toFloat() / durationMs).coerceIn(0f, 1f)
+        (
+            positionState.value.toFloat() / durationMs
+        ).coerceIn(0f, 1f)
     } else {
         0f
     }
-    Box(Modifier.fillMaxWidth().height(2.dp).background(scheme.onSurface.copy(alpha = 0.1f))) {
-        Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(scheme.primary))
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(2.dp)
+            .background(
+                scheme.onSurface.copy(alpha = 0.1f)
+            )
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(progress)
+                .fillMaxHeight()
+                .background(scheme.primary)
+        )
     }
 }

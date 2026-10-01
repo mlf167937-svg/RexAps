@@ -52,4 +52,7 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
     fun seekTo(ratio: Float) = RexPlayerController.seekTo(ratio)
 
     fun currentTrack(): RexTrack? = RexPlayerController.currentTrack()
+
+    fun toggleLyrics() = RexPlayerController.toggleLyrics()
+    fun closeLyrics() = RexPlayerController.closeLyrics()
 }

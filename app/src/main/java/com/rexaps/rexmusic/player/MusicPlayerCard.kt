@@ -62,10 +62,12 @@ import com.rexaps.rexmusic.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.automirrored.filled.Lyrics
 
 @Stable
 class PlayerActions(
     val onClose: () -> Unit,
+    val onLyrics: () -> Unit,
     val onMore: () -> Unit,
     val onPlayPause: () -> Unit,
     val onNext: () -> Unit,
@@ -108,7 +110,7 @@ fun MusicPlayerCard(
         ) {
             val coverSize = minOf(maxWidth - 48.dp, maxHeight * 0.42f).coerceAtLeast(160.dp)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                PlayerTopBar(state, track, actions.onClose, actions.onMore)
+                PlayerTopBar(state, track, actions.onClose, actions.onLyrics, actions.onMore)
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     PlayerCover(
@@ -145,18 +147,35 @@ private fun statusLabel(state: RexMusicUiState): String = when (state.phase) {
 }
 
 @Composable
-private fun PlayerTopBar(state: RexMusicUiState, track: RexTrack, onClose: () -> Unit, onMore: () -> Unit) {
+private fun PlayerTopBar(
+    state: RexMusicUiState,
+    track: RexTrack,
+    onClose: () -> Unit,
+    onLyrics: () -> Unit,
+    onMore: () -> Unit
+) {
     val busy = state.phase.isPlayerBusy
+
     Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RexIconButton(
-            Icons.Default.KeyboardArrowDown, "Tutup player", onClose,
-            size = 48.dp, iconSize = 32.dp, tint = Color.White
+            Icons.Default.KeyboardArrowDown,
+            "Tutup player",
+            onClose,
+            size = 48.dp,
+            iconSize = 32.dp,
+            tint = Color.White
         )
+
         Column(
-            Modifier.weight(1f).padding(horizontal = 8.dp),
+            Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
@@ -165,25 +184,52 @@ private fun PlayerTopBar(state: RexMusicUiState, track: RexTrack, onClose: () ->
             ) {
                 when {
                     busy -> CircularProgressIndicator(
-                        strokeWidth = 1.5.dp, color = Color.White, modifier = Modifier.size(10.dp)
+                        strokeWidth = 1.5.dp,
+                        color = Color.White,
+                        modifier = Modifier.size(16.dp)
                     )
-                    state.isPlaying -> EqualizerBars(color = Color.White, barWidth = 2.dp, height = 10.dp)
+
+                    state.isPlaying -> EqualizerBars(
+                        color = Color.White,
+                        barWidth = 3.dp
+                    )
+
                     else -> Unit
                 }
+
                 Text(
-                    statusLabel(state), style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.7f), letterSpacing = 1.5.sp, maxLines = 1
+                    statusLabel(state),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    letterSpacing = 1.5.sp
                 )
             }
+
             Text(
-                track.album, style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold, color = Color.White,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+                track.album,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
+
         RexIconButton(
-            Icons.Default.MoreVert, "Opsi lagu", onMore,
-            size = 48.dp, tint = Color.White
+            Icons.AutoMirrored.Filled.Lyrics,
+            "Tampilkan lirik",
+            onLyrics,
+            size = 48.dp,
+            tint = Color.White
+        )
+
+        RexIconButton(
+            Icons.Default.MoreVert,
+            "Opsi lagu",
+            onMore,
+            size = 48.dp,
+            tint = Color.White
         )
     }
 }

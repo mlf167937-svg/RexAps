@@ -11,6 +11,7 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 import com.rexaps.rextools.SsWebResponse
+import com.rexaps.rexmusic.LyricsResponse
 
 interface PinterestApiService {
     @GET("faa/pinterest")
@@ -23,6 +24,9 @@ interface RexMusicApiService {
 
     @GET("downloader/spotify")
     suspend fun downloadSpotify(@Query("url") url: String): SpotifyDownloadResponse
+
+    @GET("search/lyrics")
+    suspend fun searchLyrics(@Query("q") query: String): LyricsResponse
 }
 
 interface SsWebApiService {

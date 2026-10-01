@@ -87,7 +87,11 @@ data class RexMusicUiState(
     val upNext: RexTrack? = null,
     /** Lagu sebelumnya dari riwayat (null kalau belum ada). */
     val previous: RexTrack? = null,
-    val error: String? = null
+    val error: String? = null,
+    val lyrics: Lyrics = Lyrics(),
+    val lyricsLoading: Boolean = false,
+    val lyricsError: String? = null,
+    val lyricsVisible: Boolean = false
 )
 
 data class SpotifySearchResponse(
@@ -113,4 +117,36 @@ data class SpotifyDownloadResult(
     val url: String? = null,
     val title: String? = null,
     val artist: String? = null
+)
+
+// ───────────────────────── Lyrics ─────────────────────────
+
+data class LyricLine(
+    val timeMs: Long,
+    val text: String
+)
+
+data class Lyrics(
+    val plain: String = "",
+    val synced: List<LyricLine> = emptyList()
+) {
+    val hasSynced: Boolean get() = synced.isNotEmpty()
+    val isEmpty: Boolean get() = plain.isBlank() && synced.isEmpty()
+}
+
+data class LyricsResponse(
+    val status: Boolean? = null,
+    val result: LyricsResult? = null
+)
+
+data class LyricsResult(
+    val title: String? = null,
+    val artist: String? = null,
+    val lyrics: LyricsData? = null
+)
+
+data class LyricsData(
+    val plain_lyrics: String? = null,
+    val synced_lyrics: String? = null,
+    val duration: Int? = null
 )
