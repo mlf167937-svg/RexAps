@@ -62,7 +62,7 @@ import com.rexaps.rexmusic.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.automirrored.filled.Lyrics
+import androidx.compose.material.icons.filled.Subtitles
 
 @Stable
 class PlayerActions(
@@ -217,7 +217,7 @@ private fun PlayerTopBar(
         }
 
         RexIconButton(
-            Icons.AutoMirrored.Filled.Lyrics,
+            Icons.Default.Subtitles,
             "Tampilkan lirik",
             onLyrics,
             size = 48.dp,
