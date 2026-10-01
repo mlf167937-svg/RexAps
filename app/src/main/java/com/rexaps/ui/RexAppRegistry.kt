@@ -10,16 +10,18 @@ data class RexModule(
 object RexAppRegistry {
 
     val modules = listOf(
-        RexModule("rexfox",   "RexFox",   "Browser cepat & ringan",       true),
-        RexModule("rextools", "RexTools", "Kumpulan tools harian",        true),
-        RexModule("rexmusic", "RexMusic", "Streaming & playlist",         true),
-        RexModule("rexpanel", "RexPanel", "Monitoring dan kontrol SSH",   true),
-        RexModule("rexchat",  "RexChat",  "WA Client - Pairing only",     true),
-        RexModule("rexnux",   "RexNux",   "Terminal & Linux",             true),
-        RexModule("rextube",  "RexTube",  "Video & subscriptions",        false),
-        RexModule("rextok",   "RexTok",   "Short video & feed",           false),
-        RexModule("rexgit",   "RexGit",   "Git manager & repo",           false),
-        RexModule("rexai",    "RexAI",    "AI tools & generator",         false)
+        RexModule("rexfox",     "RexFox",     "Browser cepat & ringan",       true),
+        RexModule("rextools",   "RexTools",   "Kumpulan tools harian",        true),
+        RexModule("rexmusic",   "RexMusic",   "Streaming & playlist",         true),
+        RexModule("rexmanager", "RexManager", "File manager lengkap",         true),
+        RexModule("rexpanel",   "RexPanel",   "Monitoring dan kontrol SSH",   true),
+        RexModule("rexchat",    "RexChat",    "WA Client - Pairing only",     true),
+        RexModule("rexnux",     "RexNux",     "Terminal & Linux",             true),
+        RexModule("rexcalc",    "RexCalc",    "Kalkulator Pintar",            false),
+        RexModule("rextube",    "RexTube",    "Video & subscriptions",        false),
+        RexModule("rextok",     "RexTok",     "Short video & feed",           false),
+        RexModule("rexgit",     "RexGit",     "Git manager & repo",           false),
+        RexModule("rexai",      "RexAI",      "AI tools & generator",         false)
     )
 
     fun getModule(id: String): RexModule? =
