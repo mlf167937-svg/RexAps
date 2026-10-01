@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.detectTapGestures
 
 private const val AUTO_SCROLL_IDLE_MS = 3000L
 
@@ -443,7 +444,7 @@ private fun LyricsFooter(
                 .height(24.dp)
                 .pointerInput(durationMs, onSeekTo) {
                     if (onSeekTo == null || durationMs <= 0) return@pointerInput
-                    androidx.compose.foundation.gestures.detectTapGestures { o ->
+                    detectTapGestures { o ->
                         onSeekTo((o.x / size.width * durationMs).toLong().coerceIn(0L, durationMs))
                     }
                 },
