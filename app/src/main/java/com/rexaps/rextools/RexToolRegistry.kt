@@ -3,6 +3,8 @@ package com.rexaps.rextools
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Download
 
 object RexToolRegistry {
 
@@ -23,6 +25,24 @@ object RexToolRegistry {
                 route = "ssweb",
                 category = ToolCategory.UTILITY,
                 icon = Icons.Outlined.Language,
+                isNew = true
+            ),
+            RexTool(
+                id = "tiktok_stalker",
+                name = "TikTok Stalker",
+                description = "lihat profil TikTok (followers, bio, stats)",
+                route = "tiktok_stalker",
+                category = ToolCategory.STALK,
+                icon = Icons.Outlined.Person,
+                isNew = true
+            ),
+            RexTool(
+                id = "tiktok_downloader",
+                name = "TikTok Downloader",
+                description = "download video & foto TikTok tanpa watermark",
+                route = "tiktok_downloader",
+                category = ToolCategory.DOWNLOAD,
+                icon = Icons.Outlined.Download,
                 isNew = true
             )
         )

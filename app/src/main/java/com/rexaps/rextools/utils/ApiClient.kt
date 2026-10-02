@@ -12,6 +12,8 @@ import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 import com.rexaps.rextools.SsWebResponse
 import com.rexaps.rexmusic.LyricsResponse
+import com.rexaps.rextools.TiktokDownloadResponse
+import com.rexaps.rextools.TiktokStalkResponse
 
 interface PinterestApiService {
     @GET("faa/pinterest")
@@ -37,6 +39,14 @@ interface SsWebApiService {
         @Query("height") height: Int,
         @Query("device_scale") scale: Int
     ): SsWebResponse
+}
+
+interface TiktokApiService {
+    @GET("stalker/tiktok")
+    suspend fun stalkTiktok(@Query("username") username: String): TiktokStalkResponse
+
+    @GET("downloader/tiktok")
+    suspend fun downloadTiktok(@Query("url") url: String): TiktokDownloadResponse
 }
 
 object ApiClient {
@@ -87,5 +97,8 @@ object ApiClient {
     }
     val ssweb: SsWebApiService by lazy {
         rexMusicRetrofit.create(SsWebApiService::class.java)
+    }
+    val tiktok: TiktokApiService by lazy {
+        rexMusicRetrofit.create(TiktokApiService::class.java)
     }
 }
