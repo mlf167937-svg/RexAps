@@ -5,20 +5,15 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class RexGitGithubRepository(
-    val name: String,
-    val fullName: String,
-    val cloneUrl: String,
-    val private: Boolean,
-    val defaultBranch: String
-)
-
 class RexGitGithubApi {
 
-    fun getUser(token: String): String {
+    fun getUser(
+        token: String
+    ): String {
+
         val json = request(
-            path = "/user",
-            token = token
+            "/user",
+            token
         )
 
         return JSONObject(json)
@@ -29,34 +24,40 @@ class RexGitGithubApi {
         token: String
     ): List<RexGitGithubRepository> {
 
-        val result = mutableListOf<RexGitGithubRepository>()
+        val result =
+            mutableListOf<RexGitGithubRepository>()
 
         var page = 1
 
         while (true) {
+
             val json = request(
-                path = "/user/repos?per_page=100&page=$page&sort=updated",
-                token = token
+                "/user/repos?per_page=100&page=$page&sort=updated",
+                token
             )
 
-            val array = JSONArray(json)
+            val array =
+                JSONArray(json)
 
             if (array.length() == 0) {
                 break
             }
 
             for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i)
+
+                val item =
+                    array.getJSONObject(i)
 
                 result += RexGitGithubRepository(
                     name = item.getString("name"),
                     fullName = item.getString("full_name"),
                     cloneUrl = item.getString("clone_url"),
                     private = item.getBoolean("private"),
-                    defaultBranch = item.optString(
-                        "default_branch",
-                        "main"
-                    )
+                    defaultBranch =
+                        item.optString(
+                            "default_branch",
+                            "main"
+                        )
                 )
             }
 
@@ -75,10 +76,10 @@ class RexGitGithubApi {
         token: String
     ): String {
 
-        val connection = (
+        val connection =
             URL("https://api.github.com$path")
-                .openConnection() as HttpURLConnection
-            )
+                .openConnection()
+                    as HttpURLConnection
 
         connection.requestMethod = "GET"
         connection.connectTimeout = 15000
@@ -99,7 +100,8 @@ class RexGitGithubApi {
             "2022-11-28"
         )
 
-        val code = connection.responseCode
+        val code =
+            connection.responseCode
 
         val stream =
             if (code in 200..299) {
@@ -108,10 +110,11 @@ class RexGitGithubApi {
                 connection.errorStream
             }
 
-        val body = stream
-            ?.bufferedReader()
-            ?.use { it.readText() }
-            ?: ""
+        val body =
+            stream
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: ""
 
         connection.disconnect()
 

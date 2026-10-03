@@ -5,9 +5,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun RexGit() {
-    val vm: RexGitViewModel = viewModel()
+
+    val viewModel:
+        RexGitViewModel = viewModel()
 
     RexGitScreen(
-        viewModel = vm
+        viewModel = viewModel
     )
 }

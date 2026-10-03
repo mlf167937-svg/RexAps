@@ -17,12 +17,15 @@ class RexGitRepositoryManager {
     }
 
     fun files(
-        repository: RexGitRepository
+        repository: RexGitRepository,
+        directory: String? = null
     ): List<RexGitFile> {
 
-        val root = File(repository.path)
+        val root = File(
+            directory ?: repository.path
+        )
 
-        if (!root.exists()) {
+        if (!root.exists() || !root.isDirectory) {
             return emptyList()
         }
 
@@ -67,11 +70,13 @@ class RexGitRepositoryManager {
 
     fun commit(
         repository: RexGitRepository,
-        message: String
+        message: String,
+        username: String? = null
     ): RexGitNativeResult {
         return native.commit(
             repository,
-            message
+            message,
+            username
         )
     }
 
@@ -101,14 +106,19 @@ class RexGitRepositoryManager {
 
     fun clone(
         url: String,
-        name: String
+        name: String,
+        username: String? = null,
+        token: String? = null
     ): RexGitNativeResult {
 
-        val destination = RexGitStorage.repository(name)
+        val destination =
+            RexGitStorage.repository(name)
 
         return native.clone(
             url = url,
-            destination = destination
+            destination = destination,
+            username = username,
+            token = token
         )
     }
 }

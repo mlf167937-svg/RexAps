@@ -15,7 +15,8 @@ class RexGitPushManager {
         token: String? = null
     ): RexGitPushResult {
 
-        val repo = File(repository.path)
+        val repo =
+            File(repository.path)
 
         if (!repo.exists()) {
             return RexGitPushResult(
@@ -38,10 +39,12 @@ class RexGitPushManager {
             )
         }
 
-        var newVersion: RexGitVersion? = null
+        var newVersion:
+            RexGitVersion? = null
 
         if (bumpVersion) {
-            newVersion = version.bump(repository)
+            newVersion =
+                version.bump(repository)
         }
 
         val finalMessage =
@@ -51,7 +54,8 @@ class RexGitPushManager {
                 commitMessage
             }
 
-        val add = native.addAll(repository)
+        val add =
+            native.addAll(repository)
 
         if (!add.success) {
             return RexGitPushResult(
@@ -61,10 +65,12 @@ class RexGitPushManager {
             )
         }
 
-        val commit = native.commit(
-            repository,
-            finalMessage
-        )
+        val commit =
+            native.commit(
+                repository,
+                finalMessage,
+                username
+            )
 
         if (!commit.success) {
             return RexGitPushResult(
@@ -74,11 +80,12 @@ class RexGitPushManager {
             )
         }
 
-        val push = native.push(
-            repository,
-            username,
-            token
-        )
+        val push =
+            native.push(
+                repository,
+                username,
+                token
+            )
 
         if (!push.success) {
             return RexGitPushResult(

@@ -13,7 +13,9 @@ class RexGitNative {
 
     fun clone(
         url: String,
-        destination: File
+        destination: File,
+        username: String? = null,
+        token: String? = null
     ): RexGitNativeResult {
         return try {
             if (destination.exists()) {
@@ -25,73 +27,34 @@ class RexGitNative {
 
             destination.parentFile?.mkdirs()
 
-            Git.cloneRepository()
+            val command = Git.cloneRepository()
                 .setURI(url)
                 .setDirectory(destination)
-                .call()
-                .use { }
+
+            if (
+                !username.isNullOrBlank() &&
+                !token.isNullOrBlank()
+            ) {
+                command.setCredentialsProvider(
+                    UsernamePasswordCredentialsProvider(
+                        username,
+                        token
+                    )
+                )
+            }
+
+            command.call().use { }
 
             RexGitNativeResult(
                 true,
-                "Repository berhasil di-clone"
+                "Repository ${destination.name} berhasil di-clone"
             )
         } catch (e: Exception) {
+            destination.deleteRecursively()
+
             RexGitNativeResult(
                 false,
                 e.message ?: "Clone gagal"
-            )
-        }
-    }
-
-    fun status(
-        repository: RexGitRepository
-    ): RexGitStatus {
-        val repo = File(repository.path)
-
-        return try {
-            Git.open(repo).use { git ->
-                val status = git.status().call()
-
-                val modified = buildList {
-                    addAll(status.modified)
-                    addAll(status.missing)
-                    addAll(status.removed)
-                }
-
-                val staged = buildList {
-                    addAll(status.added)
-                    addAll(status.changed)
-                }
-
-                val hasChanges =
-                    status.hasUncommittedChanges()
-
-                RexGitStatus(
-                    output = buildString {
-                        status.modified.forEach {
-                            appendLine(" M $it")
-                        }
-                        status.changed.forEach {
-                            appendLine("M  $it")
-                        }
-                        status.added.forEach {
-                            appendLine("A  $it")
-                        }
-                        status.removed.forEach {
-                            appendLine(" D $it")
-                        }
-                        status.untracked.forEach {
-                            appendLine("?? $it")
-                        }
-                    }.trim(),
-                    modifiedFiles = modified,
-                    stagedFiles = staged,
-                    hasChanges = hasChanges
-                )
-            }
-        } catch (e: Exception) {
-            RexGitStatus(
-                output = e.message ?: "Status gagal"
             )
         }
     }
@@ -121,6 +84,79 @@ class RexGitNative {
         }
     }
 
+    fun status(
+        repository: RexGitRepository
+    ): RexGitStatus {
+        val repo = File(repository.path)
+
+        return try {
+            Git.open(repo).use { git ->
+                val status = git.status().call()
+
+                val modified = buildList {
+                    addAll(status.modified)
+                    addAll(status.missing)
+                    addAll(status.removed)
+                }
+
+                val staged = buildList {
+                    addAll(status.added)
+                    addAll(status.changed)
+                    addAll(status.removed)
+                }
+
+                val output = buildString {
+                    status.added
+                        .sorted()
+                        .forEach {
+                            appendLine("A  $it")
+                        }
+
+                    status.changed
+                        .sorted()
+                        .forEach {
+                            appendLine("M  $it")
+                        }
+
+                    status.modified
+                        .sorted()
+                        .forEach {
+                            appendLine(" M $it")
+                        }
+
+                    status.removed
+                        .sorted()
+                        .forEach {
+                            appendLine(" D $it")
+                        }
+
+                    status.missing
+                        .sorted()
+                        .forEach {
+                            appendLine(" D $it")
+                        }
+
+                    status.untracked
+                        .sorted()
+                        .forEach {
+                            appendLine("?? $it")
+                        }
+                }.trim()
+
+                RexGitStatus(
+                    output = output,
+                    modifiedFiles = modified,
+                    stagedFiles = staged,
+                    hasChanges = status.hasUncommittedChanges()
+                )
+            }
+        } catch (e: Exception) {
+            RexGitStatus(
+                output = e.message ?: "Status gagal"
+            )
+        }
+    }
+
     fun addAll(
         repository: RexGitRepository
     ): RexGitNativeResult {
@@ -145,13 +181,28 @@ class RexGitNative {
 
     fun commit(
         repository: RexGitRepository,
-        message: String
+        message: String,
+        username: String? = null
     ): RexGitNativeResult {
         return try {
             Git.open(File(repository.path)).use { git ->
-                git.commit()
+
+                val command = git.commit()
                     .setMessage(message)
-                    .call()
+
+                if (!username.isNullOrBlank()) {
+                    command
+                        .setAuthor(
+                            username,
+                            "$username@users.noreply.github.com"
+                        )
+                        .setCommitter(
+                            username,
+                            "$username@users.noreply.github.com"
+                        )
+                }
+
+                command.call()
             }
 
             RexGitNativeResult(

@@ -2,51 +2,48 @@ package com.rexaps.rexgit
 
 import android.content.Context
 import android.util.Base64
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import java.nio.charset.StandardCharsets
+import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-
-data class RexGitAuth(
-    val username: String,
-    val token: String
-)
 
 class RexGitAuthStore(
     context: Context
 ) {
-    private val prefs = context.getSharedPreferences(
-        "rexgit_auth",
-        Context.MODE_PRIVATE
-    )
+    private val prefs =
+        context.getSharedPreferences(
+            "rexgit_auth",
+            Context.MODE_PRIVATE
+        )
 
     companion object {
         private const val KEY_ALIAS = "rexgit_github_key"
-        private const val TOKEN = "token"
         private const val USERNAME = "username"
+        private const val TOKEN = "token"
     }
 
     fun save(
         username: String,
         token: String
     ) {
-        val encrypted = encrypt(token)
-
         prefs.edit()
             .putString(USERNAME, username)
-            .putString(TOKEN, encrypted)
+            .putString(TOKEN, encrypt(token))
             .apply()
     }
 
     fun load(): RexGitAuth? {
-        val username = prefs.getString(USERNAME, null)
-            ?: return null
+        val username =
+            prefs.getString(USERNAME, null)
+                ?: return null
 
-        val encrypted = prefs.getString(TOKEN, null)
-            ?: return null
+        val encrypted =
+            prefs.getString(TOKEN, null)
+                ?: return null
 
         return try {
             RexGitAuth(
@@ -62,26 +59,28 @@ class RexGitAuthStore(
         prefs.edit().clear().apply()
     }
 
-    private fun getKey(): SecretKey {
-        val keyStore = java.security.KeyStore
+    private fun key(): SecretKey {
+        val store = KeyStore
             .getInstance("AndroidKeyStore")
             .apply {
                 load(null)
             }
 
-        val existing = keyStore.getKey(
-            KEY_ALIAS,
-            null
-        ) as? SecretKey
+        val existing =
+            store.getKey(
+                KEY_ALIAS,
+                null
+            ) as? SecretKey
 
         if (existing != null) {
             return existing
         }
 
-        val generator = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
-        )
+        val generator =
+            KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                "AndroidKeyStore"
+            )
 
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -101,71 +100,84 @@ class RexGitAuthStore(
         return generator.generateKey()
     }
 
-    private fun encrypt(value: String): String {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    private fun encrypt(
+        value: String
+    ): String {
+
+        val cipher =
+            Cipher.getInstance(
+                "AES/GCM/NoPadding"
+            )
 
         cipher.init(
             Cipher.ENCRYPT_MODE,
-            getKey()
+            key()
         )
 
-        val encrypted = cipher.doFinal(
-            value.toByteArray(StandardCharsets.UTF_8)
-        )
+        val encrypted =
+            cipher.doFinal(
+                value.toByteArray(
+                    StandardCharsets.UTF_8
+                )
+            )
 
-        val iv = cipher.iv
-
-        val combined = ByteArray(
-            iv.size + encrypted.size
-        )
+        val data =
+            ByteArray(
+                cipher.iv.size + encrypted.size
+            )
 
         System.arraycopy(
-            iv,
+            cipher.iv,
             0,
-            combined,
+            data,
             0,
-            iv.size
+            cipher.iv.size
         )
 
         System.arraycopy(
             encrypted,
             0,
-            combined,
-            iv.size,
+            data,
+            cipher.iv.size,
             encrypted.size
         )
 
         return Base64.encodeToString(
-            combined,
+            data,
             Base64.NO_WRAP
         )
     }
 
-    private fun decrypt(value: String): String {
-        val combined = Base64.decode(
-            value,
-            Base64.NO_WRAP
-        )
+    private fun decrypt(
+        value: String
+    ): String {
 
-        val ivSize = 12
+        val data =
+            Base64.decode(
+                value,
+                Base64.NO_WRAP
+            )
 
-        val iv = combined.copyOfRange(
-            0,
-            ivSize
-        )
+        val iv =
+            data.copyOfRange(
+                0,
+                12
+            )
 
-        val encrypted = combined.copyOfRange(
-            ivSize,
-            combined.size
-        )
+        val encrypted =
+            data.copyOfRange(
+                12,
+                data.size
+            )
 
-        val cipher = Cipher.getInstance(
-            "AES/GCM/NoPadding"
-        )
+        val cipher =
+            Cipher.getInstance(
+                "AES/GCM/NoPadding"
+            )
 
         cipher.init(
             Cipher.DECRYPT_MODE,
-            getKey(),
+            key(),
             GCMParameterSpec(
                 128,
                 iv

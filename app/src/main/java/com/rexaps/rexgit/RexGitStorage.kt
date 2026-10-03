@@ -23,7 +23,6 @@ object RexGitStorage {
         if (!githubRoot.exists()) {
             githubRoot.mkdirs()
         }
-
         return githubRoot
     }
 

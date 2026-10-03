@@ -32,13 +32,40 @@ data class RexGitPushResult(
     val version: RexGitVersion? = null
 )
 
+data class RexGitGithubRepository(
+    val name: String,
+    val fullName: String,
+    val cloneUrl: String,
+    val private: Boolean,
+    val defaultBranch: String
+)
+
+data class RexGitAuth(
+    val username: String,
+    val token: String
+)
+
 data class RexGitUiState(
     val repositories: List<RexGitRepository> = emptyList(),
     val selectedRepository: RexGitRepository? = null,
     val files: List<RexGitFile> = emptyList(),
+    val currentDirectory: String? = null,
     val gitStatus: RexGitStatus = RexGitStatus(),
+
+    val githubRepositories: List<RexGitGithubRepository> = emptyList(),
+    val githubUsername: String? = null,
+    val isGithubConnected: Boolean = false,
+
+    val editorPath: String? = null,
+    val editorContent: String = "",
+    val editorDirty: Boolean = false,
+
     val isLoading: Boolean = false,
     val isPushing: Boolean = false,
+    val isCloning: Boolean = false,
+    val isSaving: Boolean = false,
+    val isGithubLoading: Boolean = false,
+
     val message: String? = null,
     val error: String? = null
 )
