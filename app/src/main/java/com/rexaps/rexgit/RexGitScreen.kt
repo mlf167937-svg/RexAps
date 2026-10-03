@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,17 +21,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.GitHub
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
@@ -38,13 +39,11 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,11 +52,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallTopAppBar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,17 +65,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.io.File
 
 @Composable
 fun RexGitScreen(
     viewModel: RexGitViewModel
 ) {
-
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     var githubDialog by remember {
@@ -96,42 +97,44 @@ fun RexGitScreen(
 
     Scaffold(
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(
                 title = {
                     Row(
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Code,
-                            contentDescription = null
-                        )
+                        RexGitLogo()
 
                         Spacer(
                             Modifier.width(10.dp)
                         )
 
-                        Text(
-                            "RexGit",
-                            style =
-                                MaterialTheme.typography.titleLarge
-                        )
+                        Column {
+                            Text(
+                                "RexGit",
+                                style =
+                                    MaterialTheme.typography.titleLarge
+                            )
+
+                            Text(
+                                "GitHub workspace",
+                                style =
+                                    MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                 },
                 actions = {
 
-                    if (state.isGithubConnected) {
-                        IconButton(
-                            onClick = {
-                                viewModel.reloadGithub()
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription =
-                                    "Refresh GitHub"
-                            )
+                    IconButton(
+                        onClick = {
+                            viewModel.refresh()
                         }
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh"
+                        )
                     }
 
                     IconButton(
@@ -140,12 +143,13 @@ fun RexGitScreen(
                         }
                     ) {
                         Icon(
-                            Icons.Default.GitHub,
-                            contentDescription =
-                                "GitHub"
+                            Icons.Default.Cloud,
+                            contentDescription = "GitHub"
                         )
                     }
-                }
+                },
+                colors =
+                    TopAppBarDefaults.topAppBarColors()
             )
         }
     ) { padding ->
@@ -162,48 +166,12 @@ fun RexGitScreen(
                 )
             }
 
-            if (
-                state.message != null ||
-                state.error != null
-            ) {
-
-                val text =
-                    state.error
-                        ?: state.message
-                        ?: ""
-
-                Surface(
-                    tonalElevation = 3.dp,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier =
-                            Modifier.padding(
-                                12.dp
-                            ),
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Text(
-                            text,
-                            modifier =
-                                Modifier.weight(1f),
-                            style =
-                                MaterialTheme.typography.bodySmall
-                        )
-
-                        TextButton(
-                            onClick = {
-                                viewModel.clearMessage()
-                            }
-                        ) {
-                            Text("OK")
-                        }
-                    }
+            StatusBanner(
+                state = state,
+                onDismiss = {
+                    viewModel.clearMessage()
                 }
-            }
+            )
 
             if (state.selectedRepository == null) {
 
@@ -257,7 +225,6 @@ fun RexGitScreen(
     }
 
     if (githubDialog) {
-
         GithubDialog(
             state = state,
             onDismiss = {
@@ -271,101 +238,90 @@ fun RexGitScreen(
             },
             onDisconnect = {
                 viewModel.disconnectGithub()
-            },
-            onClone = {
-                viewModel.cloneRepository(it)
             }
         )
     }
 
     if (pushDialog) {
-
-        AlertDialog(
-            onDismissRequest = {
+        PushDialog(
+            message = commitMessage,
+            onMessageChange = {
+                commitMessage = it
+            },
+            bumpVersion = bumpVersion,
+            onBumpChange = {
+                bumpVersion = it
+            },
+            pushing = state.isPushing,
+            onDismiss = {
                 if (!state.isPushing) {
                     pushDialog = false
                 }
             },
-            title = {
-                Text("Push ke GitHub")
-            },
-            text = {
-
-                Column {
-
-                    OutlinedTextField(
-                        value = commitMessage,
-                        onValueChange = {
-                            commitMessage = it
-                        },
-                        label = {
-                            Text("Commit message")
-                        },
-                        modifier =
-                            Modifier.fillMaxWidth(),
-                        enabled =
-                            !state.isPushing
-                    )
-
-                    Spacer(
-                        Modifier.height(12.dp)
-                    )
-
-                    Row(
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Switch(
-                            checked =
-                                bumpVersion,
-                            onCheckedChange = {
-                                bumpVersion = it
-                            },
-                            enabled =
-                                !state.isPushing
-                        )
-
-                        Spacer(
-                            Modifier.width(8.dp)
-                        )
-
-                        Text(
-                            "Bump version otomatis"
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-
-                Button(
-                    onClick = {
-                        viewModel.push(
-                            commitMessage,
-                            bumpVersion
-                        )
-                        pushDialog = false
-                    },
-                    enabled =
-                        !state.isPushing &&
-                            commitMessage.isNotBlank()
-                ) {
-                    Text("Push")
-                }
-            },
-            dismissButton = {
-
-                TextButton(
-                    onClick = {
-                        pushDialog = false
-                    },
-                    enabled =
-                        !state.isPushing
-                ) {
-                    Text("Batal")
-                }
+            onPush = {
+                viewModel.push(
+                    commitMessage,
+                    bumpVersion
+                )
+                pushDialog = false
             }
         )
+    }
+}
+
+@Composable
+private fun RexGitLogo() {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(
+                RoundedCornerShape(12.dp)
+            )
+            .background(
+                MaterialTheme.colorScheme.primaryContainer
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Default.Code,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun StatusBanner(
+    state: RexGitUiState,
+    onDismiss: () -> Unit
+) {
+    val text =
+        state.error ?: state.message
+
+    if (text == null) {
+        return
+    }
+
+    Surface(
+        tonalElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            TextButton(
+                onClick = onDismiss
+            ) {
+                Text("OK")
+            }
+        }
     }
 }
 
@@ -376,7 +332,6 @@ private fun RepositoryHome(
     onSelect: (RexGitRepository) -> Unit,
     onClone: (RexGitGithubRepository) -> Unit
 ) {
-
     var tab by remember {
         mutableStateOf(0)
     }
@@ -386,13 +341,12 @@ private fun RepositoryHome(
     ) {
 
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 12.dp,
-                        vertical = 8.dp
-                    ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = 10.dp
+                ),
             horizontalArrangement =
                 Arrangement.spacedBy(8.dp)
         ) {
@@ -408,7 +362,7 @@ private fun RepositoryHome(
                 leadingIcon = {
                     Icon(
                         Icons.Default.Storage,
-                        null
+                        contentDescription = null
                     )
                 }
             )
@@ -423,23 +377,20 @@ private fun RepositoryHome(
                 },
                 leadingIcon = {
                     Icon(
-                        Icons.Default.GitHub,
-                        null
+                        Icons.Default.Cloud,
+                        contentDescription = null
                     )
                 }
             )
         }
 
         if (tab == 0) {
-
             LocalRepositories(
                 state = state,
                 onConnectGithub = onConnectGithub,
                 onSelect = onSelect
             )
-
         } else {
-
             GithubRepositories(
                 state = state,
                 onConnect = onConnectGithub,
@@ -455,7 +406,6 @@ private fun LocalRepositories(
     onConnectGithub: () -> Unit,
     onSelect: (RexGitRepository) -> Unit
 ) {
-
     Column(
         Modifier
             .fillMaxSize()
@@ -486,58 +436,9 @@ private fun LocalRepositories(
 
         if (state.repositories.isEmpty()) {
 
-            ElevatedCard(
-                modifier =
-                    Modifier.fillMaxWidth()
-            ) {
-
-                Column(
-                    Modifier.padding(20.dp)
-                ) {
-
-                    Icon(
-                        Icons.Default.FolderOpen,
-                        null,
-                        Modifier.size(42.dp)
-                    )
-
-                    Spacer(
-                        Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        "Belum ada repository",
-                        style =
-                            MaterialTheme.typography.titleMedium
-                    )
-
-                    Text(
-                        "Hubungkan GitHub lalu clone repository kamu.",
-                        style =
-                            MaterialTheme.typography.bodySmall
-                    )
-
-                    Spacer(
-                        Modifier.height(14.dp)
-                    )
-
-                    Button(
-                        onClick =
-                            onConnectGithub
-                    ) {
-                        Icon(
-                            Icons.Default.GitHub,
-                            null
-                        )
-
-                        Spacer(
-                            Modifier.width(8.dp)
-                        )
-
-                        Text("Connect GitHub")
-                    }
-                }
-            }
+            EmptyRepositoryCard(
+                onConnectGithub = onConnectGithub
+            )
 
         } else {
 
@@ -545,14 +446,12 @@ private fun LocalRepositories(
                 verticalArrangement =
                     Arrangement.spacedBy(10.dp)
             ) {
-
                 items(
                     state.repositories,
                     key = {
                         it.path
                     }
                 ) { repo ->
-
                     RepositoryCard(
                         repo = repo,
                         onClick = {
@@ -566,18 +465,71 @@ private fun LocalRepositories(
 }
 
 @Composable
+private fun EmptyRepositoryCard(
+    onConnectGithub: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier.padding(22.dp)
+        ) {
+
+            RexGitLogo()
+
+            Spacer(
+                Modifier.height(14.dp)
+            )
+
+            Text(
+                "Belum ada repository",
+                style =
+                    MaterialTheme.typography.titleLarge
+            )
+
+            Spacer(
+                Modifier.height(5.dp)
+            )
+
+            Text(
+                "Hubungkan GitHub untuk mengambil repository langsung ke workspace RexGit.",
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+            Spacer(
+                Modifier.height(16.dp)
+            )
+
+            Button(
+                onClick = onConnectGithub
+            ) {
+                Icon(
+                    Icons.Default.Cloud,
+                    contentDescription = null
+                )
+
+                Spacer(
+                    Modifier.width(8.dp)
+                )
+
+                Text("Connect GitHub")
+            }
+        }
+    }
+}
+
+@Composable
 private fun RepositoryCard(
     repo: RexGitRepository,
     onClick: () -> Unit
 ) {
-
     ElevatedCard(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(
-                    onClick = onClick
-                )
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                onClick = onClick
+            )
     ) {
 
         Row(
@@ -587,21 +539,22 @@ private fun RepositoryCard(
         ) {
 
             Box(
-                modifier =
-                    Modifier
-                        .size(48.dp)
-                        .background(
-                            MaterialTheme
-                                .colorScheme
-                                .primaryContainer,
-                            RoundedCornerShape(14.dp)
-                        ),
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(
+                        RoundedCornerShape(14.dp)
+                    )
+                    .background(
+                        MaterialTheme
+                            .colorScheme
+                            .primaryContainer
+                    ),
                 contentAlignment =
                     Alignment.Center
             ) {
                 Icon(
                     Icons.Default.Folder,
-                    null
+                    contentDescription = null
                 )
             }
 
@@ -619,6 +572,10 @@ private fun RepositoryCard(
                         MaterialTheme.typography.titleMedium
                 )
 
+                Spacer(
+                    Modifier.height(2.dp)
+                )
+
                 Text(
                     if (repo.isGitRepository)
                         "Git repository"
@@ -631,12 +588,20 @@ private fun RepositoryCard(
                             .colorScheme
                             .onSurfaceVariant
                 )
+
+                if (!repo.remoteUrl.isNullOrBlank()) {
+                    Text(
+                        repo.remoteUrl!!,
+                        maxLines = 1,
+                        style =
+                            MaterialTheme.typography.labelSmall
+                    )
+                }
             }
 
-            Text(
-                "›",
-                style =
-                    MaterialTheme.typography.headlineMedium
+            Icon(
+                Icons.Default.ArrowForward,
+                contentDescription = null
             )
         }
     }
@@ -648,7 +613,6 @@ private fun GithubRepositories(
     onConnect: () -> Unit,
     onClone: (RexGitGithubRepository) -> Unit
 ) {
-
     Column(
         Modifier
             .fillMaxSize()
@@ -660,45 +624,40 @@ private fun GithubRepositories(
             ElevatedCard(
                 Modifier.fillMaxWidth()
             ) {
-
                 Column(
-                    Modifier.padding(20.dp)
+                    Modifier.padding(22.dp)
                 ) {
 
-                    Icon(
-                        Icons.Default.GitHub,
-                        null,
-                        Modifier.size(46.dp)
-                    )
-
-                    Spacer(
-                        Modifier.height(10.dp)
-                    )
-
-                    Text(
-                        "Connect GitHub",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .headlineSmall
-                    )
-
-                    Text(
-                        "Setelah terhubung, repository GitHub kamu muncul di sini.",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall
-                    )
+                    RexGitLogo()
 
                     Spacer(
                         Modifier.height(14.dp)
                     )
 
+                    Text(
+                        "GitHub belum terhubung",
+                        style =
+                            MaterialTheme.typography.headlineSmall
+                    )
+
+                    Spacer(
+                        Modifier.height(6.dp)
+                    )
+
+                    Text(
+                        "Connect akun GitHub untuk melihat dan clone repository.",
+                        style =
+                            MaterialTheme.typography.bodyMedium
+                    )
+
+                    Spacer(
+                        Modifier.height(16.dp)
+                    )
+
                     Button(
                         onClick = onConnect
                     ) {
-                        Text("Connect")
+                        Text("Connect GitHub")
                     }
                 }
             }
@@ -719,23 +678,28 @@ private fun GithubRepositories(
                 Text(
                     "@${state.githubUsername}",
                     style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium
+                        MaterialTheme.typography.titleMedium
                 )
 
                 Text(
                     "${state.githubRepositories.size} repositories",
                     style =
-                        MaterialTheme
-                            .typography
-                            .bodySmall
+                        MaterialTheme.typography.bodySmall
                 )
             }
 
             OutlinedButton(
                 onClick = onConnect
             ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = null
+                )
+
+                Spacer(
+                    Modifier.width(6.dp)
+                )
+
                 Text("Account")
             }
         }
@@ -744,9 +708,15 @@ private fun GithubRepositories(
             Modifier.height(12.dp)
         )
 
-        if (state.isGithubLoading) {
+        if (state.isGithubLoading ||
+            state.isCloning
+        ) {
             LinearProgressIndicator(
                 Modifier.fillMaxWidth()
+            )
+
+            Spacer(
+                Modifier.height(8.dp)
             )
         }
 
@@ -762,71 +732,92 @@ private fun GithubRepositories(
                 }
             ) { repo ->
 
-                ElevatedCard(
-                    Modifier.fillMaxWidth()
-                ) {
-
-                    Row(
-                        Modifier.padding(16.dp),
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Icon(
-                            Icons.Default.Code,
-                            null,
-                            Modifier.size(34.dp)
-                        )
-
-                        Spacer(
-                            Modifier.width(12.dp)
-                        )
-
-                        Column(
-                            Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                repo.name,
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .titleMedium
-                            )
-
-                            Text(
-                                repo.fullName,
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .bodySmall
-                            )
-
-                            if (repo.private) {
-                                Text(
-                                    "Private",
-                                    style =
-                                        MaterialTheme
-                                            .typography
-                                            .labelSmall
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                onClone(repo)
-                            },
-                            enabled =
-                                !state.isCloning
-                        ) {
-                            Icon(
-                                Icons.Default.CloudDownload,
-                                null
-                            )
-                        }
+                GithubRepositoryCard(
+                    repo = repo,
+                    enabled = !state.isCloning,
+                    onClone = {
+                        onClone(repo)
                     }
-                }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GithubRepositoryCard(
+    repo: RexGitGithubRepository,
+    enabled: Boolean,
+    onClone: () -> Unit
+) {
+    ElevatedCard(
+        Modifier.fillMaxWidth()
+    ) {
+
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(
+                        RoundedCornerShape(14.dp)
+                    )
+                    .background(
+                        MaterialTheme
+                            .colorScheme
+                            .secondaryContainer
+                    ),
+                contentAlignment =
+                    Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Code,
+                    contentDescription = null
+                )
+            }
+
+            Spacer(
+                Modifier.width(12.dp)
+            )
+
+            Column(
+                Modifier.weight(1f)
+            ) {
+
+                Text(
+                    repo.name,
+                    style =
+                        MaterialTheme.typography.titleMedium
+                )
+
+                Text(
+                    repo.fullName,
+                    style =
+                        MaterialTheme.typography.bodySmall
+                )
+
+                Text(
+                    if (repo.private)
+                        "Private"
+                    else
+                        "Public",
+                    style =
+                        MaterialTheme.typography.labelSmall
+                )
+            }
+
+            Button(
+                onClick = onClone,
+                enabled = enabled
+            ) {
+                Icon(
+                    Icons.Default.CloudDownload,
+                    contentDescription = null
+                )
             }
         }
     }
@@ -837,10 +828,8 @@ private fun GithubDialog(
     state: RexGitUiState,
     onDismiss: () -> Unit,
     onConnect: (String, String) -> Unit,
-    onDisconnect: () -> Unit,
-    onClone: (RexGitGithubRepository) -> Unit
+    onDisconnect: () -> Unit
 ) {
-
     var username by remember {
         mutableStateOf(
             state.githubUsername ?: ""
@@ -858,7 +847,7 @@ private fun GithubDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("GitHub")
+            Text("GitHub Account")
         },
         text = {
 
@@ -867,15 +856,19 @@ private fun GithubDialog(
                 if (state.isGithubConnected) {
 
                     Text(
-                        "Connected as @${state.githubUsername}"
+                        "Connected as @${state.githubUsername}",
+                        style =
+                            MaterialTheme.typography.titleMedium
                     )
 
                     Spacer(
-                        Modifier.height(12.dp)
+                        Modifier.height(10.dp)
                     )
 
                     Text(
-                        "Token tersimpan terenkripsi di Android Keystore."
+                        "Token tersimpan menggunakan Android Keystore.",
+                        style =
+                            MaterialTheme.typography.bodySmall
                     )
 
                 } else {
@@ -920,28 +913,25 @@ private fun GithubDialog(
                                     visible = !visible
                                 }
                             ) {
-
                                 Icon(
                                     if (visible)
                                         Icons.Default.VisibilityOff
                                     else
                                         Icons.Default.Visibility,
-                                    null
+                                    contentDescription = null
                                 )
                             }
                         }
                     )
 
                     Spacer(
-                        Modifier.height(8.dp)
+                        Modifier.height(10.dp)
                     )
 
                     Text(
-                        "Token hanya dimasukkan ke aplikasi dan disimpan terenkripsi. Jangan kirim token ke chat.",
+                        "Jangan kirim token GitHub ke chat atau commit ke repository.",
                         style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall
+                            MaterialTheme.typography.labelSmall
                     )
                 }
             }
@@ -994,6 +984,99 @@ private fun GithubDialog(
 }
 
 @Composable
+private fun PushDialog(
+    message: String,
+    onMessageChange: (String) -> Unit,
+    bumpVersion: Boolean,
+    onBumpChange: (Boolean) -> Unit,
+    pushing: Boolean,
+    onDismiss: () -> Unit,
+    onPush: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Push ke GitHub")
+        },
+        text = {
+
+            Column {
+
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = onMessageChange,
+                    label = {
+                        Text("Commit message")
+                    },
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    enabled = !pushing
+                )
+
+                Spacer(
+                    Modifier.height(12.dp)
+                )
+
+                Row(
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Switch(
+                        checked = bumpVersion,
+                        onCheckedChange =
+                            onBumpChange,
+                        enabled = !pushing
+                    )
+
+                    Spacer(
+                        Modifier.width(8.dp)
+                    )
+
+                    Text(
+                        "Bump version otomatis"
+                    )
+                }
+            }
+        },
+        confirmButton = {
+
+            Button(
+                onClick = onPush,
+                enabled =
+                    !pushing &&
+                        message.isNotBlank()
+            ) {
+                Icon(
+                    Icons.Default.CloudUpload,
+                    contentDescription = null
+                )
+
+                Spacer(
+                    Modifier.width(6.dp)
+                )
+
+                Text(
+                    if (pushing)
+                        "Pushing..."
+                    else
+                        "Push"
+                )
+            }
+        },
+        dismissButton = {
+
+            TextButton(
+                onClick = onDismiss,
+                enabled = !pushing
+            ) {
+                Text("Batal")
+            }
+        }
+    )
+}
+
+@Composable
 private fun RepositoryEditor(
     state: RexGitUiState,
     onBack: () -> Unit,
@@ -1006,7 +1089,6 @@ private fun RepositoryEditor(
     onPull: () -> Unit,
     onPush: () -> Unit
 ) {
-
     if (state.editorPath != null) {
 
         CodeEditor(
@@ -1028,7 +1110,7 @@ private fun RepositoryEditor(
                 .fillMaxWidth()
                 .padding(
                     horizontal = 8.dp,
-                    vertical = 6.dp
+                    vertical = 5.dp
                 ),
             verticalAlignment =
                 Alignment.CenterVertically
@@ -1039,7 +1121,7 @@ private fun RepositoryEditor(
             ) {
                 Icon(
                     Icons.Default.ArrowBack,
-                    null
+                    contentDescription = "Back"
                 )
             }
 
@@ -1048,43 +1130,21 @@ private fun RepositoryEditor(
             ) {
 
                 Text(
-                    state.selectedRepository
-                        ?.name
+                    state.selectedRepository?.name
                         ?: "Repository",
                     style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium
+                        MaterialTheme.typography.titleMedium
                 )
 
-                Row {
-
-                    AssistChip(
-                        onClick = {},
-                        label = {
-                            Text(
-                                state.selectedRepository
-                                    ?.branch
-                                    ?: "main"
-                            )
-                        }
-                    )
-
-                    Spacer(
-                        Modifier.width(6.dp)
-                    )
-
-                    Text(
+                Text(
+                    "${state.selectedRepository?.branch ?: "main"}  •  " +
                         if (state.gitStatus.hasChanges)
                             "Changes"
                         else
                             "Clean",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .labelSmall
-                    )
-                }
+                    style =
+                        MaterialTheme.typography.labelSmall
+                )
             }
 
             IconButton(
@@ -1092,7 +1152,7 @@ private fun RepositoryEditor(
             ) {
                 Icon(
                     Icons.Default.Refresh,
-                    null
+                    contentDescription = "Refresh"
                 )
             }
 
@@ -1101,7 +1161,7 @@ private fun RepositoryEditor(
             ) {
                 Icon(
                     Icons.Default.CloudDownload,
-                    null
+                    contentDescription = "Pull"
                 )
             }
 
@@ -1110,7 +1170,7 @@ private fun RepositoryEditor(
             ) {
                 Icon(
                     Icons.Default.CloudUpload,
-                    null
+                    contentDescription = "Push"
                 )
             }
         }
@@ -1120,12 +1180,9 @@ private fun RepositoryEditor(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 8.dp
-                ),
-            horizontalArrangement =
-                Arrangement.spacedBy(8.dp)
+                .padding(10.dp),
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
 
             OutlinedButton(
@@ -1133,7 +1190,7 @@ private fun RepositoryEditor(
             ) {
                 Icon(
                     Icons.Default.FolderOpen,
-                    null
+                    contentDescription = null
                 )
 
                 Spacer(
@@ -1143,29 +1200,29 @@ private fun RepositoryEditor(
                 Text("Root")
             }
 
+            Spacer(
+                Modifier.width(10.dp)
+            )
+
             Text(
-                state.currentDirectory
-                    ?: "/",
+                state.currentDirectory ?: "/",
                 modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(
-                            top = 10.dp
-                        ),
+                    Modifier.weight(1f),
+                maxLines = 1,
                 style =
-                    MaterialTheme
-                        .typography
-                        .bodySmall
+                    MaterialTheme.typography.bodySmall
             )
         }
 
         LazyColumn(
             Modifier.weight(1f),
             contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(12.dp),
+                PaddingValues(
+                    horizontal = 12.dp,
+                    vertical = 4.dp
+                ),
             verticalArrangement =
-                Arrangement.spacedBy(4.dp)
+                Arrangement.spacedBy(2.dp)
         ) {
 
             items(
@@ -1175,44 +1232,19 @@ private fun RepositoryEditor(
                 }
             ) { file ->
 
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onOpen(file)
-                        }
-                        .padding(12.dp),
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    Icon(
-                        if (file.isDirectory)
-                            Icons.Default.Folder
-                        else
-                            Icons.Default.Code,
-                        null
-                    )
-
-                    Spacer(
-                        Modifier.width(12.dp)
-                    )
-
-                    Text(
-                        file.name,
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyLarge
-                    )
-                }
+                FileRow(
+                    file = file,
+                    onClick = {
+                        onOpen(file)
+                    }
+                )
             }
         }
 
         if (state.gitStatus.output.isNotBlank()) {
 
             Surface(
-                tonalElevation = 4.dp,
+                tonalElevation = 5.dp,
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
@@ -1224,9 +1256,7 @@ private fun RepositoryEditor(
                     Text(
                         "Git Status",
                         style =
-                            MaterialTheme
-                                .typography
-                                .titleSmall
+                            MaterialTheme.typography.titleSmall
                     )
 
                     Spacer(
@@ -1238,13 +1268,51 @@ private fun RepositoryEditor(
                         fontFamily =
                             FontFamily.Monospace,
                         style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall
+                            MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FileRow(
+    file: RexGitFile,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(
+                onClick = onClick
+            )
+            .padding(
+                horizontal = 10.dp,
+                vertical = 10.dp
+            ),
+        verticalAlignment =
+            Alignment.CenterVertically
+    ) {
+
+        Icon(
+            if (file.isDirectory)
+                Icons.Default.Folder
+            else
+                Icons.Default.Code,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp)
+        )
+
+        Spacer(
+            Modifier.width(12.dp)
+        )
+
+        Text(
+            file.name,
+            style =
+                MaterialTheme.typography.bodyLarge
+        )
     }
 }
 
@@ -1255,11 +1323,10 @@ private fun CodeEditor(
     onSave: () -> Unit,
     onEdit: (String) -> Unit
 ) {
-
     Scaffold(
         topBar = {
 
-            SmallTopAppBar(
+            TopAppBar(
                 navigationIcon = {
 
                     IconButton(
@@ -1267,19 +1334,28 @@ private fun CodeEditor(
                     ) {
                         Icon(
                             Icons.Default.ArrowBack,
-                            null
+                            contentDescription = "Back"
                         )
                     }
                 },
                 title = {
 
-                    Text(
-                        state.editorPath
-                            ?.let {
-                                FileName(it)
-                            }
-                            ?: "Editor"
-                    )
+                    Column {
+
+                        Text(
+                            state.editorPath
+                                ?.substringAfterLast("/")
+                                ?: "Editor"
+                        )
+
+                        if (state.editorDirty) {
+                            Text(
+                                "Unsaved changes",
+                                style =
+                                    MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
                 },
                 actions = {
 
@@ -1291,7 +1367,7 @@ private fun CodeEditor(
                     ) {
                         Icon(
                             Icons.Default.Save,
-                            null
+                            contentDescription = "Save"
                         )
                     }
                 }
@@ -1299,34 +1375,68 @@ private fun CodeEditor(
         }
     ) { padding ->
 
-        OutlinedTextField(
-            value =
-                state.editorContent,
-            onValueChange = onEdit,
+        CodeTextEditor(
+            text = state.editorContent,
+            onTextChange = onEdit,
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(8.dp),
-            textStyle =
-                MaterialTheme
-                    .typography
-                    .bodyMedium
-                    .copy(
-                        fontFamily =
-                            FontFamily.Monospace
-                    ),
-            singleLine = false
+                    .padding(8.dp)
         )
     }
+}
+
+@Composable
+private fun CodeTextEditor(
+    text: String,
+    onTextChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BasicTextField(
+        value = text,
+        onValueChange = onTextChange,
+        modifier = modifier,
+        textStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = FontFamily.Monospace
+            ),
+        decorationBox = { innerTextField ->
+
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                tonalElevation = 1.dp,
+                shape =
+                    RoundedCornerShape(10.dp)
+            ) {
+
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(12.dp)
+                ) {
+
+                    if (text.isEmpty()) {
+                        Text(
+                            "Start writing...",
+                            color =
+                                MaterialTheme
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                            fontFamily =
+                                FontFamily.Monospace
+                        )
+                    }
+
+                    innerTextField()
+                }
+            }
+        }
+    )
 }
 
 private fun FileName(
     path: String
 ): String {
-    return path
-        .substringAfterLast("/")
-        .ifBlank {
-            "Editor"
-        }
+    return File(path).name
 }
