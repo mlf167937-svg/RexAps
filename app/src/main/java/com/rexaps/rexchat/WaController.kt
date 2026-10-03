@@ -85,22 +85,35 @@ class WaController(
     private var methodConsumed = false
     private var pairToken = 0
 
-    val webView: WebView = createWebView()
+    // =====================================================================
+    // Login state polling
+    // HARUS dideklarasikan SEBELUM webView dan init
+    // =====================================================================
 
-    init {
-        handler.postDelayed(poller, 1500)
+    private val poller = object : Runnable {
+        override fun run() {
+            if (destroyed) return
+            if (error == null && webView.url?.contains("whatsapp") == true) probe()
+            handler.postDelayed(this, 1500)
+        }
     }
 
     // =====================================================================
     // WEBVIEW
     // =====================================================================
 
+    val webView: WebView = createWebView()
+
+    init {
+        handler.postDelayed(poller, 1500)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
         WebView.setWebContentsDebuggingEnabled(false)
         val wv = WebView(activity)
 
-        // Isolated data per session (must happen before anything loads)
+        // Data terisolasi per session (harus sebelum memuat apa pun)
         if (!legacy) {
             runCatching {
                 val name = SessionManager.profileName(sessionId)
@@ -127,8 +140,9 @@ class WaController(
             safeBrowsingEnabled = true
             setSupportMultipleWindows(false)
 
-            // WhatsApp Web rejects mobile user agents -> use a desktop Chrome UA
-            val chromeMajor = Regex("Chrome/(\\d+)").find(userAgentString)?.groupValues?.get(1) ?: "124"
+            // WhatsApp Web menolak UA mobile -> pakai UA desktop Chrome
+            val chromeMajor =
+                Regex("Chrome/(\\d+)").find(userAgentString)?.groupValues?.get(1) ?: "124"
             userAgentString =
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
                         "Chrome/$chromeMajor.0.0.0 Safari/537.36"
@@ -141,7 +155,10 @@ class WaController(
 
         wv.webViewClient = object : WebViewClient() {
 
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
                 val uri = request.url
                 val scheme = uri.scheme?.lowercase()
                 if (scheme == "blob" || scheme == "data" || scheme == "about") return false
@@ -163,20 +180,31 @@ class WaController(
                 applyViewport()
             }
 
-            override fun onReceivedError(view: WebView, request: WebResourceRequest, err: WebResourceError) {
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                err: WebResourceError
+            ) {
                 if (request.isForMainFrame) {
                     loading = false
                     error = "Can't open WhatsApp Web.\n\nCheck your internet connection and try again."
                 }
             }
 
-            override fun onReceivedSslError(view: WebView, h: SslErrorHandler, e: android.net.http.SslError) {
+            override fun onReceivedSslError(
+                view: WebView,
+                h: SslErrorHandler,
+                e: android.net.http.SslError
+            ) {
                 h.cancel()
                 loading = false
                 error = "Insecure HTTPS connection.\n\nCheck your device date, time and network."
             }
 
-            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            override fun onRenderProcessGone(
+                view: WebView,
+                detail: RenderProcessGoneDetail
+            ): Boolean {
                 loading = false
                 error = "The WebView engine stopped.\n\nTap Try again to reload."
                 return true
@@ -202,7 +230,10 @@ class WaController(
                 pendingFileCallback?.onReceiveValue(null)
                 pendingFileCallback = filePathCallback
                 val accept = params.acceptTypes?.firstOrNull().orEmpty()
-                val mime = if (accept.isBlank() || accept.contains(",") || accept.startsWith(".")) "*/*" else accept
+                val mime =
+                    if (accept.isBlank() || accept.contains(",") || accept.startsWith("."))
+                        "*/*"
+                    else accept
                 onPickFiles?.invoke(mime)
                 return true
             }
@@ -210,24 +241,29 @@ class WaController(
             override fun onPermissionRequest(request: PermissionRequest) {
                 activity.runOnUiThread {
                     if (!isAllowedHost(request.origin.host)) {
-                        request.deny(); return@runOnUiThread
+                        request.deny()
+                        return@runOnUiThread
                     }
                     val supported = request.resources.filter {
                         it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
                                 it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
                     }
                     if (supported.isEmpty()) {
-                        request.deny(); return@runOnUiThread
+                        request.deny()
+                        return@runOnUiThread
                     }
                     val needed = supported.map {
-                        if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE) Manifest.permission.CAMERA
+                        if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                            Manifest.permission.CAMERA
                         else Manifest.permission.RECORD_AUDIO
                     }
                     val missing = needed.filter {
-                        ContextCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED
+                        ContextCompat.checkSelfPermission(activity, it) !=
+                                PackageManager.PERMISSION_GRANTED
                     }
                     if (missing.isEmpty()) {
-                        request.grant(supported.toTypedArray()); return@runOnUiThread
+                        request.grant(supported.toTypedArray())
+                        return@runOnUiThread
                     }
                     pendingPermission?.deny()
                     pendingPermission = request
@@ -253,7 +289,9 @@ class WaController(
     private fun cookies(): CookieManager {
         if (!legacy) {
             runCatching {
-                ProfileStore.getInstance().getProfile(SessionManager.profileName(sessionId))?.cookieManager
+                ProfileStore.getInstance()
+                    .getProfile(SessionManager.profileName(sessionId))
+                    ?.cookieManager
             }.getOrNull()?.let { return it }
         }
         return CookieManager.getInstance()
@@ -279,18 +317,6 @@ class WaController(
         eval("__rex.viewport(${if (desktopLayout) 1100 else 0})") {}
     }
 
-    // =====================================================================
-    // Login state polling
-    // =====================================================================
-
-    private val poller = object : Runnable {
-        override fun run() {
-            if (destroyed) return
-            if (error == null && webView.url?.contains("whatsapp") == true) probe()
-            handler.postDelayed(this, 1500)
-        }
-    }
-
     private fun probe() {
         eval("__rex.state()") { s ->
             val state = when (s) {
@@ -306,7 +332,9 @@ class WaController(
                 SessionManager.markLinked(activity, sessionId, true)
                 qrDialogOpen = false
                 askPhone = false
-                if (pairing is Pairing.Code || pairing is Pairing.Working) pairing = Pairing.Idle
+                if (pairing is Pairing.Code || pairing is Pairing.Working) {
+                    pairing = Pairing.Idle
+                }
             }
 
             if (state == Login.QR && !methodConsumed) {
@@ -327,15 +355,22 @@ class WaController(
             if (!data.startsWith("data:image")) return@eval
             runCatching {
                 val bytes = Base64.decode(data.substringAfter("base64,"), Base64.DEFAULT)
-                val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@eval
+                val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    ?: return@eval
                 val size = 720
                 val pad = 48
-                val out = Bitmap.createBitmap(size + pad * 2, size + pad * 2, Bitmap.Config.ARGB_8888)
+                val out = Bitmap.createBitmap(
+                    size + pad * 2,
+                    size + pad * 2,
+                    Bitmap.Config.ARGB_8888
+                )
                 val canvas = Canvas(out)
                 canvas.drawColor(Color.WHITE)
                 canvas.drawBitmap(
                     Bitmap.createScaledBitmap(src, size, size, false),
-                    pad.toFloat(), pad.toFloat(), null
+                    pad.toFloat(),
+                    pad.toFloat(),
+                    null
                 )
                 qrBitmap = out
             }
@@ -349,44 +384,64 @@ class WaController(
     fun startPairing(raw: String) {
         val digits = raw.filter { it.isDigit() }
         if (digits.length !in 8..15) {
-            pairing = Pairing.Failed("Enter the full number with country code, e.g. +62 812 3456 7890.")
+            pairing = Pairing.Failed(
+                "Enter the full number with country code, e.g. +62 812 3456 7890."
+            )
             return
         }
         if (login == Login.CHATS) {
             pairing = Pairing.Failed("This session is already linked.")
             return
         }
+
         val token = ++pairToken
         pairing = Pairing.Working
         var attempts = 0
 
         fun fail() {
-            if (token == pairToken) pairing = Pairing.Failed(
-                "Couldn't finish automatically. Close this and continue on the WhatsApp Web page: " +
-                        "tap \"Link with phone number\" and enter your number."
-            )
+            if (token == pairToken) {
+                pairing = Pairing.Failed(
+                    "Couldn't finish automatically. Close this and continue on the " +
+                            "WhatsApp Web page: tap \"Link with phone number\" and enter your number."
+                )
+            }
         }
 
         fun step(phase: Int) {
             if (token != pairToken || destroyed) return
-            if (attempts++ > 45) { fail(); return }
+            if (attempts++ > 45) {
+                fail()
+                return
+            }
             when (phase) {
                 0 -> eval("__rex.openPhone()") { r ->
-                    if (r == "ready") step(1) else handler.postDelayed({ step(0) }, 800)
+                    if (r == "ready") step(1)
+                    else handler.postDelayed({ step(0) }, 800)
                 }
+
                 1 -> eval("__rex.fill(${JSONObject.quote("+$digits")})") { r ->
                     if (r == "ok") {
                         handler.postDelayed({ eval("__rex.next()") { step(2) } }, 700)
-                    } else handler.postDelayed({ step(1) }, 600)
+                    } else {
+                        handler.postDelayed({ step(1) }, 600)
+                    }
                 }
+
                 2 -> eval("__rex.code()") { r ->
                     val clean = r.filter { it.isLetterOrDigit() }.uppercase()
                     if (clean.length == 8) {
-                        if (token == pairToken) pairing = Pairing.Code(clean.substring(0, 4) + "-" + clean.substring(4))
-                    } else handler.postDelayed({ step(2) }, 1000)
+                        if (token == pairToken) {
+                            pairing = Pairing.Code(
+                                clean.substring(0, 4) + "-" + clean.substring(4)
+                            )
+                        }
+                    } else {
+                        handler.postDelayed({ step(2) }, 1000)
+                    }
                 }
             }
         }
+
         step(0)
     }
 
@@ -431,23 +486,33 @@ class WaController(
                             it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
                 }.toTypedArray()
             )
-        } else req.deny()
+        } else {
+            req.deny()
+        }
     }
 
     fun flush() {
         runCatching { cookies().flush() }
     }
 
-    fun onPause() { webView.onPause(); flush() }
-    fun onResume() { webView.onResume() }
+    fun onPause() {
+        webView.onPause()
+        flush()
+    }
+
+    fun onResume() {
+        webView.onResume()
+    }
 
     fun destroy() {
         if (destroyed) return
         destroyed = true
         pairToken++
         handler.removeCallbacksAndMessages(null)
-        pendingFileCallback?.onReceiveValue(null); pendingFileCallback = null
-        pendingPermission?.deny(); pendingPermission = null
+        pendingFileCallback?.onReceiveValue(null)
+        pendingFileCallback = null
+        pendingPermission?.deny()
+        pendingPermission = null
         flush()
         runCatching {
             (webView.parent as? ViewGroup)?.removeView(webView)
