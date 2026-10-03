@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -18,6 +19,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -63,6 +65,15 @@ class WaController(
     private val handler = Handler(Looper.getMainLooper())
     private var destroyed = false
 
+    // Log diagnosis
+    private val consoleLog = ArrayDeque<String>()
+    private val netLog = ArrayDeque<String>()
+
+    private fun addLog(list: ArrayDeque<String>, s: String) {
+        list.addLast(s.take(160))
+        while (list.size > 6) list.removeFirst()
+    }
+
     // poller harus dideklarasikan SEBELUM webView dan init
     private val poller = object : Runnable {
         override fun run() {
@@ -80,8 +91,9 @@ class WaController(
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
-        WebView.setWebContentsDebuggingEnabled(false)
+        WebView.setWebContentsDebuggingEnabled(true)
         val wv = WebView(activity)
+        wv.setBackgroundColor(android.graphics.Color.WHITE)
 
         // Data terpisah per session, harus sebelum load
         if (!legacy) {
@@ -90,7 +102,7 @@ class WaController(
                 ProfileStore.getInstance().getOrCreateProfile(name)
                 WebViewCompat.setProfile(wv, name)
             }.onFailure {
-                error = "Profile isolation failed: ${it.message}"
+                error = "Isolasi profil gagal: ${it.message}"
             }
         }
 
@@ -102,19 +114,20 @@ class WaController(
             allowContentAccess = true
             cacheMode = WebSettings.LOAD_DEFAULT
             mediaPlaybackRequiresUserGesture = false
+            javaScriptCanOpenWindowsAutomatically = true
             useWideViewPort = true
-            loadWithOverviewMode = false
+            loadWithOverviewMode = true
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
             setSupportMultipleWindows(false)
 
-            // WhatsApp Web menolak UA mobile -> UA desktop Chrome
+            // UA Chrome desktop (Windows), versi mengikuti WebView terpasang
             val major = Regex("Chrome/(\\d+)").find(userAgentString)
                 ?.groupValues?.get(1) ?: "124"
             userAgentString =
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/$major.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
         }
 
         cookies().apply {
@@ -149,6 +162,8 @@ class WaController(
                 progress = 100
                 flush()
                 applyViewport()
+                // Cek halaman kosong setelah 8 detik
+                handler.postDelayed({ checkBlank() }, 8000)
             }
 
             override fun onReceivedError(
@@ -158,8 +173,19 @@ class WaController(
             ) {
                 if (request.isForMainFrame) {
                     loading = false
-                    error = "Tidak bisa membuka WhatsApp Web.\n\nPeriksa koneksi internet lalu coba lagi."
+                    error = "Tidak bisa membuka WhatsApp Web.\n\n" +
+                            "${err.description}\n\nPeriksa koneksi internet lalu coba lagi."
+                } else {
+                    addLog(netLog, "ERR ${err.description} ${request.url.host}")
                 }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                resp: WebResourceResponse
+            ) {
+                addLog(netLog, "HTTP ${resp.statusCode} ${request.url.host}${request.url.path}")
             }
 
             override fun onReceivedSslError(
@@ -177,7 +203,7 @@ class WaController(
                 detail: RenderProcessGoneDetail
             ): Boolean {
                 loading = false
-                error = "WebView berhenti.\n\nKetuk Coba lagi untuk memuat ulang."
+                error = "WebView berhenti (memori habis?).\n\nKetuk Coba lagi."
                 return true
             }
         }
@@ -187,6 +213,13 @@ class WaController(
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress = newProgress
                 if (newProgress >= 100) loading = false
+            }
+
+            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    addLog(consoleLog, m.message())
+                }
+                return true
             }
 
             override fun onShowFileChooser(
@@ -264,7 +297,41 @@ class WaController(
     }
 
     // =====================================================================
-    // Deteksi login (ringan, hanya untuk status & tanda "Linked")
+    // Diagnosis halaman kosong
+    // =====================================================================
+
+    private fun checkBlank() {
+        if (destroyed || error != null) return
+        webView.evaluateJavascript(
+            "(function(){var b=document.body;if(!b)return 'nobody';" +
+                    "var t=(b.innerText||'').trim().length;" +
+                    "var c=document.querySelectorAll('canvas,#app,#pane-side,input').length;" +
+                    "return t+'|'+c+'|'+document.readyState;})()"
+        ) { raw ->
+            if (destroyed || error != null) return@evaluateJavascript
+            val v = raw?.trim('"') ?: ""
+            val parts = v.split("|")
+            val text = parts.getOrNull(0)?.toIntOrNull() ?: 0
+            val nodes = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            if (v == "nobody" || (text < 5 && nodes == 0)) {
+                val sb = StringBuilder("Halaman WhatsApp Web kosong.\n\n")
+                sb.append("UA: ").append(webView.settings.userAgentString.takeLast(40)).append("\n")
+                sb.append("Hasil: ").append(v).append("\n\n")
+                if (consoleLog.isNotEmpty()) {
+                    sb.append("Error JS:\n").append(consoleLog.joinToString("\n")).append("\n\n")
+                }
+                if (netLog.isNotEmpty()) {
+                    sb.append("Jaringan:\n").append(netLog.joinToString("\n")).append("\n\n")
+                }
+                sb.append("Update Android System WebView & Chrome di Play Store, lalu coba lagi. ")
+                sb.append("Kirim teks ini ke developer.")
+                error = sb.toString()
+            }
+        }
+    }
+
+    // =====================================================================
+    // Deteksi login
     // =====================================================================
 
     private fun probe() {
@@ -311,7 +378,7 @@ class WaController(
         loading = true
         progress = 0
         webView.stopLoading()
-        if (webView.url.isNullOrBlank()) webView.loadUrl(HOME_URL) else webView.reload()
+        webView.loadUrl(HOME_URL)
     }
 
     fun canGoBack() = webView.canGoBack()
