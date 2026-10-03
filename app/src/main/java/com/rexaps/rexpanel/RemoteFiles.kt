@@ -303,6 +303,7 @@ class FileBrowserState(
     private val failedThumbs = HashSet<String>()
 
     val canGoUp: Boolean get() = path.isNotEmpty() && path != "/"
+    val isHome: Boolean get() = home.isNotEmpty() && path == home
 
     fun toggleSelect(f: RemoteFile) {
         selected = if (f.path in selected) selected - f.path else selected + f.path

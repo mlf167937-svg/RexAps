@@ -15,6 +15,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -79,6 +80,16 @@ private val CAudio = Color(0xFFCBA6F7)
 private val CText = Color(0xFF94E2D5)
 private val CArchive = Color(0xFFFAB387)
 private val PreviewFg = Color(0xFFCDD6F4)
+
+// Warna nama file: biru terang di tema gelap, biru lebih pekat di tema terang (kontras tetap terjaga).
+private val NameBlueDark = Color(0xFF89B4FA)
+private val NameBlueLight = Color(0xFF1E66F5)
+
+@Composable
+private fun nameBlue(): Color = if (isSystemInDarkTheme()) NameBlueDark else NameBlueLight
+
+private const val PLACE_TERMUX = "/data/data/com.termux"
+private const val PLACE_STORAGE = "/storage/emulated/0"
 
 private const val THUMB_MAX = 3L * 1024 * 1024       // thumbnail hanya untuk gambar <= 3 MB
 private const val AUTO_DOWNLOAD = 80L * 1024 * 1024  // video/audio > 80 MB minta konfirmasi dulu
@@ -238,6 +249,7 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
                 onSelectAll = { b.selectAll(visible) }
             )
         }
+        QuickPlaces(b)
         Breadcrumbs(b)
 
         Box(Modifier.fillMaxWidth().height(3.dp)) {
@@ -314,7 +326,13 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
                     FileThumb(sheet, b, Modifier.size(48.dp))
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(sheet.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            sheet.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = nameBlue(),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text(
                             if (sheet.isDir) st.label else "${st.label} · ${fmtBytes(sheet.size)}",
                             style = MaterialTheme.typography.labelMedium,
@@ -465,7 +483,6 @@ private fun BrowserToolbar(
             IconButton(onClick = { b.up() }, enabled = b.canGoUp) {
                 Icon(Icons.Default.ArrowUpward, "Naik satu folder")
             }
-            IconButton(onClick = { b.goHome() }) { Icon(Icons.Default.Home, "Ke folder home") }
             IconButton(onClick = onToggleSearch) { Icon(Icons.Default.Search, "Cari") }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onUpload) { Icon(Icons.Default.Upload, "Unggah berkas ke folder ini") }
@@ -515,6 +532,36 @@ private fun BrowserToolbar(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaceChip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) }
+    )
+}
+
+/** Jalan pintas ke lokasi penting: Home, Termux, Penyimpanan (/sdcard), dan Root. */
+@Composable
+private fun QuickPlaces(b: FileBrowserState) {
+    val inStorage = b.path.startsWith(PLACE_STORAGE) || b.path.startsWith("/sdcard")
+    val inTermux = b.path.startsWith(PLACE_TERMUX) && !b.isHome
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PlaceChip("Home", Icons.Default.Home, b.isHome) { b.goHome() }
+        PlaceChip("Termux", Icons.Default.Terminal, inTermux) { b.go(PLACE_TERMUX) }
+        PlaceChip("Penyimpanan", Icons.Default.SdStorage, inStorage) { b.go(PLACE_STORAGE) }
+        PlaceChip("Root /", Icons.Default.Storage, b.path == "/") { b.go("/") }
     }
 }
 
@@ -595,7 +642,13 @@ private fun FileRow(
         FileThumb(f, b, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(f.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                f.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = nameBlue(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Text(
                 sub,
                 style = MaterialTheme.typography.labelSmall,
@@ -667,6 +720,7 @@ private fun GridTile(
         Text(
             f.name,
             style = MaterialTheme.typography.labelMedium,
+            color = nameBlue(),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
@@ -835,7 +889,14 @@ private fun FilePreview(b: FileBrowserState, file: RemoteFile, modifier: Modifie
                 Icon(Icons.Default.Close, "Tutup pratinjau", tint = Color.White)
             }
             Column(Modifier.weight(1f)) {
-                Text(file.name, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Latar pratinjau selalu hitam, jadi pakai biru terang.
+                Text(
+                    file.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NameBlueDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     "${fmtBytes(file.size)} · ${fmtDate(file.mtimeSec)}" +
                         if (siblings.size > 1 && idx >= 0) " · ${idx + 1}/${siblings.size}" else "",
@@ -1094,7 +1155,7 @@ private fun NoPreview(f: RemoteFile, message: String = "Pratinjau belum tersedia
     ) {
         Icon(st.icon, null, Modifier.size(64.dp), tint = st.color)
         Spacer(Modifier.height(12.dp))
-        Text(f.name, style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.Center)
+        Text(f.name, style = MaterialTheme.typography.titleMedium, color = NameBlueDark, textAlign = TextAlign.Center)
         Text(
             "${st.label} · ${fmtBytes(f.size)} · ${f.perms}",
             style = MaterialTheme.typography.bodySmall,
