@@ -6,13 +6,9 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
@@ -32,17 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
-import org.json.JSONArray
-import org.json.JSONObject
 
-enum class Login { LOADING, QR, CODE, CHATS }
-
-sealed interface Pairing {
-    object Idle : Pairing
-    object Working : Pairing
-    data class Code(val code: String) : Pairing
-    data class Failed(val message: String) : Pairing
-}
+enum class Login { LOADING, LOGGED_OUT, CHATS }
 
 private const val HOME_URL = "https://web.whatsapp.com/"
 
@@ -50,7 +37,7 @@ class WaController(
     private val activity: Activity,
     val sessionId: Int,
     private val legacy: Boolean,
-    private val initialMethod: String
+    @Suppress("unused") private val initialMethod: String
 ) {
 
     // ---------- UI state ----------
@@ -60,20 +47,13 @@ class WaController(
         private set
     var error by mutableStateOf<String?>(null)
         private set
-    var pageTitle by mutableStateOf("WhatsApp Web")
-        private set
     var login by mutableStateOf(Login.LOADING)
         private set
     var desktopLayout by mutableStateOf(false)
         private set
-    var qrBitmap by mutableStateOf<Bitmap?>(null)
-        private set
+    var hintDismissed by mutableStateOf(false)
 
-    var qrDialogOpen by mutableStateOf(false)
-    var askPhone by mutableStateOf(false)
-    var pairing by mutableStateOf<Pairing>(Pairing.Idle)
-
-    // ---------- callbacks to Activity ----------
+    // ---------- callbacks ke Activity ----------
     var onPickFiles: ((String) -> Unit)? = null
     var onNeedPermissions: ((Array<String>) -> Unit)? = null
 
@@ -82,30 +62,20 @@ class WaController(
 
     private val handler = Handler(Looper.getMainLooper())
     private var destroyed = false
-    private var methodConsumed = false
-    private var pairToken = 0
 
-    // =====================================================================
-    // Login state polling
-    // HARUS dideklarasikan SEBELUM webView dan init
-    // =====================================================================
-
+    // poller harus dideklarasikan SEBELUM webView dan init
     private val poller = object : Runnable {
         override fun run() {
             if (destroyed) return
-            if (error == null && webView.url?.contains("whatsapp") == true) probe()
-            handler.postDelayed(this, 1500)
+            probe()
+            handler.postDelayed(this, 2000)
         }
     }
-
-    // =====================================================================
-    // WEBVIEW
-    // =====================================================================
 
     val webView: WebView = createWebView()
 
     init {
-        handler.postDelayed(poller, 1500)
+        handler.postDelayed(poller, 2000)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -113,7 +83,7 @@ class WaController(
         WebView.setWebContentsDebuggingEnabled(false)
         val wv = WebView(activity)
 
-        // Data terisolasi per session (harus sebelum memuat apa pun)
+        // Data terpisah per session, harus sebelum load
         if (!legacy) {
             runCatching {
                 val name = SessionManager.profileName(sessionId)
@@ -137,15 +107,14 @@ class WaController(
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
-            safeBrowsingEnabled = true
             setSupportMultipleWindows(false)
 
-            // WhatsApp Web menolak UA mobile -> pakai UA desktop Chrome
-            val chromeMajor =
-                Regex("Chrome/(\\d+)").find(userAgentString)?.groupValues?.get(1) ?: "124"
+            // WhatsApp Web menolak UA mobile -> UA desktop Chrome
+            val major = Regex("Chrome/(\\d+)").find(userAgentString)
+                ?.groupValues?.get(1) ?: "124"
             userAgentString =
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/$chromeMajor.0.0.0 Safari/537.36"
+                        "Chrome/$major.0.0.0 Safari/537.36"
         }
 
         cookies().apply {
@@ -162,7 +131,9 @@ class WaController(
                 val uri = request.url
                 val scheme = uri.scheme?.lowercase()
                 if (scheme == "blob" || scheme == "data" || scheme == "about") return false
-                if ((scheme == "https" || scheme == "http") && isAllowedHost(uri.host)) return false
+                if ((scheme == "https" || scheme == "http") && isAllowedHost(uri.host)) {
+                    return false
+                }
                 runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                 return true
             }
@@ -187,7 +158,7 @@ class WaController(
             ) {
                 if (request.isForMainFrame) {
                     loading = false
-                    error = "Can't open WhatsApp Web.\n\nCheck your internet connection and try again."
+                    error = "Tidak bisa membuka WhatsApp Web.\n\nPeriksa koneksi internet lalu coba lagi."
                 }
             }
 
@@ -198,7 +169,7 @@ class WaController(
             ) {
                 h.cancel()
                 loading = false
-                error = "Insecure HTTPS connection.\n\nCheck your device date, time and network."
+                error = "Koneksi HTTPS tidak aman.\n\nPeriksa tanggal, waktu, dan jaringan."
             }
 
             override fun onRenderProcessGone(
@@ -206,7 +177,7 @@ class WaController(
                 detail: RenderProcessGoneDetail
             ): Boolean {
                 loading = false
-                error = "The WebView engine stopped.\n\nTap Try again to reload."
+                error = "WebView berhenti.\n\nKetuk Coba lagi untuk memuat ulang."
                 return true
             }
         }
@@ -216,10 +187,6 @@ class WaController(
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress = newProgress
                 if (newProgress >= 100) loading = false
-            }
-
-            override fun onReceivedTitle(view: WebView, title: String?) {
-                if (!title.isNullOrBlank()) pageTitle = title
             }
 
             override fun onShowFileChooser(
@@ -252,12 +219,11 @@ class WaController(
                         request.deny()
                         return@runOnUiThread
                     }
-                    val needed = supported.map {
+                    val missing = supported.map {
                         if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE)
                             Manifest.permission.CAMERA
                         else Manifest.permission.RECORD_AUDIO
-                    }
-                    val missing = needed.filter {
+                    }.filter {
                         ContextCompat.checkSelfPermission(activity, it) !=
                                 PackageManager.PERMISSION_GRANTED
                     }
@@ -298,156 +264,37 @@ class WaController(
     }
 
     // =====================================================================
-    // JS bridge
+    // Deteksi login (ringan, hanya untuk status & tanda "Linked")
     // =====================================================================
 
-    private fun eval(expr: String, cb: (String) -> Unit) {
-        if (destroyed) return
-        webView.evaluateJavascript(WaScript.JS + "\n" + expr) { raw -> cb(unquote(raw)) }
-    }
+    private fun probe() {
+        if (error != null) return
+        val url = webView.url ?: return
+        if (!url.contains("whatsapp")) return
 
-    private fun unquote(raw: String?): String {
-        if (raw == null || raw == "null") return ""
-        return if (raw.startsWith("\"")) {
-            runCatching { JSONArray("[$raw]").getString(0) }.getOrDefault("")
-        } else raw
+        webView.evaluateJavascript(
+            "(function(){return document.querySelector('#pane-side')?'chats':'out';})()"
+        ) { raw ->
+            if (destroyed) return@evaluateJavascript
+            if (raw != null && raw.contains("chats")) {
+                if (login != Login.CHATS) {
+                    login = Login.CHATS
+                    SessionManager.markLinked(activity, sessionId, true)
+                }
+            } else {
+                login = if (loading) Login.LOADING else Login.LOGGED_OUT
+            }
+        }
     }
 
     private fun applyViewport() {
-        eval("__rex.viewport(${if (desktopLayout) 1100 else 0})") {}
-    }
-
-    private fun probe() {
-        eval("__rex.state()") { s ->
-            val state = when (s) {
-                "chats" -> Login.CHATS
-                "qr" -> Login.QR
-                "code" -> Login.CODE
-                else -> Login.LOADING
-            }
-            val prev = login
-            login = state
-
-            if (state == Login.CHATS && prev != Login.CHATS) {
-                SessionManager.markLinked(activity, sessionId, true)
-                qrDialogOpen = false
-                askPhone = false
-                if (pairing is Pairing.Code || pairing is Pairing.Working) {
-                    pairing = Pairing.Idle
-                }
-            }
-
-            if (state == Login.QR && !methodConsumed) {
-                methodConsumed = true
-                when (initialMethod) {
-                    "qr" -> qrDialogOpen = true
-                    "pair" -> askPhone = true
-                }
-            }
-
-            if (qrDialogOpen && state == Login.QR) fetchQr()
-            applyViewport()
-        }
-    }
-
-    private fun fetchQr() {
-        eval("__rex.qr()") { data ->
-            if (!data.startsWith("data:image")) return@eval
-            runCatching {
-                val bytes = Base64.decode(data.substringAfter("base64,"), Base64.DEFAULT)
-                val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    ?: return@eval
-                val size = 720
-                val pad = 48
-                val out = Bitmap.createBitmap(
-                    size + pad * 2,
-                    size + pad * 2,
-                    Bitmap.Config.ARGB_8888
-                )
-                val canvas = Canvas(out)
-                canvas.drawColor(Color.WHITE)
-                canvas.drawBitmap(
-                    Bitmap.createScaledBitmap(src, size, size, false),
-                    pad.toFloat(),
-                    pad.toFloat(),
-                    null
-                )
-                qrBitmap = out
-            }
-        }
-    }
-
-    // =====================================================================
-    // Pairing by phone number
-    // =====================================================================
-
-    fun startPairing(raw: String) {
-        val digits = raw.filter { it.isDigit() }
-        if (digits.length !in 8..15) {
-            pairing = Pairing.Failed(
-                "Enter the full number with country code, e.g. +62 812 3456 7890."
-            )
-            return
-        }
-        if (login == Login.CHATS) {
-            pairing = Pairing.Failed("This session is already linked.")
-            return
-        }
-
-        val token = ++pairToken
-        pairing = Pairing.Working
-        var attempts = 0
-
-        fun fail() {
-            if (token == pairToken) {
-                pairing = Pairing.Failed(
-                    "Couldn't finish automatically. Close this and continue on the " +
-                            "WhatsApp Web page: tap \"Link with phone number\" and enter your number."
-                )
-            }
-        }
-
-        fun step(phase: Int) {
-            if (token != pairToken || destroyed) return
-            if (attempts++ > 45) {
-                fail()
-                return
-            }
-            when (phase) {
-                0 -> eval("__rex.openPhone()") { r ->
-                    if (r == "ready") step(1)
-                    else handler.postDelayed({ step(0) }, 800)
-                }
-
-                1 -> eval("__rex.fill(${JSONObject.quote("+$digits")})") { r ->
-                    if (r == "ok") {
-                        handler.postDelayed({ eval("__rex.next()") { step(2) } }, 700)
-                    } else {
-                        handler.postDelayed({ step(1) }, 600)
-                    }
-                }
-
-                2 -> eval("__rex.code()") { r ->
-                    val clean = r.filter { it.isLetterOrDigit() }.uppercase()
-                    if (clean.length == 8) {
-                        if (token == pairToken) {
-                            pairing = Pairing.Code(
-                                clean.substring(0, 4) + "-" + clean.substring(4)
-                            )
-                        }
-                    } else {
-                        handler.postDelayed({ step(2) }, 1000)
-                    }
-                }
-            }
-        }
-
-        step(0)
-    }
-
-    fun cancelPairing() {
-        pairToken++
-        pairing = Pairing.Idle
+        val content = if (desktopLayout) "width=1100" else "width=device-width, initial-scale=1"
+        webView.evaluateJavascript(
+            "(function(){var m=document.querySelector('meta[name=viewport]');" +
+                    "if(!m){m=document.createElement('meta');m.name='viewport';" +
+                    "document.head.appendChild(m);}m.content='$content';})()",
+            null
+        )
     }
 
     // =====================================================================
@@ -507,7 +354,6 @@ class WaController(
     fun destroy() {
         if (destroyed) return
         destroyed = true
-        pairToken++
         handler.removeCallbacksAndMessages(null)
         pendingFileCallback?.onReceiveValue(null)
         pendingFileCallback = null
