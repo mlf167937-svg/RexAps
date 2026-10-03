@@ -38,7 +38,7 @@ object RexGitJGit {
                 WindowCacheConfig().apply {
                     packedGitLimit = 8L * 1024 * 1024
                     packedGitWindowSize = 512 * 1024
-                    packedGitMMAP = false
+                    setPackedGitMMAP(false)
                     deltaBaseCacheLimit = 4 * 1024 * 1024
                     streamFileThreshold = 8 * 1024 * 1024
                 }.install()
