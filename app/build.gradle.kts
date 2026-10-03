@@ -12,8 +12,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2612
-        versionName = "26.12"
+        versionCode = 2613
+        versionName = "26.13"
     }
 
     buildFeatures {
@@ -74,4 +74,5 @@ dependencies {
 
     // Image loader
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
 }

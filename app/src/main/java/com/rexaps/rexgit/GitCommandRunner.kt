@@ -1,12 +1,13 @@
 package com.rexaps.rexgit
 
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.Status
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 data class GitCommandResult(
     val exitCode: Int,
-    val stdout: String,
-    val stderr: String
+    val stdout: String = "",
+    val stderr: String = ""
 ) {
     val success: Boolean
         get() = exitCode == 0
@@ -14,46 +15,108 @@ data class GitCommandResult(
 
 object GitCommandRunner {
 
-    fun run(
-        workingDirectory: File,
-        vararg command: String,
-        timeoutSeconds: Long = 120
-    ): GitCommandResult {
-
+    fun status(repo: File): GitCommandResult {
         return try {
-            val process = ProcessBuilder(*command)
-                .directory(workingDirectory)
-                .redirectErrorStream(false)
-                .start()
+            Git.open(repo).use { git ->
+                val status = git.status().call()
 
-            val stdout = process.inputStream.bufferedReader().use {
-                it.readText()
-            }
+                val output = buildString {
+                    status.modified.forEach { appendLine(" M $it") }
+                    status.changed.forEach { appendLine("M  $it") }
+                    status.added.forEach { appendLine("A  $it") }
+                    status.removed.forEach { appendLine(" D $it") }
+                    status.missing.forEach { appendLine(" D $it") }
+                    status.untracked.forEach { appendLine("?? $it") }
+                }.trim()
 
-            val stderr = process.errorStream.bufferedReader().use {
-                it.readText()
-            }
-
-            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-
-                return GitCommandResult(
-                    exitCode = -1,
-                    stdout = stdout,
-                    stderr = "Command timeout"
+                GitCommandResult(
+                    exitCode = 0,
+                    stdout = output
                 )
+            }
+        } catch (e: Exception) {
+            GitCommandResult(
+                exitCode = 1,
+                stderr = e.message ?: "Git status gagal"
+            )
+        }
+    }
+
+    fun addAll(repo: File): GitCommandResult {
+        return try {
+            Git.open(repo).use { git ->
+                git.add()
+                    .addFilepattern(".")
+                    .call()
+            }
+
+            GitCommandResult(0, "Files staged")
+        } catch (e: Exception) {
+            GitCommandResult(
+                1,
+                stderr = e.message ?: "git add gagal"
+            )
+        }
+    }
+
+    fun commit(
+        repo: File,
+        message: String
+    ): GitCommandResult {
+        return try {
+            Git.open(repo).use { git ->
+                val commit = git.commit()
+                    .setMessage(message)
+                    .call()
+
+                GitCommandResult(
+                    0,
+                    commit.name
+                )
+            }
+        } catch (e: Exception) {
+            GitCommandResult(
+                1,
+                stderr = e.message ?: "git commit gagal"
+            )
+        }
+    }
+
+    fun branch(repo: File): String {
+        return try {
+            Git.open(repo).use { git ->
+                git.repository.branch
+            }
+        } catch (_: Exception) {
+            "main"
+        }
+    }
+
+    fun remote(repo: File): String? {
+        return try {
+            Git.open(repo).use { git ->
+                git.repository.config
+                    .getString("remote", "origin", "url")
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun pull(repo: File): GitCommandResult {
+        return try {
+            Git.open(repo).use { git ->
+                git.pull().call()
             }
 
             GitCommandResult(
-                exitCode = process.exitValue(),
-                stdout = stdout.trim(),
-                stderr = stderr.trim()
+                0,
+                "Pull berhasil"
             )
         } catch (e: Exception) {
             GitCommandResult(
-                exitCode = -1,
-                stdout = "",
-                stderr = e.message ?: e.javaClass.simpleName
+                1,
+                stderr = e.message ?: "git pull gagal"
             )
         }
     }
