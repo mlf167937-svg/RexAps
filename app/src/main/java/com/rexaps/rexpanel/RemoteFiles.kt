@@ -2,6 +2,9 @@ package com.rexaps.rexpanel
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.content.Context
+import java.io.InputStream
+import java.io.OutputStream
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.os.Build
