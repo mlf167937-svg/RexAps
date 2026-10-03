@@ -11,9 +11,12 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,18 +34,23 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallSplit
@@ -52,15 +60,21 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
@@ -69,13 +83,16 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -83,11 +100,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,22 +113,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+private enum class CreateKind { FILE, FOLDER }
 
 // ============================================================
 // Root
@@ -132,7 +156,6 @@ fun RexGitScreen(
     var commitMessage by rememberSaveable { mutableStateOf("Update from RexGit") }
     var bumpVersion by rememberSaveable { mutableStateOf(true) }
 
-    // Show, then dismiss (dismissing first would cancel this effect).
     LaunchedEffect(state.message) {
         state.message?.let {
             snackbar.showSnackbar(it)
@@ -160,7 +183,15 @@ fun RexGitScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbar,
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = if (screen == 1) 84.dp else 0.dp)
+            )
+        },
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
     ) { padding ->
 
@@ -171,7 +202,7 @@ fun RexGitScreen(
         ) {
             Crossfade(
                 targetState = screen,
-                animationSpec = tween(150)
+                animationSpec = tween(160)
             ) { target ->
                 when (target) {
                     2 -> EditorScreen(
@@ -189,9 +220,15 @@ fun RexGitScreen(
                         onBack = viewModel::backToRepositories,
                         onRefresh = viewModel::refreshStatus,
                         onOpen = viewModel::openFile,
-                        onUp = viewModel::openParent,
+                        onNavigate = { path ->
+                            if (path == null) viewModel.openRoot()
+                            else viewModel.openDirectory(path)
+                        },
                         onPull = viewModel::pull,
-                        onPush = { pushDialog = true }
+                        onPush = { pushDialog = true },
+                        onCreateFile = viewModel::createFile,
+                        onCreateFolder = viewModel::createFolder,
+                        onDelete = viewModel::deleteEntry
                     )
 
                     else -> HomeScreen(
@@ -275,68 +312,26 @@ private fun HomeScreen(
     var tab by rememberSaveable { mutableStateOf(0) }
     val busy = state.isLoading || state.isRepoLoading
 
-    Column(Modifier.fillMaxSize()) {
-
-        TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RexGitLogo()
-
-                    Spacer(Modifier.width(12.dp))
-
-                    Column {
-                        Text("RexGit", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "Git workspace",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            actions = {
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh repositories")
-                }
-
-                IconButton(onClick = onGithub) {
-                    Icon(
-                        Icons.Default.Cloud,
-                        contentDescription =
-                            if (state.isGithubConnected) "GitHub account, connected"
-                            else "Connect GitHub",
-                        tint =
-                            if (state.isGithubConnected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        )
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        HomeHeader(state = state, onRefresh = onRefresh, onGithub = onGithub)
 
         ProgressSlot(busy)
 
-        TabRow(selectedTabIndex = tab) {
-            Tab(
-                selected = tab == 0,
-                onClick = { tab = 0 },
-                text = { Text("Local (${state.repositories.size})") },
-                icon = { Icon(Icons.Default.Storage, contentDescription = null) }
-            )
+        SegmentedTabs(
+            labels = listOf("Local  ·  ${state.repositories.size}", "GitHub"),
+            icons = listOf(Icons.Default.Storage, Icons.Default.Cloud),
+            selected = tab,
+            onSelect = { tab = it }
+        )
 
-            Tab(
-                selected = tab == 1,
-                onClick = { tab = 1 },
-                text = { Text("GitHub") },
-                icon = { Icon(Icons.Default.Cloud, contentDescription = null) }
-            )
-        }
+        Spacer(Modifier.height(4.dp))
 
         if (tab == 0) {
-            LocalTab(
-                state = state,
-                onConnect = onGithub,
-                onSelect = onSelect
-            )
+            LocalTab(state = state, onConnect = onGithub, onSelect = onSelect)
         } else {
             GithubTab(
                 state = state,
@@ -345,6 +340,69 @@ private fun HomeScreen(
                 onOpen = onSelect
             )
         }
+    }
+}
+
+@Composable
+private fun HomeHeader(
+    state: RexGitUiState,
+    onRefresh: () -> Unit,
+    onGithub: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RexGitLogo()
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text("RexGit", style = MaterialTheme.typography.headlineSmall)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (state.isGithubConnected) scheme.secondary else scheme.outline
+                        )
+                )
+
+                Spacer(Modifier.width(6.dp))
+
+                Text(
+                    if (state.isGithubConnected) "@${state.githubUsername}"
+                    else "GitHub not connected",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        HeaderIconButton(
+            icon = Icons.Default.Refresh,
+            description = "Refresh repositories",
+            onClick = onRefresh
+        )
+
+        Spacer(Modifier.width(8.dp))
+
+        HeaderIconButton(
+            icon = Icons.Default.Cloud,
+            description =
+                if (state.isGithubConnected) "GitHub account, connected"
+                else "Connect GitHub",
+            onClick = onGithub,
+            tint = if (state.isGithubConnected) scheme.primary else scheme.onSurfaceVariant
+        )
     }
 }
 
@@ -363,6 +421,10 @@ private fun LocalTab(
         }
     }
 
+    val gitCount = remember(state.repositories) {
+        state.repositories.count { it.isGitRepository }
+    }
+
     Column(Modifier.fillMaxSize()) {
 
         if (state.repositories.isNotEmpty()) {
@@ -370,14 +432,14 @@ private fun LocalTab(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = "Search repositories",
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
             )
         }
 
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
             if (state.storageFallback) {
@@ -385,6 +447,16 @@ private fun LocalTab(
                     StorageNotice(
                         path = state.storagePath,
                         onGrant = { openAllFilesAccess(context) }
+                    )
+                }
+            }
+
+            if (state.repositories.isNotEmpty()) {
+                item(key = "workspace") {
+                    WorkspaceCard(
+                        total = state.repositories.size,
+                        gitCount = gitCount,
+                        path = state.storagePath
                     )
                 }
             }
@@ -412,17 +484,6 @@ private fun LocalTab(
                     RepositoryCard(repo = repo, onClick = { onSelect(repo) })
                 }
             }
-
-            if (state.storagePath.isNotBlank()) {
-                item(key = "path") {
-                    Text(
-                        state.storagePath,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
         }
     }
 }
@@ -434,6 +495,14 @@ private fun GithubTab(
     onClone: (RexGitGithubRepository) -> Unit,
     onOpen: (RexGitRepository) -> Unit
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+
+    val repos = remember(state.githubRepositories, query) {
+        state.githubRepositories.filter {
+            it.fullName.contains(query.trim(), ignoreCase = true)
+        }
+    }
+
     if (!state.isGithubConnected) {
         EmptyState(
             icon = Icons.Default.Cloud,
@@ -446,33 +515,29 @@ private fun GithubTab(
         return
     }
 
-    var query by rememberSaveable { mutableStateOf("") }
-
-    val repos = remember(state.githubRepositories, query) {
-        state.githubRepositories.filter {
-            it.fullName.contains(query.trim(), ignoreCase = true)
-        }
-    }
+    val scheme = MaterialTheme.colorScheme
 
     Column(Modifier.fillMaxSize()) {
 
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 12.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(
+                        Brush.linearGradient(listOf(scheme.primary, scheme.secondary))
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     (state.githubUsername ?: "?").take(1).uppercase(),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = scheme.onPrimary
                 )
             }
 
@@ -483,20 +548,22 @@ private fun GithubTab(
                 Text(
                     "${state.githubRepositories.size} repositories",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = scheme.onSurfaceVariant
                 )
             }
 
-            IconButton(onClick = onConnect) {
-                Icon(Icons.Default.Settings, contentDescription = "GitHub account settings")
-            }
+            HeaderIconButton(
+                icon = Icons.Default.Settings,
+                description = "GitHub account settings",
+                onClick = onConnect
+            )
         }
 
         SearchField(
             value = query,
             onValueChange = { query = it },
             placeholder = "Search GitHub repositories",
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
         )
 
         ProgressSlot(state.isGithubLoading)
@@ -504,7 +571,7 @@ private fun GithubTab(
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (repos.isEmpty() && !state.isGithubLoading) {
                 item(key = "empty") {
@@ -543,240 +610,440 @@ private fun RepositoryScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpen: (RexGitFile) -> Unit,
-    onUp: () -> Unit,
+    onNavigate: (String?) -> Unit,
     onPull: () -> Unit,
-    onPush: () -> Unit
+    onPush: () -> Unit,
+    onCreateFile: (String) -> Unit,
+    onCreateFolder: (String) -> Unit,
+    onDelete: (RexGitFile) -> Unit
 ) {
     val repo = state.selectedRepository ?: return
+    val scheme = MaterialTheme.colorScheme
 
     var showChanges by rememberSaveable { mutableStateOf(false) }
+    var createMenu by remember { mutableStateOf(false) }
+    var createKind by remember { mutableStateOf<CreateKind?>(null) }
+    var actionTarget by remember { mutableStateOf<RexGitFile?>(null) }
+    var deleteTarget by remember { mutableStateOf<RexGitFile?>(null) }
 
     val changes = state.gitStatus.changes
     val changeMap = remember(changes) { changes.associate { it.path to it.kind } }
     val busy = state.isPushing || state.isPulling || state.isRepoLoading
+
     val relative = state.currentDirectory
         ?.removePrefix(repo.path)
         ?.trim('/')
         ?: ""
 
-    Column(Modifier.fillMaxSize()) {
+    val segments = remember(relative) {
+        relative.split('/').filter { it.isNotEmpty() }
+    }
 
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to repositories")
-                }
-            },
-            title = {
-                Text(
-                    repo.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
-            actions = {
-                IconButton(onClick = onRefresh, enabled = !busy) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh status")
-                }
-            }
-        )
+    val locationLabel =
+        if (segments.isEmpty()) repo.name
+        else repo.name + "/" + segments.joinToString("/")
 
-        ProgressSlot(busy)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
 
-        Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (repo.isGitRepository) {
-                    InfoPill(
-                        icon = Icons.Default.CallSplit,
-                        text = repo.branch,
-                        container = MaterialTheme.colorScheme.secondaryContainer,
-                        content = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-
-                    if (changes.isEmpty() && state.gitStatus.error == null) {
-                        InfoPill(
-                            icon = Icons.Default.CheckCircle,
-                            text = "Clean",
-                            container = MaterialTheme.colorScheme.primaryContainer,
-                            content = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    } else if (changes.isNotEmpty()) {
-                        InfoPill(
-                            icon = Icons.Default.Warning,
-                            text = if (changes.size == 1) "1 change" else "${changes.size} changes",
-                            container = MaterialTheme.colorScheme.tertiaryContainer,
-                            content = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                } else {
-                    InfoPill(
-                        icon = Icons.Default.Warning,
-                        text = "Not a Git repository",
-                        container = MaterialTheme.colorScheme.errorContainer,
-                        content = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-            }
-
-            if (!repo.remoteUrl.isNullOrBlank()) {
-                Text(
-                    repo.remoteUrl,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
+        // ----- header -----
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (relative.isNotEmpty()) {
-                IconButton(onClick = onUp) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Go to parent folder")
-                }
-            } else {
-                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.FolderOpen,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+            HeaderIconButton(
+                icon = Icons.Default.ArrowBack,
+                description = "Back to repositories",
+                onClick = onBack
+            )
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    repo.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (!repo.remoteUrl.isNullOrBlank()) {
+                    Text(
+                        repo.remoteUrl.removePrefix("https://"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Text(
-                if (relative.isEmpty()) "/" else "/$relative",
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            Spacer(Modifier.width(8.dp))
+
+            HeaderIconButton(
+                icon = Icons.Default.Refresh,
+                description = "Refresh status",
+                onClick = onRefresh,
+                enabled = !busy
             )
         }
 
-        Box(Modifier.weight(1f)) {
-            if (state.files.isEmpty() && !state.isRepoLoading) {
-                EmptyState(
-                    icon = Icons.Default.FolderOpen,
-                    title = "This folder is empty",
-                    body = "Files you add will show up here."
+        ProgressSlot(busy)
+
+        // ----- status pills -----
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (repo.isGitRepository) {
+                InfoPill(
+                    icon = Icons.Default.CallSplit,
+                    text = repo.branch,
+                    container = scheme.secondaryContainer,
+                    content = scheme.onSecondaryContainer
                 )
+
+                if (changes.isEmpty() && state.gitStatus.error == null) {
+                    InfoPill(
+                        icon = Icons.Default.CheckCircle,
+                        text = "Clean",
+                        container = scheme.primaryContainer,
+                        content = scheme.onPrimaryContainer
+                    )
+                } else if (changes.isNotEmpty()) {
+                    InfoPill(
+                        icon = Icons.Default.Warning,
+                        text = if (changes.size == 1) "1 change" else "${changes.size} changes",
+                        container = scheme.tertiaryContainer,
+                        content = scheme.onTertiaryContainer
+                    )
+                }
             } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    items(state.files, key = { it.path }) { file ->
-                        val rel = file.path.removePrefix(repo.path).trimStart('/')
+                InfoPill(
+                    icon = Icons.Default.Warning,
+                    text = "Not a Git repository",
+                    container = scheme.errorContainer,
+                    content = scheme.onErrorContainer
+                )
+            }
+        }
 
-                        val kind =
-                            if (file.isDirectory) null else changeMap[rel]
+        // ----- breadcrumb -----
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val rootActive = segments.isEmpty()
 
-                        val dirChanged =
-                            file.isDirectory && changeMap.keys.any { it.startsWith("$rel/") }
+            Crumb(
+                text = repo.name,
+                active = rootActive,
+                onClick = { onNavigate(null) }
+            )
 
-                        FileRow(
-                            file = file,
-                            change = kind,
-                            hasChangesInside = dirChanged,
-                            onClick = { onOpen(file) }
-                        )
+            segments.forEachIndexed { index, segment ->
+                Icon(
+                    Icons.Default.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = scheme.onSurfaceVariant
+                )
+
+                val target = repo.path + "/" + segments.take(index + 1).joinToString("/")
+
+                Crumb(
+                    text = segment,
+                    active = index == segments.lastIndex,
+                    onClick = { onNavigate(target) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ----- files -----
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = scheme.surface,
+                border = BorderStroke(1.dp, scheme.outlineVariant)
+            ) {
+                if (state.files.isEmpty() && !state.isRepoLoading) {
+                    EmptyState(
+                        icon = Icons.Default.FolderOpen,
+                        title = "This folder is empty",
+                        body = "Create a file or folder to get started.",
+                        modifier = Modifier.fillMaxSize(),
+                        actionLabel = "Create new",
+                        onAction = { createMenu = true }
+                    )
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(top = 6.dp, bottom = 96.dp)
+                    ) {
+                        itemsIndexed(state.files, key = { _, f -> f.path }) { index, file ->
+                            val rel = file.path.removePrefix(repo.path).trimStart('/')
+                            val kind = if (file.isDirectory) null else changeMap[rel]
+                            val dirChanged =
+                                file.isDirectory && changeMap.keys.any { it.startsWith("$rel/") }
+
+                            Column {
+                                if (index > 0) {
+                                    Box(
+                                        Modifier
+                                            .padding(start = 68.dp)
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(scheme.outlineVariant.copy(alpha = 0.6f))
+                                    )
+                                }
+
+                                FileRow(
+                                    file = file,
+                                    change = kind,
+                                    hasChangesInside = dirChanged,
+                                    onClick = { onOpen(file) },
+                                    onMore = { actionTarget = file }
+                                )
+                            }
+                        }
                     }
                 }
             }
+
+            ExtendedFloatingActionButton(
+                onClick = { createMenu = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("New") },
+                containerColor = scheme.primary,
+                contentColor = scheme.onPrimary,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 28.dp, bottom = 16.dp)
+            )
         }
 
         if (state.gitStatus.error != null) {
             Text(
                 "Status unavailable: ${state.gitStatus.error}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = scheme.error,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
         }
 
         if (repo.isGitRepository && changes.isNotEmpty()) {
-            Surface(
-                tonalElevation = 2.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .animateContentSize()
-            ) {
-                Column {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                onClickLabel =
-                                    if (showChanges) "Hide changes" else "Show changes"
-                            ) { showChanges = !showChanges }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Changes (${changes.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f)
-                        )
+            ChangesPanel(
+                changes = changes,
+                expanded = showChanges,
+                onToggle = { showChanges = !showChanges }
+            )
+        }
 
-                        Icon(
-                            if (showChanges) Icons.Default.ExpandMore
-                            else Icons.Default.ExpandLess,
-                            contentDescription = null
-                        )
+        ActionBar(
+            isGit = repo.isGitRepository,
+            busy = busy,
+            pulling = state.isPulling,
+            pushing = state.isPushing,
+            changeCount = changes.size,
+            onPull = onPull,
+            onPush = onPush
+        )
+    }
+
+    // ----- sheets & dialogs -----
+
+    if (createMenu) {
+        CreateSheet(
+            location = locationLabel,
+            onDismiss = { createMenu = false },
+            onPick = {
+                createMenu = false
+                createKind = it
+            }
+        )
+    }
+
+    createKind?.let { kind ->
+        NameDialog(
+            kind = kind,
+            location = locationLabel,
+            existing = remember(state.files) { state.files.map { it.name }.toSet() },
+            onDismiss = { createKind = null },
+            onConfirm = { name ->
+                createKind = null
+                if (kind == CreateKind.FILE) onCreateFile(name) else onCreateFolder(name)
+            }
+        )
+    }
+
+    actionTarget?.let { file ->
+        ItemActionsSheet(
+            file = file,
+            onDismiss = { actionTarget = null },
+            onOpen = {
+                actionTarget = null
+                onOpen(file)
+            },
+            onDelete = {
+                actionTarget = null
+                deleteTarget = file
+            }
+        )
+    }
+
+    deleteTarget?.let { file ->
+        DeleteDialog(
+            file = file,
+            isGit = repo.isGitRepository,
+            onDismiss = { deleteTarget = null },
+            onConfirm = {
+                deleteTarget = null
+                onDelete(file)
+            }
+        )
+    }
+}
+
+@Composable
+private fun Crumb(
+    text: String,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (active) scheme.primary else scheme.onSurfaceVariant,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = !active, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun ChangesPanel(
+    changes: List<RexGitChange>,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(
+        color = scheme.surface,
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+    ) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        onClickLabel = if (expanded) "Hide changes" else "Show changes",
+                        onClick = onToggle
+                    )
+                    .heightIn(min = 52.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Changes (${changes.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Icon(
+                    if (expanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+                    contentDescription = null,
+                    tint = scheme.onSurfaceVariant
+                )
+            }
+
+            if (expanded) {
+                LazyColumn(
+                    Modifier.heightIn(max = 200.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(changes.take(300), key = { it.kind.name + it.path }) { change ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ChangeBadge(change.kind)
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Text(
+                                change.path,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
-                    if (showChanges) {
-                        LazyColumn(
-                            Modifier.heightIn(max = 200.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(
-                                changes.take(300),
-                                key = { it.kind.name + it.path }
-                            ) { change ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    ChangeBadge(change.kind)
-
-                                    Spacer(Modifier.width(10.dp))
-
-                                    Text(
-                                        change.path,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            if (changes.size > 300) {
-                                item(key = "more") {
-                                    Text(
-                                        "+ ${changes.size - 300} more",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                    if (changes.size > 300) {
+                        item(key = "more") {
+                            Text(
+                                "+ ${changes.size - 300} more",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = scheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
             }
         }
+    }
+}
 
-        Surface(tonalElevation = 3.dp) {
+@Composable
+private fun ActionBar(
+    isGit: Boolean,
+    busy: Boolean,
+    pulling: Boolean,
+    pushing: Boolean,
+    changeCount: Int,
+    onPull: () -> Unit,
+    onPush: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(color = scheme.surface) {
+        Column {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(scheme.outlineVariant)
+            )
+
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -786,45 +1053,327 @@ private fun RepositoryScreen(
             ) {
                 OutlinedButton(
                     onClick = onPull,
-                    enabled = repo.isGitRepository && !busy,
+                    enabled = isGit && !busy,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, scheme.outline),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 52.dp)
                 ) {
-                    if (state.isPulling) ButtonSpinner()
+                    if (pulling) ButtonSpinner()
                     else Icon(Icons.Default.CloudDownload, contentDescription = null)
 
                     Spacer(Modifier.width(8.dp))
-                    Text(if (state.isPulling) "Pulling" else "Pull")
+                    Text(if (pulling) "Pulling" else "Pull")
                 }
 
-                Button(
+                GradientButton(
+                    text = when {
+                        pushing -> "Pushing"
+                        changeCount > 0 -> "Push ($changeCount)"
+                        else -> "Push"
+                    },
+                    icon = Icons.Default.CloudUpload,
                     onClick = onPush,
-                    enabled = repo.isGitRepository && !busy,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                ) {
-                    if (state.isPushing) ButtonSpinner()
-                    else Icon(Icons.Default.CloudUpload, contentDescription = null)
-
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        when {
-                            state.isPushing -> "Pushing"
-                            changes.isNotEmpty() -> "Push (${changes.size})"
-                            else -> "Push"
-                        }
-                    )
-                }
+                    enabled = isGit && !busy,
+                    loading = pushing,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
 // ============================================================
+// Create / delete UI
+// ============================================================
+
+@Composable
+private fun CreateSheet(
+    location: String,
+    onDismiss: () -> Unit,
+    onPick: (CreateKind) -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = scheme.surface
+    ) {
+        Column(
+            Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp)
+        ) {
+            Text("Create new", style = MaterialTheme.typography.titleLarge)
+
+            Text(
+                "in $location",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+            )
+
+            SheetAction(
+                icon = Icons.Default.NoteAdd,
+                title = "New file",
+                subtitle = "Create an empty file and open it in the editor",
+                onClick = { onPick(CreateKind.FILE) }
+            )
+
+            SheetAction(
+                icon = Icons.Default.CreateNewFolder,
+                title = "New folder",
+                subtitle = "Create an empty folder here",
+                onClick = { onPick(CreateKind.FOLDER) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ItemActionsSheet(
+    file: RexGitFile,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val style = fileStyle(file, scheme)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = scheme.surface
+    ) {
+        Column(
+            Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp)
+        ) {
+            Row(
+                Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconTile(style.icon, style.color)
+
+                Spacer(Modifier.width(14.dp))
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        file.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Text(
+                        if (file.isDirectory) "Folder" else formatSize(file.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SheetAction(
+                icon = if (file.isDirectory) Icons.Default.FolderOpen else Icons.Default.Description,
+                title = if (file.isDirectory) "Open folder" else "Edit file",
+                subtitle = null,
+                onClick = onOpen
+            )
+
+            SheetAction(
+                icon = Icons.Default.Delete,
+                title = if (file.isDirectory) "Delete folder" else "Delete file",
+                subtitle = if (file.isDirectory) "Removes the folder and everything inside it"
+                else "Permanently removes this file",
+                destructive = true,
+                onClick = onDelete
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+    destructive: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+    val tint = if (destructive) scheme.error else scheme.primary
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .heightIn(min = 60.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconTile(icon, tint)
+
+        Spacer(Modifier.width(14.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (destructive) scheme.error else scheme.onSurface
+            )
+
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NameDialog(
+    kind: CreateKind,
+    location: String,
+    existing: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+
+    val error: String? = when {
+        name.isBlank() -> null
+        validateEntryName(name) != null -> validateEntryName(name)
+        existing.any { it.equals(name.trim(), ignoreCase = true) } ->
+            "\"${name.trim()}\" already exists in this folder"
+        else -> null
+    }
+
+    val canCreate = name.isNotBlank() && error == null
+    val isFile = kind == CreateKind.FILE
+
+    LaunchedEffect(Unit) {
+        runCatching { focus.requestFocus() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isFile) "New file" else "New folder") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "in $location",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focus),
+                    label = { Text(if (isFile) "File name" else "Folder name") },
+                    placeholder = { Text(if (isFile) "MainActivity.kt" else "components") },
+                    singleLine = true,
+                    isError = error != null,
+                    supportingText = {
+                        Text(error ?: if (isFile) "Include the extension, e.g. notes.md" else "Letters, numbers, dots and dashes")
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (canCreate) onConfirm(name) }
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(name) },
+                enabled = canCreate
+            ) {
+                Text(if (isFile) "Create file" else "Create folder")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun DeleteDialog(
+    file: RexGitFile,
+    isGit: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = scheme.error)
+        },
+        title = { Text(if (file.isDirectory) "Delete folder?" else "Delete file?") },
+        text = {
+            Text(
+                if (file.isDirectory)
+                    "\"${file.name}\" and everything inside it will be permanently deleted from this device." +
+                        (if (isGit) " Uncommitted work inside it can't be recovered." else "")
+                else
+                    "\"${file.name}\" will be permanently deleted from this device." +
+                        (if (isGit) " If it was never committed, it can't be recovered." else "")
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = scheme.error,
+                    contentColor = scheme.onError
+                )
+            ) {
+                Text("Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ============================================================
 // Editor
 // ============================================================
+
+private val EditorKeys = listOf(
+    "Tab" to "    ",
+    "{" to "{", "}" to "}",
+    "(" to "(", ")" to ")",
+    "[" to "[", "]" to "]",
+    "<" to "<", ">" to ">",
+    ";" to ";", ":" to ":",
+    "\"" to "\"", "'" to "'",
+    "=" to "=", "/" to "/", "#" to "#"
+)
 
 @Composable
 private fun EditorScreen(
@@ -834,55 +1383,72 @@ private fun EditorScreen(
     onEdit: (String) -> Unit
 ) {
     val path = state.editorPath ?: return
+    val scheme = MaterialTheme.colorScheme
 
-    // Local text state keeps the cursor stable while typing.
-    var text by remember(path) { mutableStateOf(state.editorContent) }
+    var field by remember(path) { mutableStateOf(TextFieldValue(state.editorContent)) }
 
     val repoPath = state.selectedRepository?.path ?: ""
     val name = path.substringAfterLast('/')
     val relative = path.removePrefix(repoPath).trimStart('/')
-    val lines = remember(text) { text.count { it == '\n' } + 1 }
+    val lines = remember(field.text) { field.text.count { it == '\n' } + 1 }
+
+    fun insert(snippet: String) {
+        val sel = field.selection
+        val updated = field.text.replaceRange(sel.min, sel.max, snippet)
+
+        field = TextFieldValue(updated, TextRange(sel.min + snippet.length))
+        onEdit(updated)
+    }
 
     Column(
         Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .imePadding()
     ) {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Close editor")
-                }
-            },
-            title = {
-                Column {
-                    Text(
-                        name,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HeaderIconButton(
+                icon = Icons.Default.ArrowBack,
+                description = "Close editor",
+                onClick = onBack
+            )
 
-                    Text(
-                        if (state.editorDirty) "Unsaved changes" else relative,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium,
-                        color =
-                            if (state.editorDirty) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            actions = {
-                IconButton(
-                    onClick = onSave,
-                    enabled = state.editorDirty && !state.isSaving
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = "Save file")
-                }
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    if (state.editorDirty) "Unsaved changes" else relative,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (state.editorDirty) scheme.tertiary else scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-        )
+
+            Spacer(Modifier.width(8.dp))
+
+            Button(
+                onClick = onSave,
+                enabled = state.editorDirty && !state.isSaving,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                modifier = Modifier.heightIn(min = 44.dp)
+            ) {
+                Text(if (state.isSaving) "Saving" else "Save")
+            }
+        }
 
         ProgressSlot(state.isSaving)
 
@@ -890,21 +1456,23 @@ private fun EditorScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp
+                .padding(horizontal = 12.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = scheme.surface,
+            border = BorderStroke(1.dp, scheme.outlineVariant)
         ) {
             BasicTextField(
-                value = text,
-                onValueChange = {
-                    text = it
-                    onEdit(it)
+                value = field,
+                onValueChange = { new ->
+                    val changed = new.text != field.text
+                    field = new
+                    if (changed) onEdit(new.text)
                 },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = scheme.onSurface
                 ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = SolidColor(scheme.primary),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
                     autoCorrect = false
@@ -912,17 +1480,42 @@ private fun EditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(12.dp)
+                    .padding(14.dp)
             )
         }
 
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            EditorKeys.forEach { (label, snippet) ->
+                Surface(
+                    onClick = { insert(snippet) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = scheme.surfaceVariant
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
+            }
+        }
+
         Text(
-            "$lines lines  •  ${text.length} characters",
+            "$lines lines  •  ${field.text.length} characters",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scheme.onSurfaceVariant,
             modifier = Modifier
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
         )
     }
 }
@@ -932,31 +1525,92 @@ private fun EditorScreen(
 // ============================================================
 
 @Composable
+private fun WorkspaceCard(
+    total: Int,
+    gitCount: Int,
+    path: String
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(24.dp)
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(scheme.primaryContainer, scheme.secondaryContainer)
+                )
+            )
+            .border(1.dp, scheme.primary.copy(alpha = 0.25f), shape)
+            .padding(20.dp)
+    ) {
+        Text(
+            "Workspace",
+            style = MaterialTheme.typography.labelLarge,
+            color = scheme.onPrimaryContainer.copy(alpha = 0.7f)
+        )
+
+        Text(
+            "$total",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = scheme.onPrimaryContainer
+        )
+
+        Text(
+            if (total == 1) "repository" else "repositories",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        InfoPill(
+            icon = Icons.Default.CallSplit,
+            text = "$gitCount Git",
+            container = scheme.surface.copy(alpha = 0.55f),
+            content = scheme.onSurface
+        )
+
+        if (path.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                path,
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = scheme.onPrimaryContainer.copy(alpha = 0.7f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun RepositoryCard(
     repo: RexGitRepository,
     onClick: () -> Unit
 ) {
-    ElevatedCard(
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(
         onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.surface,
+        border = BorderStroke(1.dp, scheme.outlineVariant),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
+            IconTile(
+                icon = Icons.Default.Folder,
+                tint = if (repo.isGitRepository) scheme.primary else scheme.onSurfaceVariant,
+                size = 48.dp
+            )
 
             Spacer(Modifier.width(14.dp))
 
@@ -968,17 +1622,21 @@ private fun RepositoryCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Text(
-                    if (repo.isGitRepository) "Git repository" else "Plain folder",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(Modifier.height(4.dp))
+
+                InfoPill(
+                    icon = if (repo.isGitRepository) Icons.Default.CallSplit else Icons.Default.Folder,
+                    text = if (repo.isGitRepository) "Git repository" else "Plain folder",
+                    container = scheme.surfaceVariant,
+                    content = scheme.onSurfaceVariant,
+                    compact = true
                 )
             }
 
             Icon(
                 Icons.Default.ArrowForward,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = scheme.onSurfaceVariant
             )
         }
     }
@@ -993,60 +1651,85 @@ private fun GithubRepositoryCard(
     onClone: () -> Unit,
     onOpen: () -> Unit
 ) {
-    ElevatedCard(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    repo.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+    val scheme = MaterialTheme.colorScheme
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 2.dp)
-                ) {
-                    Icon(
-                        if (repo.private) Icons.Default.Lock else Icons.Default.Public,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.surface,
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Icons.Default.Code, scheme.secondary)
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        repo.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(Modifier.width(4.dp))
-
                     Text(
-                        (if (repo.private) "Private" else "Public") + "  •  " + repo.fullName,
+                        repo.fullName,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = scheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                if (!repo.description.isNullOrBlank()) {
-                    Text(
-                        repo.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
+                Spacer(Modifier.width(8.dp))
+
+                InfoPill(
+                    icon = if (repo.private) Icons.Default.Lock else Icons.Default.Public,
+                    text = if (repo.private) "Private" else "Public",
+                    container = scheme.surfaceVariant,
+                    content = scheme.onSurfaceVariant,
+                    compact = true
+                )
             }
 
-            Spacer(Modifier.width(12.dp))
+            if (!repo.description.isNullOrBlank()) {
+                Text(
+                    repo.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
 
             if (cloned) {
-                OutlinedButton(onClick = onOpen) { Text("Open") }
+                OutlinedButton(
+                    onClick = onOpen,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open")
+                }
             } else {
                 FilledTonalButton(
                     onClick = onClone,
-                    enabled = !anyCloning
+                    enabled = !anyCloning,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                 ) {
                     if (cloning) ButtonSpinner()
                     else Icon(
@@ -1055,11 +1738,29 @@ private fun GithubRepositoryCard(
                         modifier = Modifier.size(18.dp)
                     )
 
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(if (cloning) "Cloning" else "Clone")
                 }
             }
         }
+    }
+}
+
+private data class FileStyle(val icon: ImageVector, val color: Color)
+
+private fun fileStyle(file: RexGitFile, scheme: ColorScheme): FileStyle {
+    if (file.isDirectory) return FileStyle(Icons.Default.Folder, scheme.primary)
+
+    return when (file.name.substringAfterLast('.', "").lowercase()) {
+        "kt", "kts", "java", "gradle" -> FileStyle(Icons.Default.Code, scheme.primary)
+        "xml", "html", "css", "js", "ts", "json", "yml", "yaml", "toml" ->
+            FileStyle(Icons.Default.Code, scheme.secondary)
+        "md", "txt" -> FileStyle(Icons.Default.Description, scheme.tertiary)
+        "png", "jpg", "jpeg", "webp", "gif", "svg" ->
+            FileStyle(Icons.Default.Image, Color(0xFFFF8FB1))
+        "properties", "pro", "gitignore" ->
+            FileStyle(Icons.Default.Settings, scheme.onSurfaceVariant)
+        else -> FileStyle(Icons.Default.InsertDriveFile, scheme.onSurfaceVariant)
     }
 }
 
@@ -1068,28 +1769,23 @@ private fun FileRow(
     file: RexGitFile,
     change: RexGitChangeKind?,
     hasChangesInside: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMore: () -> Unit
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val style = fileStyle(file, scheme)
+
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable(
                 onClickLabel = if (file.isDirectory) "Open folder" else "Open file",
                 onClick = onClick
             )
-            .heightIn(min = 52.dp)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint =
-                if (file.isDirectory) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        IconTile(style.icon, style.color)
 
         Spacer(Modifier.width(14.dp))
 
@@ -1101,22 +1797,32 @@ private fun FileRow(
                 overflow = TextOverflow.Ellipsis
             )
 
-            if (!file.isDirectory) {
-                Text(
-                    formatSize(file.size),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                if (file.isDirectory) "Folder" else formatSize(file.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant
+            )
         }
 
         if (change != null) {
+            Spacer(Modifier.width(8.dp))
             ChangeBadge(change)
         } else if (hasChangesInside) {
-            Text(
-                "changed",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.tertiary
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(scheme.tertiary)
+                    .semantics { contentDescription = "Contains changes" }
+            )
+        }
+
+        IconButton(onClick = onMore) {
+            Icon(
+                Icons.Default.MoreVert,
+                contentDescription = "Actions for ${file.name}",
+                tint = scheme.onSurfaceVariant
             )
         }
     }
@@ -1137,7 +1843,6 @@ private fun GithubDialog(
     var visible by remember { mutableStateOf(false) }
     val wasConnected = remember { state.isGithubConnected }
 
-    // Close automatically once the connection succeeds.
     LaunchedEffect(state.isGithubConnected) {
         if (state.isGithubConnected && !wasConnected) onDismiss()
     }
@@ -1330,18 +2035,128 @@ private fun ErrorDialog(
 
 @Composable
 private fun RexGitLogo() {
+    val scheme = MaterialTheme.colorScheme
+
     Box(
         Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .size(44.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.linearGradient(listOf(scheme.primary, scheme.secondary))),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             Icons.Default.Code,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer
+            tint = scheme.onPrimary
         )
+    }
+}
+
+@Composable
+private fun IconTile(
+    icon: ImageVector,
+    tint: Color,
+    size: Dp = 40.dp
+) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(size * 0.5f)
+        )
+    }
+}
+
+@Composable
+private fun HeaderIconButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: Color = MaterialTheme.colorScheme.onSurface
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = scheme.surface,
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = Modifier.size(44.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                icon,
+                contentDescription = description,
+                tint = if (enabled) tint else tint.copy(alpha = 0.38f),
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SegmentedTabs(
+    labels: List<String>,
+    icons: List<ImageVector>,
+    selected: Int,
+    onSelect: (Int) -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Row(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(scheme.surfaceVariant)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        labels.forEachIndexed { index, label ->
+            val isSelected = index == selected
+
+            val bg by animateColorAsState(
+                if (isSelected) scheme.surface else Color.Transparent
+            )
+            val fg by animateColorAsState(
+                if (isSelected) scheme.primary else scheme.onSurfaceVariant
+            )
+
+            Row(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(bg)
+                    .selectable(
+                        selected = isSelected,
+                        role = Role.Tab,
+                        onClick = { onSelect(index) }
+                    ),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    icons[index],
+                    contentDescription = null,
+                    tint = fg,
+                    modifier = Modifier.size(18.dp)
+                )
+
+                Spacer(Modifier.width(8.dp))
+
+                Text(label, color = fg, style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 
@@ -1351,7 +2166,7 @@ private fun ProgressSlot(visible: Boolean) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(4.dp)
+            .height(3.dp)
     ) {
         if (visible) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1368,28 +2183,106 @@ private fun ButtonSpinner() {
 }
 
 @Composable
+private fun GradientButton(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    val brush: Brush =
+        if (enabled || loading) Brush.linearGradient(listOf(scheme.primary, scheme.secondary))
+        else SolidColor(scheme.onSurface.copy(alpha = 0.12f))
+
+    val content =
+        if (enabled || loading) scheme.onPrimary
+        else scheme.onSurface.copy(alpha = 0.38f)
+
+    Row(
+        modifier
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(brush)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = content
+            )
+        } else {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        Text(text, color = content, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
 private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth(),
-        singleLine = true,
-        shape = RoundedCornerShape(16.dp),
-        placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon = {
-            if (value.isNotEmpty()) {
-                IconButton(onClick = { onValueChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = "Clear search")
-                }
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(16.dp)
+
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(shape)
+            .background(scheme.surface)
+            .border(1.dp, scheme.outlineVariant, shape)
+            .padding(start = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.Search,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(Modifier.width(10.dp))
+
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(
+                    placeholder,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = scheme.onSurfaceVariant
+                )
             }
+
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.primary),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-    )
+
+        if (value.isNotEmpty()) {
+            IconButton(onClick = { onValueChange("") }) {
+                Icon(Icons.Default.Close, contentDescription = "Clear search")
+            }
+        } else {
+            Spacer(Modifier.width(10.dp))
+        }
+    }
 }
 
 @Composable
@@ -1401,6 +2294,8 @@ private fun EmptyState(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
+    val scheme = MaterialTheme.colorScheme
+
     Column(
         modifier
             .fillMaxWidth()
@@ -1410,20 +2305,24 @@ private fun EmptyState(
     ) {
         Box(
             Modifier
-                .size(64.dp)
+                .size(72.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(
+                    Brush.linearGradient(
+                        listOf(scheme.primaryContainer, scheme.secondaryContainer)
+                    )
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 icon,
                 contentDescription = null,
                 modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                tint = scheme.onPrimaryContainer
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
 
         Text(
             title,
@@ -1436,13 +2335,18 @@ private fun EmptyState(
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
 
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(20.dp))
-            Button(onClick = onAction) { Text(actionLabel) }
+
+            GradientButton(
+                text = actionLabel,
+                icon = Icons.Default.Add,
+                onClick = onAction
+            )
         }
     }
 }
@@ -1452,8 +2356,12 @@ private fun StorageNotice(
     path: String,
     onGrant: () -> Unit
 ) {
-    ElevatedCard(
-        Modifier.fillMaxWidth()
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.tertiaryContainer,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             Modifier.padding(16.dp),
@@ -1462,13 +2370,17 @@ private fun StorageNotice(
             Icon(
                 Icons.Default.Warning,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.tertiary
+                tint = scheme.onTertiaryContainer
             )
 
             Spacer(Modifier.width(12.dp))
 
             Column {
-                Text("Using private app storage", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Using private app storage",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = scheme.onTertiaryContainer
+                )
 
                 Spacer(Modifier.height(4.dp))
 
@@ -1476,7 +2388,7 @@ private fun StorageNotice(
                     "Downloads isn't writable, so repositories are stored in:\n$path\n\n" +
                         "Allow \"All files access\" to use /Download/RexAps instead.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = scheme.onTertiaryContainer.copy(alpha = 0.85f)
                 )
 
                 TextButton(onClick = onGrant) { Text("Grant access") }
@@ -1490,7 +2402,8 @@ private fun InfoPill(
     icon: ImageVector,
     text: String,
     container: Color,
-    content: Color
+    content: Color,
+    compact: Boolean = false
 ) {
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -1498,16 +2411,21 @@ private fun InfoPill(
         contentColor = content
     ) {
         Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            Modifier.padding(
+                horizontal = if (compact) 8.dp else 10.dp,
+                vertical = if (compact) 4.dp else 6.dp
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(if (compact) 14.dp else 16.dp))
 
             Spacer(Modifier.width(6.dp))
 
             Text(
                 text,
-                style = MaterialTheme.typography.labelLarge,
+                style =
+                    if (compact) MaterialTheme.typography.labelMedium
+                    else MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1530,7 +2448,7 @@ private fun ChangeBadge(kind: RexGitChangeKind) {
     Box(
         Modifier
             .size(24.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(7.dp))
             .background(bg)
             .semantics { contentDescription = kind.label },
         contentAlignment = Alignment.Center

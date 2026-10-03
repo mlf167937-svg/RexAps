@@ -289,6 +289,88 @@ class RexGitViewModel(
         }
     }
 
+    // ---------- create / delete ----------
+
+    fun createFile(name: String) {
+        val repo = _state.value.selectedRepository ?: return
+        val dir = _state.value.currentDirectory
+        val clean = name.trim()
+
+        launchIO {
+            _state.update { it.copy(isRepoLoading = true, error = null) }
+
+            try {
+                val result = repositoryManager.createFile(repo, dir, clean)
+
+                if (result.success) {
+                    reloadRepository(repo)
+
+                    _state.update { it.copy(message = result.message) }
+
+                    // Jump straight into the editor for the new file.
+                    openFile(
+                        RexGitFile(
+                            name = clean,
+                            path = File(dir ?: repo.path, clean).absolutePath,
+                            isDirectory = false
+                        )
+                    )
+                } else {
+                    fail(result.message)
+                }
+            } finally {
+                _state.update { it.copy(isRepoLoading = false) }
+            }
+        }
+    }
+
+    fun createFolder(name: String) {
+        val repo = _state.value.selectedRepository ?: return
+        val dir = _state.value.currentDirectory
+        val clean = name.trim()
+
+        launchIO {
+            _state.update { it.copy(isRepoLoading = true, error = null) }
+
+            try {
+                val result = repositoryManager.createFolder(repo, dir, clean)
+
+                if (result.success) {
+                    reloadRepository(repo)
+                    _state.update { it.copy(message = result.message) }
+                } else {
+                    fail(result.message)
+                }
+            } finally {
+                _state.update { it.copy(isRepoLoading = false) }
+            }
+        }
+    }
+
+    fun deleteEntry(file: RexGitFile) {
+        val repo = _state.value.selectedRepository ?: return
+
+        launchIO {
+            _state.update { it.copy(isRepoLoading = true, error = null) }
+
+            try {
+                val result = repositoryManager.delete(repo, file.path)
+
+                reloadRepository(repo)
+
+                if (result.success) {
+                    _state.update { it.copy(message = result.message) }
+                } else {
+                    fail(result.message)
+                }
+            } finally {
+                _state.update { it.copy(isRepoLoading = false) }
+            }
+        }
+    }
+
+    // ---------- editor ----------
+
     fun updateEditor(content: String) {
         editorBuffer = content
 
