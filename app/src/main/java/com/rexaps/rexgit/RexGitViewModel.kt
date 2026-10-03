@@ -30,6 +30,9 @@ class RexGitViewModel(
 
     companion object {
         private const val MAX_EDITOR_BYTES = 400_000L
+
+        private const val TOKEN_FILE_PATH =
+            "/sdcard/Download/RexAps/Github/token.env"
     }
 
     init {
@@ -54,11 +57,70 @@ class RexGitViewModel(
     }
 
     private fun fail(text: String) {
-        _state.update { it.copy(error = text, message = null) }
+        _state.update {
+            it.copy(
+                error = text,
+                message = null
+            )
+        }
     }
 
     private fun storageInfo(): Pair<String, Boolean> {
         return RexGitStorage.githubRoot.absolutePath to RexGitStorage.usingFallback
+    }
+
+    /**
+     * Reads the GitHub token from:
+     *
+     * /sdcard/Download/RexAps/Github/token.env
+     *
+     * Example:
+     *
+     * token="ghp_anuanu"
+     *
+     * Also accepts:
+     *
+     * token='ghp_anuanu'
+     * token=ghp_anuanu
+     */
+    private fun externalGithubToken(): String? {
+        val file = File(TOKEN_FILE_PATH)
+
+        if (!file.isFile) {
+            return null
+        }
+
+        return try {
+            val content = file.readText(Charsets.UTF_8)
+
+            val regex = Regex(
+                """(?m)^\s*token\s*=\s*["']?([^"'\r\n]+)["']?\s*$"""
+            )
+
+            regex.find(content)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Loads the token from token.env and asks GitHub
+     * for the username belonging to that token.
+     */
+    private suspend fun externalGithubAuth(): RexGitAuth? {
+        val token = externalGithubToken()
+            ?: return null
+
+        val username = github.getUser(token)
+
+        return RexGitAuth(
+            username = username,
+            token = token
+        )
     }
 
     // ---------- home ----------
@@ -68,7 +130,12 @@ class RexGitViewModel(
             try {
                 RexGitStorage.ensureDirectories()
 
-                val auth = authStore.load()
+                val auth = try {
+                    externalGithubAuth()
+                } catch (_: Throwable) {
+                    null
+                }
+
                 val repos = repositoryManager.scan()
                 val (path, fallback) = storageInfo()
 
@@ -82,16 +149,22 @@ class RexGitViewModel(
                     )
                 }
 
-                if (auth != null) fetchGithubRepositories(auth)
+                if (auth != null) {
+                    fetchGithubRepositories(auth)
+                }
             } finally {
-                _state.update { it.copy(isLoading = false) }
+                _state.update {
+                    it.copy(isLoading = false)
+                }
             }
         }
     }
 
     fun refresh() {
         launchIO {
-            _state.update { it.copy(isLoading = true) }
+            _state.update {
+                it.copy(isLoading = true)
+            }
 
             try {
                 val repos = repositoryManager.scan()
@@ -105,9 +178,37 @@ class RexGitViewModel(
                     )
                 }
 
-                authStore.load()?.let { fetchGithubRepositories(it) }
+                try {
+                    val auth = externalGithubAuth()
+
+                    if (auth != null) {
+                        _state.update {
+                            it.copy(
+                                githubUsername = auth.username,
+                                isGithubConnected = true
+                            )
+                        }
+
+                        fetchGithubRepositories(auth)
+                    } else {
+                        _state.update {
+                            it.copy(
+                                githubUsername = null,
+                                isGithubConnected = false,
+                                githubRepositories = emptyList()
+                            )
+                        }
+                    }
+                } catch (t: Throwable) {
+                    fail(
+                        "Could not connect to GitHub:\n" +
+                            t.readableMessage("Invalid or expired token")
+                    )
+                }
             } finally {
-                _state.update { it.copy(isLoading = false) }
+                _state.update {
+                    it.copy(isLoading = false)
+                }
             }
         }
     }
@@ -118,15 +219,38 @@ class RexGitViewModel(
         if (_state.value.isRepoLoading) return
 
         launchIO {
-            _state.update { it.copy(isRepoLoading = true, error = null) }
+            _state.update {
+                it.copy(
+                    isRepoLoading = true,
+                    error = null
+                )
+            }
 
             try {
                 val isGit = File(repository.path, ".git").exists()
 
-                val branch = if (isGit) repositoryManager.currentBranch(repository) else ""
-                val remote = if (isGit) repositoryManager.remote(repository) else null
+                val branch =
+                    if (isGit) {
+                        repositoryManager.currentBranch(repository)
+                    } else {
+                        ""
+                    }
+
+                val remote =
+                    if (isGit) {
+                        repositoryManager.remote(repository)
+                    } else {
+                        null
+                    }
+
                 val files = repositoryManager.files(repository)
-                val status = if (isGit) repositoryManager.status(repository) else RexGitStatus()
+
+                val status =
+                    if (isGit) {
+                        repositoryManager.status(repository)
+                    } else {
+                        RexGitStatus()
+                    }
 
                 editorBuffer = ""
 
@@ -147,7 +271,9 @@ class RexGitViewModel(
                     )
                 }
             } finally {
-                _state.update { it.copy(isRepoLoading = false) }
+                _state.update {
+                    it.copy(isRepoLoading = false)
+                }
             }
         }
     }
@@ -169,9 +295,23 @@ class RexGitViewModel(
     }
 
     private fun reloadRepository(repo: RexGitRepository) {
-        val dir = _state.value.currentDirectory?.takeIf { File(it).isDirectory }
-        val status = if (repo.isGitRepository) repositoryManager.status(repo) else RexGitStatus()
-        val branch = if (repo.isGitRepository) repositoryManager.currentBranch(repo) else repo.branch
+        val dir = _state.value.currentDirectory
+            ?.takeIf { File(it).isDirectory }
+
+        val status =
+            if (repo.isGitRepository) {
+                repositoryManager.status(repo)
+            } else {
+                RexGitStatus()
+            }
+
+        val branch =
+            if (repo.isGitRepository) {
+                repositoryManager.currentBranch(repo)
+            } else {
+                repo.branch
+            }
+
         val files = repositoryManager.files(repo, dir)
 
         _state.update { cur ->
@@ -184,22 +324,29 @@ class RexGitViewModel(
                     gitStatus = status,
                     files = files,
                     currentDirectory = dir,
-                    selectedRepository = selected.copy(branch = branch)
+                    selectedRepository = selected.copy(
+                        branch = branch
+                    )
                 )
             }
         }
     }
 
     fun refreshStatus() {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
 
         launchIO {
-            _state.update { it.copy(isRepoLoading = true) }
+            _state.update {
+                it.copy(isRepoLoading = true)
+            }
 
             try {
                 reloadRepository(repo)
             } finally {
-                _state.update { it.copy(isRepoLoading = false) }
+                _state.update {
+                    it.copy(isRepoLoading = false)
+                }
             }
         }
     }
@@ -207,32 +354,46 @@ class RexGitViewModel(
     // ---------- files ----------
 
     fun openDirectory(directory: String) {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
 
         launchIO {
-            val files = repositoryManager.files(repo, directory)
+            val files = repositoryManager.files(
+                repo,
+                directory
+            )
 
             _state.update {
-                it.copy(files = files, currentDirectory = directory)
+                it.copy(
+                    files = files,
+                    currentDirectory = directory
+                )
             }
         }
     }
 
     fun openRoot() {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
 
         launchIO {
             val files = repositoryManager.files(repo)
 
             _state.update {
-                it.copy(files = files, currentDirectory = null)
+                it.copy(
+                    files = files,
+                    currentDirectory = null
+                )
             }
         }
     }
 
     fun openParent() {
-        val repo = _state.value.selectedRepository ?: return
-        val current = _state.value.currentDirectory ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
+
+        val current = _state.value.currentDirectory
+            ?: return
 
         val parent = File(current).parentFile
 
@@ -253,7 +414,10 @@ class RexGitViewModel(
             val target = File(file.path)
 
             if (target.length() > MAX_EDITOR_BYTES) {
-                fail("This file is too large to edit on a phone (limit 400 KB).")
+                fail(
+                    "This file is too large to edit on a phone " +
+                        "(limit 400 KB)."
+                )
                 return@launchIO
             }
 
@@ -263,6 +427,7 @@ class RexGitViewModel(
             }
 
             val content = target.readText()
+
             editorBuffer = content
 
             _state.update {
@@ -284,7 +449,9 @@ class RexGitViewModel(
             if (read <= 0) {
                 false
             } else {
-                (0 until read).any { buffer[it] == 0.toByte() }
+                (0 until read).any {
+                    buffer[it] == 0.toByte()
+                }
             }
         }
     }
@@ -292,26 +459,41 @@ class RexGitViewModel(
     // ---------- create / delete ----------
 
     fun createFile(name: String) {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
+
         val dir = _state.value.currentDirectory
         val clean = name.trim()
 
         launchIO {
-            _state.update { it.copy(isRepoLoading = true, error = null) }
+            _state.update {
+                it.copy(
+                    isRepoLoading = true,
+                    error = null
+                )
+            }
 
             try {
-                val result = repositoryManager.createFile(repo, dir, clean)
+                val result = repositoryManager.createFile(
+                    repo,
+                    dir,
+                    clean
+                )
 
                 if (result.success) {
                     reloadRepository(repo)
 
-                    _state.update { it.copy(message = result.message) }
+                    _state.update {
+                        it.copy(message = result.message)
+                    }
 
-                    // Jump straight into the editor for the new file.
                     openFile(
                         RexGitFile(
                             name = clean,
-                            path = File(dir ?: repo.path, clean).absolutePath,
+                            path = File(
+                                dir ?: repo.path,
+                                clean
+                            ).absolutePath,
                             isDirectory = false
                         )
                     )
@@ -319,52 +501,83 @@ class RexGitViewModel(
                     fail(result.message)
                 }
             } finally {
-                _state.update { it.copy(isRepoLoading = false) }
+                _state.update {
+                    it.copy(isRepoLoading = false)
+                }
             }
         }
     }
 
     fun createFolder(name: String) {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
+
         val dir = _state.value.currentDirectory
         val clean = name.trim()
 
         launchIO {
-            _state.update { it.copy(isRepoLoading = true, error = null) }
+            _state.update {
+                it.copy(
+                    isRepoLoading = true,
+                    error = null
+                )
+            }
 
             try {
-                val result = repositoryManager.createFolder(repo, dir, clean)
+                val result = repositoryManager.createFolder(
+                    repo,
+                    dir,
+                    clean
+                )
 
                 if (result.success) {
                     reloadRepository(repo)
-                    _state.update { it.copy(message = result.message) }
+
+                    _state.update {
+                        it.copy(message = result.message)
+                    }
                 } else {
                     fail(result.message)
                 }
             } finally {
-                _state.update { it.copy(isRepoLoading = false) }
+                _state.update {
+                    it.copy(isRepoLoading = false)
+                }
             }
         }
     }
 
     fun deleteEntry(file: RexGitFile) {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
 
         launchIO {
-            _state.update { it.copy(isRepoLoading = true, error = null) }
+            _state.update {
+                it.copy(
+                    isRepoLoading = true,
+                    error = null
+                )
+            }
 
             try {
-                val result = repositoryManager.delete(repo, file.path)
+                val result = repositoryManager.delete(
+                    repo,
+                    file.path
+                )
 
                 reloadRepository(repo)
 
                 if (result.success) {
-                    _state.update { it.copy(message = result.message) }
+                    _state.update {
+                        it.copy(message = result.message)
+                    }
                 } else {
                     fail(result.message)
                 }
             } finally {
-                _state.update { it.copy(isRepoLoading = false) }
+                _state.update {
+                    it.copy(isRepoLoading = false)
+                }
             }
         }
     }
@@ -375,7 +588,11 @@ class RexGitViewModel(
         editorBuffer = content
 
         _state.update {
-            if (it.editorDirty) it else it.copy(editorDirty = true)
+            if (it.editorDirty) {
+                it
+            } else {
+                it.copy(editorDirty = true)
+            }
         }
     }
 
@@ -383,27 +600,38 @@ class RexGitViewModel(
         editorBuffer = ""
 
         _state.update {
-            it.copy(editorPath = null, editorContent = "", editorDirty = false)
+            it.copy(
+                editorPath = null,
+                editorContent = "",
+                editorDirty = false
+            )
         }
     }
 
     fun saveEditor() {
-        val path = _state.value.editorPath ?: return
+        val path = _state.value.editorPath
+            ?: return
 
         if (_state.value.isSaving) return
 
         val content = editorBuffer
 
         launchIO {
-            _state.update { it.copy(isSaving = true) }
+            _state.update {
+                it.copy(isSaving = true)
+            }
 
             try {
                 File(path).writeText(content)
 
                 val repo = _state.value.selectedRepository
+
                 val status =
-                    if (repo != null && repo.isGitRepository) repositoryManager.status(repo)
-                    else null
+                    if (repo != null && repo.isGitRepository) {
+                        repositoryManager.status(repo)
+                    } else {
+                        null
+                    }
 
                 _state.update {
                     it.copy(
@@ -413,51 +641,80 @@ class RexGitViewModel(
                     )
                 }
             } finally {
-                _state.update { it.copy(isSaving = false) }
+                _state.update {
+                    it.copy(isSaving = false)
+                }
             }
         }
     }
 
     // ---------- GitHub ----------
 
-    fun connectGithub(token: String) {
-        val clean = token.trim()
-
-        if (clean.isEmpty()) {
-            fail("Enter your personal access token")
-            return
-        }
-
+    /**
+     * The token parameter is intentionally ignored.
+     *
+     * This parameter remains here so the current RexGitScreen.kt
+     * can still call:
+     *
+     * viewModel.connectGithub(...)
+     *
+     * The real token always comes from token.env.
+     */
+    fun connectGithub(
+        @Suppress("UNUSED_PARAMETER")
+        tokenFromUi: String
+    ) {
         launchIO {
-            _state.update { it.copy(isGithubLoading = true, error = null) }
+            _state.update {
+                it.copy(
+                    isGithubLoading = true,
+                    error = null,
+                    message = null
+                )
+            }
 
             try {
-                val login = github.getUser(clean)
-
-                authStore.save(login, clean)
+                val auth = externalGithubAuth()
+                    ?: throw IllegalStateException(
+                        "GitHub token tidak ditemukan.\n\n" +
+                            "Buat file:\n" +
+                            TOKEN_FILE_PATH
+                    )
 
                 _state.update {
                     it.copy(
-                        githubUsername = login,
+                        githubUsername = auth.username,
                         isGithubConnected = true,
-                        message = "Connected as @$login"
+                        message = "Connected as @${auth.username}"
                     )
                 }
 
-                fetchGithubRepositories(RexGitAuth(login, clean))
+                fetchGithubRepositories(auth)
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                fail("Could not connect to GitHub:\n" + t.readableMessage("Invalid token"))
+                fail(
+                    "Could not connect to GitHub:\n" +
+                        t.readableMessage(
+                            "Invalid or expired token"
+                        )
+                )
             } finally {
-                _state.update { it.copy(isGithubLoading = false) }
+                _state.update {
+                    it.copy(isGithubLoading = false)
+                }
             }
         }
     }
 
     fun disconnectGithub() {
-        authStore.clear()
-
+        /*
+         * IMPORTANT:
+         *
+         * We do NOT delete token.env.
+         *
+         * The token is managed externally.
+         */
         _state.update {
             it.copy(
                 githubUsername = null,
@@ -468,42 +725,93 @@ class RexGitViewModel(
         }
     }
 
-    private fun fetchGithubRepositories(auth: RexGitAuth) {
-        _state.update { it.copy(isGithubLoading = true) }
+    private fun fetchGithubRepositories(
+        auth: RexGitAuth
+    ) {
+        _state.update {
+            it.copy(isGithubLoading = true)
+        }
 
         try {
-            val repos = github.listRepositories(auth.token)
+            val repos = github.listRepositories(
+                auth.token
+            )
 
-            _state.update { it.copy(githubRepositories = repos) }
+            _state.update {
+                it.copy(
+                    githubRepositories = repos
+                )
+            }
         } catch (t: Throwable) {
-            if (t is CancellationException) throw t
+            if (t is CancellationException) {
+                throw t
+            }
 
-            fail("Could not load GitHub repositories:\n" + t.readableMessage("Network error"))
+            fail(
+                "Could not load GitHub repositories:\n" +
+                    t.readableMessage("Network error")
+            )
         } finally {
-            _state.update { it.copy(isGithubLoading = false) }
+            _state.update {
+                it.copy(isGithubLoading = false)
+            }
         }
     }
 
     fun reloadGithub() {
-        val auth = authStore.load() ?: return
+        launchIO {
+            try {
+                val auth = externalGithubAuth()
 
-        launchIO { fetchGithubRepositories(auth) }
+                if (auth == null) {
+                    fail(
+                        "GitHub token tidak ditemukan.\n\n" +
+                            TOKEN_FILE_PATH
+                    )
+                    return@launchIO
+                }
+
+                _state.update {
+                    it.copy(
+                        githubUsername = auth.username,
+                        isGithubConnected = true
+                    )
+                }
+
+                fetchGithubRepositories(auth)
+            } catch (t: Throwable) {
+                if (t is CancellationException) {
+                    throw t
+                }
+
+                fail(
+                    "Could not load GitHub repositories:\n" +
+                        t.readableMessage("Network error")
+                )
+            }
+        }
     }
 
-    fun cloneRepository(repository: RexGitGithubRepository) {
+    fun cloneRepository(
+        repository: RexGitGithubRepository
+    ) {
         if (_state.value.isCloning) return
 
-        val auth = authStore.load()
-
-        if (auth == null) {
-            fail("Connect GitHub first")
-            return
-        }
-
         launchIO {
-            _state.update { it.copy(cloningName = repository.name, error = null) }
+            _state.update {
+                it.copy(
+                    cloningName = repository.name,
+                    error = null
+                )
+            }
 
             try {
+                val auth = externalGithubAuth()
+                    ?: throw IllegalStateException(
+                        "GitHub token tidak ditemukan.\n\n" +
+                            TOKEN_FILE_PATH
+                    )
+
                 val result = repositoryManager.clone(
                     url = repository.cloneUrl,
                     name = repository.name,
@@ -517,11 +825,16 @@ class RexGitViewModel(
                     val repos = repositoryManager.scan()
 
                     _state.update {
-                        it.copy(repositories = repos, message = result.message)
+                        it.copy(
+                            repositories = repos,
+                            message = result.message
+                        )
                     }
                 }
             } finally {
-                _state.update { it.copy(cloningName = null) }
+                _state.update {
+                    it.copy(cloningName = null)
+                }
             }
         }
     }
@@ -529,50 +842,99 @@ class RexGitViewModel(
     // ---------- pull / push ----------
 
     fun pull() {
-        val repo = _state.value.selectedRepository ?: return
+        val repo = _state.value.selectedRepository
+            ?: return
+
         val current = _state.value
 
-        if (!repo.isGitRepository || current.isPulling || current.isPushing) return
-
-        val auth = authStore.load()
+        if (
+            !repo.isGitRepository ||
+            current.isPulling ||
+            current.isPushing
+        ) {
+            return
+        }
 
         launchIO {
-            _state.update { it.copy(isPulling = true, error = null, message = null) }
+            _state.update {
+                it.copy(
+                    isPulling = true,
+                    error = null,
+                    message = null
+                )
+            }
 
             try {
-                val result = repositoryManager.pull(repo, auth?.username, auth?.token)
+                val auth = externalGithubAuth()
+                    ?: throw IllegalStateException(
+                        "GitHub token tidak ditemukan.\n\n" +
+                            TOKEN_FILE_PATH
+                    )
+
+                val result = repositoryManager.pull(
+                    repo,
+                    auth.username,
+                    auth.token
+                )
 
                 reloadRepository(repo)
 
                 if (result.success) {
-                    _state.update { it.copy(message = result.message) }
+                    _state.update {
+                        it.copy(message = result.message)
+                    }
                 } else {
-                    _state.update { it.copy(error = result.message) }
+                    _state.update {
+                        it.copy(error = result.message)
+                    }
                 }
             } finally {
-                _state.update { it.copy(isPulling = false) }
+                _state.update {
+                    it.copy(isPulling = false)
+                }
             }
         }
     }
 
-    fun push(message: String, bumpVersion: Boolean) {
-        val repo = _state.value.selectedRepository ?: return
+    fun push(
+        message: String,
+        bumpVersion: Boolean
+    ) {
+        val repo = _state.value.selectedRepository
+            ?: return
+
         val current = _state.value
 
-        if (!repo.isGitRepository || current.isPushing || current.isPulling) return
-
-        val auth = authStore.load()
+        if (
+            !repo.isGitRepository ||
+            current.isPushing ||
+            current.isPulling
+        ) {
+            return
+        }
 
         launchIO {
-            _state.update { it.copy(isPushing = true, error = null, message = null) }
+            _state.update {
+                it.copy(
+                    isPushing = true,
+                    error = null,
+                    message = null
+                )
+            }
 
             try {
+                val auth = externalGithubAuth()
+                    ?: throw IllegalStateException(
+                        "GitHub token tidak ditemukan.\n\n" +
+                            TOKEN_FILE_PATH
+                    )
+
                 val result = pushManager.push(
                     repository = repo,
                     commitMessage = message,
                     bumpVersion = bumpVersion,
-                    username = auth?.username,
-                    token = auth?.token
+                    username = auth.username,
+                    token = auth.token
                 )
 
                 reloadRepository(repo)
@@ -582,16 +944,26 @@ class RexGitViewModel(
                         append(result.message)
 
                         result.version?.let {
-                            append("\nVersion ${it.versionName} (${it.versionCode})")
+                            append(
+                                "\nVersion " +
+                                    "${it.versionName} " +
+                                    "(${it.versionCode})"
+                            )
                         }
                     }
 
-                    _state.update { it.copy(message = text) }
+                    _state.update {
+                        it.copy(message = text)
+                    }
                 } else {
-                    _state.update { it.copy(error = result.message) }
+                    _state.update {
+                        it.copy(error = result.message)
+                    }
                 }
             } finally {
-                _state.update { it.copy(isPushing = false) }
+                _state.update {
+                    it.copy(isPushing = false)
+                }
             }
         }
     }
@@ -599,14 +971,23 @@ class RexGitViewModel(
     // ---------- messages ----------
 
     fun dismissMessage() {
-        _state.update { it.copy(message = null) }
+        _state.update {
+            it.copy(message = null)
+        }
     }
 
     fun dismissError() {
-        _state.update { it.copy(error = null) }
+        _state.update {
+            it.copy(error = null)
+        }
     }
 
     fun clearMessage() {
-        _state.update { it.copy(message = null, error = null) }
+        _state.update {
+            it.copy(
+                message = null,
+                error = null
+            )
+        }
     }
 }
