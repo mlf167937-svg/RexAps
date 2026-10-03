@@ -154,10 +154,28 @@ fun RexApsApp(activity: Activity) {
                             activity = activity,
                             onExit = { route = RexRoute.NONE }
                         )
+                            
+                       RexRoute.REXCHAT -> com.rexaps.rexchat.RexChatSessionScreen(
+                                onOpenSession = { session ->
 
-                        RexRoute.REXCHAT -> com.rexaps.rexchat.RexChatScreen(
-                            activity = activity,
-                            onExit = { route = RexRoute.NONE }
+                                    val intent =
+                                        android.content.Intent(
+                                            activity,
+                                            com.rexaps.rexchat.rexchat.RexChatActivity::class.java
+                                        ).apply {
+
+                                            putExtra(
+                                                com.rexaps.rexchat.rexchat.RexChatActivity.EXTRA_SESSION_ID,
+                                                session.id
+                                            )
+                                        }
+
+                                    activity.startActivity(intent)
+                                },
+
+                                onExit = {
+                                    route = RexRoute.NONE
+                            }
                         )
 
                         RexRoute.REXNUX -> RexNuxScreen(

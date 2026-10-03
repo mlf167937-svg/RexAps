@@ -2,6 +2,7 @@ package com.rexaps.rexchat
 
 import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -31,14 +33,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,39 +57,22 @@ import com.rexaps.rexchat.rexchat.RexChatActivity
 
 class MainActivity : ComponentActivity() {
 
-    /*
-     * Permission Android lama untuk membuat folder
-     * pada public Download.
-     */
     private val storagePermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) {
-            /*
-             * UI akan tetap bekerja walaupun permission
-             * tidak diberikan. Pada Android modern,
-             * metadata dapat ditangani oleh scoped storage.
-             */
         }
 
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
+        super.onCreate(savedInstanceState)
 
-        super.onCreate(
-            savedInstanceState
-        )
-
-        /*
-         * Android <= 9.
-         */
         if (
-            android.os.Build.VERSION.SDK_INT <=
-            android.os.Build.VERSION_CODES.P
+            Build.VERSION.SDK_INT <=
+            Build.VERSION_CODES.P
         ) {
-
             runCatching {
-
                 storagePermissionLauncher.launch(
                     Manifest.permission.WRITE_EXTERNAL_STORAGE
                 )
@@ -94,45 +80,40 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-
             RexChatSessionScreen(
-                onOpenSession = {
-                    openSession(it)
+                onOpenSession = { session ->
+                    openSession(session)
                 }
             )
         }
     }
 
-    /**
-     * Buka WebView process untuk session tertentu.
-     */
     private fun openSession(
         session: SessionManager.Session
     ) {
-
         val intent =
             Intent(
                 this,
                 RexChatActivity::class.java
             ).apply {
-
                 putExtra(
                     RexChatActivity.EXTRA_SESSION_ID,
                     session.id
                 )
             }
 
-        startActivity(
-            intent
-        )
+        startActivity(intent)
     }
 }
 
-@androidx.compose.runtime.Composable
-private fun RexChatSessionScreen(
+@Composable
+fun RexChatSessionScreen(
     onOpenSession:
-        (SessionManager.Session) -> Unit
+        (SessionManager.Session) -> Unit,
+    onExit: (() -> Unit)? = null
 ) {
+    val context =
+        androidx.compose.ui.platform.LocalContext.current
 
     var sessions by remember {
         mutableStateOf(
@@ -156,55 +137,30 @@ private fun RexChatSessionScreen(
         >(null)
     }
 
-    /*
-     * Load daftar.
-     */
     fun refresh() {
-
         sessions =
             SessionManager.getSessions(
-                context =
-                    androidx.compose.ui.platform
-                        .LocalContext.current
+                context
             )
     }
 
-    LaunchedEffect(
-        Unit
-    ) {
-
+    LaunchedEffect(Unit) {
         refresh()
     }
 
-    val context =
-        androidx.compose.ui.platform
-            .LocalContext.current
-
-    /*
-     * =========================================================
-     * SCREEN
-     * =========================================================
-     */
-
     Scaffold(
-
         floatingActionButton = {
-
-            androidx.compose.material3.FloatingActionButton(
+            FloatingActionButton(
                 onClick = {
                     showCreate = true
                 }
             ) {
-
                 Icon(
-                    imageVector =
-                        Icons.Default.Add,
-                    contentDescription =
-                        "Tambah session"
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Tambah session"
                 )
             }
         }
-
     ) { paddingValues ->
 
         Column(
@@ -215,39 +171,38 @@ private fun RexChatSessionScreen(
                         .colorScheme
                         .background
                 )
-                .padding(
-                    paddingValues
-                )
-                .padding(
-                    horizontal = 16.dp
-                )
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
         ) {
 
             Spacer(
-                modifier =
-                    Modifier.height(20.dp)
+                modifier = Modifier.height(16.dp)
             )
 
-            /*
-             * =================================================
-             * HEADER
-             * =================================================
-             */
-
             Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
+
+                if (onExit != null) {
+                    IconButton(
+                        onClick = onExit
+                    ) {
+                        Icon(
+                            imageVector =
+                                Icons.Default.ArrowBack,
+                            contentDescription =
+                                "Kembali"
+                        )
+                    }
+                }
 
                 Box(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(
-                            RoundedCornerShape(
-                                16.dp
-                            )
+                            RoundedCornerShape(16.dp)
                         )
                         .background(
                             Brush.linearGradient(
@@ -255,7 +210,6 @@ private fun RexChatSessionScreen(
                                     MaterialTheme
                                         .colorScheme
                                         .primary,
-
                                     MaterialTheme
                                         .colorScheme
                                         .tertiary
@@ -265,12 +219,10 @@ private fun RexChatSessionScreen(
                     contentAlignment =
                         Alignment.Center
                 ) {
-
                     Icon(
                         imageVector =
                             Icons.Default.Chat,
-                        contentDescription =
-                            null,
+                        contentDescription = null,
                         tint =
                             MaterialTheme
                                 .colorScheme
@@ -281,15 +233,12 @@ private fun RexChatSessionScreen(
                 }
 
                 Spacer(
-                    modifier =
-                        Modifier.size(14.dp)
+                    modifier = Modifier.size(14.dp)
                 )
 
                 Column {
-
                     Text(
-                        text =
-                            "RexChat",
+                        text = "RexChat",
                         style =
                             MaterialTheme
                                 .typography
@@ -312,15 +261,8 @@ private fun RexChatSessionScreen(
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(24.dp)
+                modifier = Modifier.height(20.dp)
             )
-
-            /*
-             * =================================================
-             * INFO
-             * =================================================
-             */
 
             Card(
                 modifier =
@@ -333,14 +275,10 @@ private fun RexChatSessionScreen(
                                 .surfaceVariant
                     )
             ) {
-
                 Column(
                     modifier =
-                        Modifier.padding(
-                            16.dp
-                        )
+                        Modifier.padding(16.dp)
                 ) {
-
                     Text(
                         text =
                             "Session tersimpan terpisah",
@@ -358,9 +296,9 @@ private fun RexChatSessionScreen(
                     Text(
                         text =
                             "Setiap session memiliki data " +
-                                    "WebView sendiri. Jadi login " +
-                                    "Session 1 tidak bercampur " +
-                                    "dengan Session 2.",
+                            "WebView sendiri sehingga login " +
+                            "Session 1 tidak bercampur " +
+                            "dengan Session 2.",
                         style =
                             MaterialTheme
                                 .typography
@@ -374,19 +312,10 @@ private fun RexChatSessionScreen(
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(20.dp)
+                modifier = Modifier.height(20.dp)
             )
 
-            /*
-             * =================================================
-             * EMPTY
-             * =================================================
-             */
-
-            if (
-                sessions.isEmpty()
-            ) {
+            if (sessions.isEmpty()) {
 
                 Column(
                     modifier =
@@ -400,8 +329,7 @@ private fun RexChatSessionScreen(
                     Icon(
                         imageVector =
                             Icons.Default.Chat,
-                        contentDescription =
-                            null,
+                        contentDescription = null,
                         modifier =
                             Modifier.size(64.dp),
                         tint =
@@ -416,8 +344,7 @@ private fun RexChatSessionScreen(
                     )
 
                     Text(
-                        text =
-                            "Belum ada session"
+                        text = "Belum ada session"
                     )
 
                     Spacer(
@@ -428,7 +355,7 @@ private fun RexChatSessionScreen(
                     Text(
                         text =
                             "Tekan + untuk membuat " +
-                                    "session WhatsApp baru.",
+                            "session WhatsApp baru.",
                         color =
                             MaterialTheme
                                 .colorScheme
@@ -445,56 +372,36 @@ private fun RexChatSessionScreen(
                             showCreate = true
                         }
                     ) {
-
-                        Text(
-                            "Buat session"
-                        )
+                        Text("Buat session")
                     }
                 }
 
             } else {
 
-                /*
-                 * =================================================
-                 * LIST
-                 * =================================================
-                 */
-
                 LazyColumn(
                     modifier =
                         Modifier.fillMaxSize(),
                     verticalArrangement =
-                        Arrangement.spacedBy(
-                            10.dp
-                        )
+                        Arrangement.spacedBy(10.dp)
                 ) {
 
                     items(
-                        items =
-                            sessions,
+                        items = sessions,
                         key = {
                             it.id
                         }
                     ) { session ->
 
                         SessionCard(
-                            session =
-                                session,
-
+                            session = session,
                             onClick = {
-                                onOpenSession(
-                                    session
-                                )
+                                onOpenSession(session)
                             },
-
                             onRename = {
-                                editSession =
-                                    session
+                                editSession = session
                             },
-
                             onDelete = {
-                                deleteSession =
-                                    session
+                                deleteSession = session
                             }
                         )
                     }
@@ -503,159 +410,99 @@ private fun RexChatSessionScreen(
         }
     }
 
-    /*
-     * =========================================================
-     * CREATE
-     * =========================================================
-     */
-
-    if (
-        showCreate
-    ) {
+    if (showCreate) {
 
         CreateSessionDialog(
-
             onDismiss = {
                 showCreate = false
             },
-
             onCreate = { name ->
 
                 SessionManager.createSession(
-                    context =
-                        context,
-                    name =
-                        name
+                    context = context,
+                    name = name
                 )
 
                 showCreate = false
-
-                sessions =
-                    SessionManager.getSessions(
-                        context
-                    )
+                refresh()
             }
         )
     }
-
-    /*
-     * =========================================================
-     * EDIT
-     * =========================================================
-     */
 
     editSession?.let { session ->
 
         RenameSessionDialog(
-
-            session =
-                session,
-
+            session = session,
             onDismiss = {
                 editSession = null
             },
-
             onRename = { name ->
 
                 SessionManager.renameSession(
-                    context =
-                        context,
-                    id =
-                        session.id,
-                    newName =
-                        name
+                    context = context,
+                    id = session.id,
+                    newName = name
                 )
 
                 editSession = null
-
-                sessions =
-                    SessionManager.getSessions(
-                        context
-                    )
+                refresh()
             }
         )
     }
 
-    /*
-     * =========================================================
-     * DELETE
-     * =========================================================
-     */
-
     deleteSession?.let { session ->
 
         AlertDialog(
-
             onDismissRequest = {
                 deleteSession = null
             },
-
             title = {
                 Text(
                     "Hapus ${session.name}?"
                 )
             },
-
             text = {
                 Text(
-                    "Folder metadata Session ${session.id} " +
-                            "akan dihapus."
+                    "Folder metadata Session " +
+                    "${session.id} akan dihapus."
                 )
             },
-
             confirmButton = {
-
                 TextButton(
                     onClick = {
 
                         SessionManager.deleteSession(
-                            context =
-                                context,
-                            id =
-                                session.id
+                            context = context,
+                            id = session.id
                         )
 
-                        deleteSession =
-                            null
-
-                        sessions =
-                            SessionManager.getSessions(
-                                context
-                            )
+                        deleteSession = null
+                        refresh()
                     }
                 ) {
-
-                    Text(
-                        "Hapus"
-                    )
+                    Text("Hapus")
                 }
             },
-
             dismissButton = {
-
                 TextButton(
                     onClick = {
                         deleteSession = null
                     }
                 ) {
-
-                    Text(
-                        "Batal"
-                    )
+                    Text("Batal")
                 }
             }
         )
     }
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun SessionCard(
     session: SessionManager.Session,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
-
     Card(
         modifier =
             Modifier
@@ -676,23 +523,15 @@ private fun SessionCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(
-                        14.dp
-                    ),
+                    .padding(14.dp),
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
 
-            /*
-             * ICON
-             */
-
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(
-                        CircleShape
-                    )
+                    .clip(CircleShape)
                     .background(
                         MaterialTheme
                             .colorScheme
@@ -701,7 +540,6 @@ private fun SessionCard(
                 contentAlignment =
                     Alignment.Center
             ) {
-
                 Text(
                     text =
                         session.id.toString(),
@@ -717,13 +555,8 @@ private fun SessionCard(
             }
 
             Spacer(
-                modifier =
-                    Modifier.size(14.dp)
+                modifier = Modifier.size(14.dp)
             )
-
-            /*
-             * NAME
-             */
 
             Column(
                 modifier =
@@ -731,8 +564,7 @@ private fun SessionCard(
             ) {
 
                 Text(
-                    text =
-                        session.name,
+                    text = session.name,
                     style =
                         MaterialTheme
                             .typography
@@ -756,14 +588,9 @@ private fun SessionCard(
                 )
             }
 
-            /*
-             * EDIT
-             */
-
             IconButton(
                 onClick = onRename
             ) {
-
                 Icon(
                     imageVector =
                         Icons.Default.Edit,
@@ -772,14 +599,9 @@ private fun SessionCard(
                 )
             }
 
-            /*
-             * DELETE
-             */
-
             IconButton(
                 onClick = onDelete
             ) {
-
                 Icon(
                     imageVector =
                         Icons.Default.Delete,
@@ -791,7 +613,7 @@ private fun SessionCard(
     }
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun CreateSessionDialog(
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit
@@ -802,24 +624,16 @@ private fun CreateSessionDialog(
     }
 
     AlertDialog(
-
-        onDismissRequest =
-            onDismiss,
-
+        onDismissRequest = onDismiss,
         title = {
-            Text(
-                "Session baru"
-            )
+            Text("Session baru")
         },
-
         text = {
-
             Column {
 
                 Text(
-                    text =
-                        "Buat session WhatsApp Web " +
-                                "yang terpisah."
+                    "Buat session WhatsApp Web " +
+                    "yang terpisah."
                 )
 
                 Spacer(
@@ -828,8 +642,7 @@ private fun CreateSessionDialog(
                 )
 
                 OutlinedTextField(
-                    value =
-                        name,
+                    value = name,
                     onValueChange = {
                         name = it
                     },
@@ -837,58 +650,40 @@ private fun CreateSessionDialog(
                         Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = {
-                        Text(
-                            "Nama session"
-                        )
+                        Text("Nama session")
                     },
                     placeholder = {
-                        Text(
-                            "Contoh: WhatsApp Utama"
-                        )
+                        Text("Contoh: WhatsApp Utama")
                     }
                 )
             }
         },
-
         confirmButton = {
-
             TextButton(
                 onClick = {
-
                     onCreate(
-                        if (
-                            name.isBlank()
-                        ) {
+                        if (name.isBlank()) {
                             "Session"
                         } else {
-                            name
+                            name.trim()
                         }
                     )
                 }
             ) {
-
-                Text(
-                    "Buat"
-                )
+                Text("Buat")
             }
         },
-
         dismissButton = {
-
             TextButton(
-                onClick =
-                    onDismiss
+                onClick = onDismiss
             ) {
-
-                Text(
-                    "Batal"
-                )
+                Text("Batal")
             }
         }
     )
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun RenameSessionDialog(
     session: SessionManager.Session,
     onDismiss: () -> Unit,
@@ -896,27 +691,17 @@ private fun RenameSessionDialog(
 ) {
 
     var name by remember {
-        mutableStateOf(
-            session.name
-        )
+        mutableStateOf(session.name)
     }
 
     AlertDialog(
-
-        onDismissRequest =
-            onDismiss,
-
+        onDismissRequest = onDismiss,
         title = {
-            Text(
-                "Rename session"
-            )
+            Text("Rename session")
         },
-
         text = {
-
             OutlinedTextField(
-                value =
-                    name,
+                value = name,
                 onValueChange = {
                     name = it
                 },
@@ -924,45 +709,26 @@ private fun RenameSessionDialog(
                     Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = {
-                    Text(
-                        "Nama"
-                    )
+                    Text("Nama")
                 }
             )
         },
-
         confirmButton = {
-
             TextButton(
                 onClick = {
-
-                    if (
-                        name.isNotBlank()
-                    ) {
-
-                        onRename(
-                            name
-                        )
+                    if (name.isNotBlank()) {
+                        onRename(name.trim())
                     }
                 }
             ) {
-
-                Text(
-                    "Simpan"
-                )
+                Text("Simpan")
             }
         },
-
         dismissButton = {
-
             TextButton(
-                onClick =
-                    onDismiss
+                onClick = onDismiss
             ) {
-
-                Text(
-                    "Batal"
-                )
+                Text("Batal")
             }
         }
     )
