@@ -12,10 +12,12 @@ import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -27,22 +29,19 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
-private const val HOME_URL = "https://web.whatsapp.com/"
+private const val HOME_URL =
+    "https://web.whatsapp.com/"
 
 class RexChatViewModel(
-    private val activity: Activity
+    private val activity: Activity,
+    private val sessionId: Int
 ) : ViewModel() {
 
-    companion object {
-        private const val TAG = "RexChat"
-
-        /*
-         * WhatsApp Web membutuhkan JavaScript modern.
-         * Jangan memalsukan Chrome version secara manual.
-         *
-         * WebView akan menggunakan User-Agent bawaannya sendiri.
-         */
-    }
+    /*
+     * ---------------------------------------------------------
+     * STATE
+     * ---------------------------------------------------------
+     */
 
     var progress by mutableIntStateOf(0)
         private set
@@ -53,554 +52,656 @@ class RexChatViewModel(
     var error by mutableStateOf<String?>(null)
         private set
 
-    var pageTitle by mutableStateOf("WhatsApp Web")
+    var pageTitle by mutableStateOf(
+        "WhatsApp Web"
+    )
         private set
 
-    var currentUrl by mutableStateOf(HOME_URL)
+    var currentUrl by mutableStateOf(
+        HOME_URL
+    )
         private set
 
-    /**
-     * Callback yang diisi oleh RexChatScreen.
+    /*
+     * ---------------------------------------------------------
+     * CALLBACK
+     * ---------------------------------------------------------
      */
-    var onPickFiles: (() -> Unit)? = null
 
-    var onNeedPermissions: ((Array<String>) -> Unit)? = null
+    var onPickFiles:
+            (() -> Unit)? = null
 
-    /**
-     * File picker callback.
+    var onNeedPermissions:
+            ((Array<String>) -> Unit)? = null
+
+    /*
+     * ---------------------------------------------------------
+     * PENDING CALLBACKS
+     * ---------------------------------------------------------
      */
-    private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
 
-    /**
-     * WebView permission callback.
+    private var pendingFileCallback:
+            ValueCallback<Array<Uri>>? = null
+
+    private var pendingPermission:
+            PermissionRequest? = null
+
+    /*
+     * ---------------------------------------------------------
+     * HANDLER
+     * ---------------------------------------------------------
      */
-    private var pendingPermission: PermissionRequest? = null
 
-    /**
-     * Handler utama.
+    private val mainHandler =
+        Handler(
+            Looper.getMainLooper()
+        )
+
+    /*
+     * ---------------------------------------------------------
+     * WEBVIEW
+     * ---------------------------------------------------------
      */
-    private val mainHandler = Handler(Looper.getMainLooper())
 
-    /**
-     * WebView.
-     *
-     * WebView tetap dipertahankan di ViewModel supaya session
-     * tidak hilang setiap Compose recomposition.
-     */
-    val webView: WebView = createWebView(activity)
+    val webView: WebView =
+        createWebView(
+            activity
+        )
 
-    // -------------------------------------------------------------------------
-    // WEBVIEW
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // CREATE WEBVIEW
+    // =====================================================================
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView(activity: Activity): WebView {
+    private fun createWebView(
+        activity: Activity
+    ): WebView {
 
         /*
-         * Aktifkan debugging.
+         * Debugging.
          *
-         * Bisa dihapus untuk release.
+         * Sebaiknya false untuk release.
          */
-        WebView.setWebContentsDebuggingEnabled(true)
+        WebView.setWebContentsDebuggingEnabled(
+            true
+        )
 
-        val wv = WebView(activity)
+        val wv =
+            WebView(activity)
 
         /*
-         * ---------------------------------------------------------
+         * =====================================================
          * SETTINGS
-         * ---------------------------------------------------------
+         * =====================================================
          */
 
         wv.settings.apply {
 
             javaScriptEnabled = true
 
-            javaScriptCanOpenWindowsAutomatically = true
-
-            domStorageEnabled = true
-
-            databaseEnabled = true
-
-            allowContentAccess = true
-
-            /*
-             * Jangan gunakan allowFileAccess=true.
-             */
-            allowFileAccess = false
-
-            /*
-             * Cache normal.
-             */
-            cacheMode = WebSettings.LOAD_DEFAULT
-
-            /*
-             * Tampilan desktop-ish.
-             */
-            useWideViewPort = true
-            loadWithOverviewMode = true
-
-            /*
-             * WhatsApp Web menggunakan media.
-             */
-            mediaPlaybackRequiresUserGesture = false
-
-            /*
-             * Zoom tidak dibutuhkan.
-             */
-            setSupportZoom(false)
-            builtInZoomControls = false
-            displayZoomControls = false
-
-            /*
-             * Jangan override User-Agent.
-             *
-             * Ini sengaja dibiarkan default.
-             *
-             * Custom UA sebelumnya bisa membuat WebView
-             * mengaku sebagai Chrome desktop yang sebenarnya
-             * tidak sama dengan Chromium yang tersedia.
-             */
-
-            /*
-             * Mixed content.
-             *
-             * WhatsApp seharusnya HTTPS, tetapi beberapa asset/
-             * redirect lama bisa membutuhkan compatibility.
-             */
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                mixedContentMode =
-                    WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            }
-
-            /*
-             * Text rendering.
-             */
-            loadsImagesAutomatically = true
-
-            /*
-             * API tersedia pada WebView modern.
-             */
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                safeBrowsingEnabled = true
-            }
-        }
-
-        /*
-         * ---------------------------------------------------------
-         * COOKIE
-         * ---------------------------------------------------------
-         */
-
-        val cookieManager = CookieManager.getInstance()
-
-        cookieManager.setAcceptCookie(true)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(
-                wv,
+            javaScriptCanOpenWindowsAutomatically =
                 true
+
+            domStorageEnabled =
+                true
+
+            databaseEnabled =
+                true
+
+            allowContentAccess =
+                true
+
+            allowFileAccess =
+                false
+
+            cacheMode =
+                WebSettings.LOAD_DEFAULT
+
+            useWideViewPort =
+                true
+
+            loadWithOverviewMode =
+                true
+
+            mediaPlaybackRequiresUserGesture =
+                false
+
+            setSupportZoom(
+                false
             )
+
+            builtInZoomControls =
+                false
+
+            displayZoomControls =
+                false
+
+            loadsImagesAutomatically =
+                true
+
+            /*
+             * Jangan spoof User-Agent.
+             */
+
+            /*
+             * HTTPS compatibility.
+             */
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.LOLLIPOP
+            ) {
+
+                mixedContentMode =
+                    WebSettings
+                        .MIXED_CONTENT_COMPATIBILITY_MODE
+            }
+
+            /*
+             * Safe Browsing.
+             */
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.O
+            ) {
+
+                safeBrowsingEnabled =
+                    true
+            }
         }
 
         /*
-         * ---------------------------------------------------------
-         * WEBVIEW CLIENT
-         * ---------------------------------------------------------
+         * =====================================================
+         * COOKIE
+         * =====================================================
          */
 
-        wv.webViewClient = object : WebViewClient() {
+        val cookieManager =
+            CookieManager.getInstance()
 
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
+        cookieManager.setAcceptCookie(
+            true
+        )
 
-                return handleUrl(
-                    view,
-                    request.url
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.LOLLIPOP
+        ) {
+
+            cookieManager
+                .setAcceptThirdPartyCookies(
+                    wv,
+                    true
                 )
-            }
+        }
 
-            @Deprecated("Deprecated in API 24")
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                url: String
-            ): Boolean {
+        /*
+         * =====================================================
+         * WEBVIEW CLIENT
+         * =====================================================
+         */
 
-                return handleUrl(
-                    view,
-                    Uri.parse(url)
+        wv.webViewClient =
+            object : WebViewClient() {
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+
+                    return handleUrl(
+                        view,
+                        request.url
+                    )
+                }
+
+                @Deprecated(
+                    "Deprecated in API 24"
                 )
-            }
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    url: String
+                ): Boolean {
 
-            private fun handleUrl(
-                view: WebView,
-                uri: Uri
-            ): Boolean {
+                    return handleUrl(
+                        view,
+                        Uri.parse(url)
+                    )
+                }
 
-                val scheme = uri.scheme?.lowercase()
-                val host = uri.host?.lowercase()
+                private fun handleUrl(
+                    view: WebView,
+                    uri: Uri
+                ): Boolean {
 
-                /*
-                 * Web URL normal.
-                 */
-                if (scheme == "https" || scheme == "http") {
+                    val scheme =
+                        uri.scheme
+                            ?.lowercase()
 
-                    if (isAllowedWebHost(host)) {
-                        return false
-                    }
+                    val host =
+                        uri.host
+                            ?.lowercase()
 
                     /*
-                     * Link eksternal dibuka menggunakan aplikasi
-                     * Android jika tersedia.
+                     * =================================================
+                     * WEB
+                     * =================================================
                      */
-                    runCatching {
 
-                        val intent = Intent(
-                            Intent.ACTION_VIEW,
-                            uri
-                        )
+                    if (
+                        scheme == "https" ||
+                        scheme == "http"
+                    ) {
 
-                        activity.startActivity(intent)
+                        if (
+                            isAllowedWebHost(
+                                host
+                            )
+                        ) {
 
-                    }.onFailure {
+                            return false
+                        }
+
                         /*
-                         * Kalau tidak ada aplikasi handler,
-                         * jangan crash.
+                         * External website.
                          */
+
+                        runCatching {
+
+                            val intent =
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    uri
+                                )
+
+                            activity.startActivity(
+                                intent
+                            )
+                        }
+
+                        return true
                     }
-
-                    return true
-                }
-
-                /*
-                 * whatsapp://, tel:, mailto:, dll.
-                 */
-                if (scheme != null) {
-
-                    runCatching {
-
-                        val intent = Intent(
-                            Intent.ACTION_VIEW,
-                            uri
-                        )
-
-                        activity.startActivity(intent)
-
-                    }
-
-                    return true
-                }
-
-                return true
-            }
-
-            override fun onPageStarted(
-                view: WebView,
-                url: String?,
-                favicon: Bitmap?
-            ) {
-
-                super.onPageStarted(
-                    view,
-                    url,
-                    favicon
-                )
-
-                loading = true
-
-                error = null
-
-                progress = 0
-
-                currentUrl = url ?: HOME_URL
-            }
-
-            override fun onPageFinished(
-                view: WebView,
-                url: String?
-            ) {
-
-                super.onPageFinished(
-                    view,
-                    url
-                )
-
-                loading = false
-
-                progress = 100
-
-                currentUrl = url ?: currentUrl
-
-                CookieManager
-                    .getInstance()
-                    .flush()
-
-                /*
-                 * Pastikan halaman berada pada ukuran
-                 * yang nyaman untuk perangkat kecil.
-                 */
-                injectCompatibilityCss(view)
-            }
-
-            override fun onReceivedError(
-                view: WebView,
-                request: WebResourceRequest,
-                error: WebResourceError
-            ) {
-
-                super.onReceivedError(
-                    view,
-                    request,
-                    error
-                )
-
-                /*
-                 * Jangan tampilkan error untuk asset kecil.
-                 *
-                 * Hanya main frame.
-                 */
-                if (request.isForMainFrame) {
-
-                    loading = false
-
-                    this@RexChatViewModel.error =
-                        "Tidak dapat membuka WhatsApp Web.\n\n" +
-                        "Periksa koneksi internet lalu coba lagi."
-                }
-            }
-
-            override fun onReceivedHttpError(
-                view: WebView,
-                request: WebResourceRequest,
-                errorResponse: android.webkit.WebResourceResponse
-            ) {
-
-                super.onReceivedHttpError(
-                    view,
-                    request,
-                    errorResponse
-                )
-
-                if (request.isForMainFrame) {
-
-                    val status =
-                        errorResponse.statusCode
 
                     /*
-                     * Jangan langsung menampilkan error untuk
-                     * semua HTTP error.
-                     *
-                     * Hanya error besar.
+                     * =================================================
+                     * OTHER SCHEMES
+                     * =================================================
                      */
-                    if (status >= 500) {
 
-                        loading = false
+                    if (
+                        scheme != null
+                    ) {
+
+                        runCatching {
+
+                            val intent =
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    uri
+                                )
+
+                            activity.startActivity(
+                                intent
+                            )
+                        }
+
+                        return true
+                    }
+
+                    return true
+                }
+
+                override fun onPageStarted(
+                    view: WebView,
+                    url: String?,
+                    favicon: Bitmap?
+                ) {
+
+                    super.onPageStarted(
+                        view,
+                        url,
+                        favicon
+                    )
+
+                    loading =
+                        true
+
+                    error =
+                        null
+
+                    progress =
+                        0
+
+                    currentUrl =
+                        url ?: HOME_URL
+                }
+
+                override fun onPageFinished(
+                    view: WebView,
+                    url: String?
+                ) {
+
+                    super.onPageFinished(
+                        view,
+                        url
+                    )
+
+                    loading =
+                        false
+
+                    progress =
+                        100
+
+                    currentUrl =
+                        url ?: currentUrl
+
+                    CookieManager
+                        .getInstance()
+                        .flush()
+
+                    injectCompatibilityCss(
+                        view
+                    )
+                }
+
+                override fun onReceivedError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    error: WebResourceError
+                ) {
+
+                    super.onReceivedError(
+                        view,
+                        request,
+                        error
+                    )
+
+                    if (
+                        request.isForMainFrame
+                    ) {
+
+                        loading =
+                            false
 
                         this@RexChatViewModel.error =
-                            "Server WhatsApp Web sedang bermasalah.\n\n" +
-                            "HTTP $status"
+                            "Tidak dapat membuka " +
+                                    "WhatsApp Web.\n\n" +
+                                    "Periksa koneksi internet " +
+                                    "lalu coba lagi."
                     }
                 }
-            }
 
-            override fun onReceivedSslError(
-                view: WebView,
-                handler: android.webkit.SslErrorHandler,
-                error: android.net.http.SslError
-            ) {
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: WebResourceResponse
+                ) {
 
-                /*
-                 * JANGAN bypass SSL.
-                 *
-                 * Kalau certificate invalid, cancel.
-                 */
-                handler.cancel()
+                    super.onReceivedHttpError(
+                        view,
+                        request,
+                        errorResponse
+                    )
 
-                loading = false
+                    if (
+                        request.isForMainFrame
+                    ) {
 
-                this@RexChatViewModel.error =
-                    "Koneksi HTTPS tidak aman.\n\n" +
-                    "Periksa tanggal, waktu, dan koneksi perangkat."
-            }
+                        val status =
+                            errorResponse.statusCode
 
-            override fun onRenderProcessGone(
-                view: WebView,
-                detail: RenderProcessGoneDetail
-            ): Boolean {
+                        if (
+                            status >= 500
+                        ) {
 
-                /*
-                 * Renderer Chromium mati.
-                 *
-                 * Kita tandai error agar user bisa melakukan
-                 * recovery.
-                 */
-                loading = false
+                            loading =
+                                false
 
-                error =
-                    "Mesin WebView berhenti.\n\n" +
-                    "Ketuk Coba lagi untuk memuat ulang."
-
-                return true
-            }
-        }
-
-        /*
-         * ---------------------------------------------------------
-         * CHROME CLIENT
-         * ---------------------------------------------------------
-         */
-
-        wv.webChromeClient = object : WebChromeClient() {
-
-            override fun onProgressChanged(
-                view: WebView,
-                newProgress: Int
-            ) {
-
-                progress = newProgress
-
-                if (newProgress >= 100) {
-                    loading = false
-                }
-            }
-
-            override fun onReceivedTitle(
-                view: WebView,
-                title: String?
-            ) {
-
-                super.onReceivedTitle(
-                    view,
-                    title
-                )
-
-                if (!title.isNullOrBlank()) {
-                    pageTitle = title
-                }
-            }
-
-            override fun onShowFileChooser(
-                webView: WebView,
-                filePathCallback: ValueCallback<Array<Uri>>,
-                fileChooserParams: FileChooserParams
-            ): Boolean {
-
-                /*
-                 * Callback lama harus dibatalkan.
-                 */
-                pendingFileCallback
-                    ?.onReceiveValue(null)
-
-                pendingFileCallback =
-                    filePathCallback
-
-                onPickFiles?.invoke()
-
-                return true
-            }
-
-            override fun onPermissionRequest(
-                request: PermissionRequest
-            ) {
-
-                val needed =
-                    request.resources
-                        .mapNotNull { resource ->
-
-                            when (resource) {
-
-                                PermissionRequest
-                                    .RESOURCE_VIDEO_CAPTURE -> {
-                                    Manifest.permission.CAMERA
-                                }
-
-                                PermissionRequest
-                                    .RESOURCE_AUDIO_CAPTURE -> {
-                                    Manifest.permission.RECORD_AUDIO
-                                }
-
-                                else -> null
-                            }
+                            this@RexChatViewModel.error =
+                                "Server WhatsApp Web " +
+                                        "sedang bermasalah.\n\n" +
+                                        "HTTP $status"
                         }
-                        .distinct()
-
-                /*
-                 * Tidak ada permission yang kita dukung.
-                 */
-                if (needed.isEmpty()) {
-
-                    request.deny()
-
-                    return
+                    }
                 }
 
-                /*
-                 * Batalkan request sebelumnya.
-                 */
-                pendingPermission
-                    ?.deny()
+                override fun onReceivedSslError(
+                    view: WebView,
+                    handler: SslErrorHandler,
+                    error: android.net.http.SslError
+                ) {
 
-                pendingPermission = request
+                    /*
+                     * JANGAN bypass SSL.
+                     */
 
-                onNeedPermissions?.invoke(
-                    needed.toTypedArray()
-                )
-            }
+                    handler.cancel()
 
-            override fun onPermissionRequestCanceled(
-                request: PermissionRequest
-            ) {
+                    loading =
+                        false
 
-                if (pendingPermission === request) {
-                    pendingPermission = null
+                    this@RexChatViewModel.error =
+                        "Koneksi HTTPS tidak aman.\n\n" +
+                                "Periksa tanggal, waktu, " +
+                                "dan koneksi perangkat."
                 }
 
-                super.onPermissionRequestCanceled(
-                    request
-                )
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: RenderProcessGoneDetail
+                ): Boolean {
+
+                    loading =
+                        false
+
+                    error =
+                        "Mesin WebView berhenti.\n\n" +
+                                "Ketuk Coba lagi untuk " +
+                                "memuat ulang."
+
+                    return true
+                }
             }
-        }
 
         /*
-         * ---------------------------------------------------------
-         * LOAD
-         * ---------------------------------------------------------
+         * =====================================================
+         * CHROME CLIENT
+         * =====================================================
          */
 
-        wv.loadUrl(HOME_URL)
+        wv.webChromeClient =
+            object : WebChromeClient() {
+
+                override fun onProgressChanged(
+                    view: WebView,
+                    newProgress: Int
+                ) {
+
+                    progress =
+                        newProgress
+
+                    if (
+                        newProgress >= 100
+                    ) {
+
+                        loading =
+                            false
+                    }
+                }
+
+                override fun onReceivedTitle(
+                    view: WebView,
+                    title: String?
+                ) {
+
+                    super.onReceivedTitle(
+                        view,
+                        title
+                    )
+
+                    if (
+                        !title.isNullOrBlank()
+                    ) {
+
+                        pageTitle =
+                            title
+                    }
+                }
+
+                /*
+                 * =================================================
+                 * FILE UPLOAD
+                 * =================================================
+                 */
+
+                override fun onShowFileChooser(
+                    webView: WebView,
+                    filePathCallback:
+                        ValueCallback<Array<Uri>>,
+                    fileChooserParams:
+                        FileChooserParams
+                ): Boolean {
+
+                    pendingFileCallback
+                        ?.onReceiveValue(
+                            null
+                        )
+
+                    pendingFileCallback =
+                        filePathCallback
+
+                    onPickFiles?.invoke()
+
+                    return true
+                }
+
+                /*
+                 * =================================================
+                 * CAMERA / MICROPHONE
+                 * =================================================
+                 */
+
+                override fun onPermissionRequest(
+                    request: PermissionRequest
+                ) {
+
+                    val needed =
+                        request.resources
+                            .mapNotNull { resource ->
+
+                                when (resource) {
+
+                                    PermissionRequest
+                                        .RESOURCE_VIDEO_CAPTURE -> {
+
+                                        Manifest.permission
+                                            .CAMERA
+                                    }
+
+                                    PermissionRequest
+                                        .RESOURCE_AUDIO_CAPTURE -> {
+
+                                        Manifest.permission
+                                            .RECORD_AUDIO
+                                    }
+
+                                    else -> {
+                                        null
+                                    }
+                                }
+                            }
+                            .distinct()
+
+                    if (
+                        needed.isEmpty()
+                    ) {
+
+                        request.deny()
+
+                        return
+                    }
+
+                    pendingPermission
+                        ?.deny()
+
+                    pendingPermission =
+                        request
+
+                    onNeedPermissions?.invoke(
+                        needed.toTypedArray()
+                    )
+                }
+
+                override fun onPermissionRequestCanceled(
+                    request: PermissionRequest
+                ) {
+
+                    if (
+                        pendingPermission ===
+                        request
+                    ) {
+
+                        pendingPermission =
+                            null
+                    }
+
+                    super
+                        .onPermissionRequestCanceled(
+                            request
+                        )
+                }
+            }
+
+        /*
+         * =====================================================
+         * LOAD
+         * =====================================================
+         */
+
+        wv.loadUrl(
+            HOME_URL
+        )
 
         return wv
     }
 
-    // -------------------------------------------------------------------------
-    // URL
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // HOST
+    // =====================================================================
 
     private fun isAllowedWebHost(
         host: String?
     ): Boolean {
 
-        if (host == null) {
+        if (
+            host == null
+        ) {
             return false
         }
 
         return host == "whatsapp.com" ||
-                host.endsWith(".whatsapp.com") ||
+                host.endsWith(
+                    ".whatsapp.com"
+                ) ||
 
                 host == "whatsapp.net" ||
-                host.endsWith(".whatsapp.net") ||
+                host.endsWith(
+                    ".whatsapp.net"
+                ) ||
 
                 host == "facebook.com" ||
-                host.endsWith(".facebook.com") ||
+                host.endsWith(
+                    ".facebook.com"
+                ) ||
 
                 host == "fbcdn.net" ||
-                host.endsWith(".fbcdn.net")
+                host.endsWith(
+                    ".fbcdn.net"
+                )
     }
 
-    // -------------------------------------------------------------------------
-    // FILE PICKER
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // FILE
+    // =====================================================================
 
     fun onFilesPicked(
         uris: List<Uri>
@@ -609,12 +710,19 @@ class RexChatViewModel(
         val callback =
             pendingFileCallback
 
-        pendingFileCallback = null
+        pendingFileCallback =
+            null
 
         callback?.onReceiveValue(
-            if (uris.isEmpty()) {
+
+            if (
+                uris.isEmpty()
+            ) {
+
                 null
+
             } else {
+
                 uris.toTypedArray()
             }
         )
@@ -623,14 +731,17 @@ class RexChatViewModel(
     fun cancelFilePicker() {
 
         pendingFileCallback
-            ?.onReceiveValue(null)
+            ?.onReceiveValue(
+                null
+            )
 
-        pendingFileCallback = null
+        pendingFileCallback =
+            null
     }
 
-    // -------------------------------------------------------------------------
-    // PERMISSIONS
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // PERMISSION
+    // =====================================================================
 
     fun onPermissionsResult(
         granted: Boolean
@@ -640,13 +751,17 @@ class RexChatViewModel(
             pendingPermission
                 ?: return
 
-        pendingPermission = null
+        pendingPermission =
+            null
 
         if (granted) {
+
             request.grant(
                 request.resources
             )
+
         } else {
+
             request.deny()
         }
     }
@@ -656,43 +771,49 @@ class RexChatViewModel(
         pendingPermission
             ?.deny()
 
-        pendingPermission = null
+        pendingPermission =
+            null
     }
 
-    // -------------------------------------------------------------------------
+    // =====================================================================
     // NAVIGATION
-    // -------------------------------------------------------------------------
+    // =====================================================================
 
     fun canGoBack(): Boolean {
+
         return webView.canGoBack()
     }
 
     fun goBack() {
 
-        if (webView.canGoBack()) {
+        if (
+            webView.canGoBack()
+        ) {
+
             webView.goBack()
         }
     }
 
-    // -------------------------------------------------------------------------
+    // =====================================================================
     // RELOAD
-    // -------------------------------------------------------------------------
+    // =====================================================================
 
     fun reload() {
 
-        error = null
-        loading = true
-        progress = 0
+        error =
+            null
 
-        /*
-         * Stop request lama terlebih dahulu.
-         */
+        loading =
+            true
+
+        progress =
+            0
+
         webView.stopLoading()
 
-        /*
-         * Kalau URL hilang, load dari awal.
-         */
-        if (webView.url.isNullOrBlank()) {
+        if (
+            webView.url.isNullOrBlank()
+        ) {
 
             webView.loadUrl(
                 HOME_URL
@@ -704,100 +825,129 @@ class RexChatViewModel(
         }
     }
 
-    // -------------------------------------------------------------------------
-    // SESSION
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // CLEAR SESSION
+    // =====================================================================
 
     fun clearSession() {
 
         /*
-         * Hentikan halaman sekarang.
+         * Hentikan halaman.
          */
         webView.stopLoading()
 
         /*
-         * Clear callback.
+         * Callback.
          */
         cancelFilePicker()
         cancelPermissionRequest()
 
         /*
-         * Cookies.
+         * ------------------------------------------------------
+         * COOKIE
+         * ------------------------------------------------------
+         *
+         * PERHATIAN:
+         *
+         * CookieManager pada process ini menggunakan data
+         * directory suffix session aktif.
+         *
+         * Jadi ini hanya session ini.
          */
+
         val cookies =
             CookieManager.getInstance()
 
         cookies.removeAllCookies {
+
             cookies.flush()
         }
 
         /*
-         * Web storage.
+         * ------------------------------------------------------
+         * WEB STORAGE
+         * ------------------------------------------------------
          */
+
         WebStorage
             .getInstance()
             .deleteAllData()
 
         /*
-         * Cache.
+         * ------------------------------------------------------
+         * CACHE
+         * ------------------------------------------------------
          */
-        webView.clearCache(true)
 
-        /*
-         * History.
-         */
+        webView.clearCache(
+            true
+        )
+
         webView.clearHistory()
 
-        /*
-         * Form data.
-         */
         webView.clearFormData()
 
         /*
-         * Load kembali.
+         * ------------------------------------------------------
+         * METADATA
+         * ------------------------------------------------------
          */
-        error = null
-        loading = true
-        progress = 0
 
-        webView.loadUrl(
-            HOME_URL
-        )
+        SessionManager
+            .deleteSession(
+                activity,
+                sessionId
+            )
+
+        error =
+            null
+
+        loading =
+            false
+
+        progress =
+            0
     }
 
-    // -------------------------------------------------------------------------
-    // CSS COMPATIBILITY
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // CSS
+    // =====================================================================
 
     private fun injectCompatibilityCss(
         view: WebView
     ) {
 
-        /*
-         * Jangan mengubah struktur WhatsApp.
-         *
-         * Ini hanya menghindari beberapa masalah viewport
-         * pada WebView kecil.
-         */
-        val js = """
+        val js =
+            """
             javascript:(function() {
                 try {
-                    var meta = document.querySelector(
-                        'meta[name="viewport"]'
-                    );
+                    var meta =
+                        document.querySelector(
+                            'meta[name="viewport"]'
+                        );
 
                     if (!meta) {
-                        meta = document.createElement('meta');
-                        meta.name = 'viewport';
+                        meta =
+                            document.createElement(
+                                'meta'
+                            );
+
+                        meta.name =
+                            'viewport';
+
                         meta.content =
                             'width=device-width, initial-scale=1.0, maximum-scale=1.0';
-                        document.head.appendChild(meta);
+
+                        document.head.appendChild(
+                            meta
+                        );
                     }
                 } catch(e) {}
             })();
-        """.trimIndent()
+            """.trimIndent()
 
         runCatching {
+
             view.evaluateJavascript(
                 js,
                 null
@@ -805,28 +955,30 @@ class RexChatViewModel(
         }
     }
 
-    // -------------------------------------------------------------------------
-    // COOKIE
-    // -------------------------------------------------------------------------
+    // =====================================================================
+    // COOKIE FLUSH
+    // =====================================================================
 
     fun flush() {
 
         runCatching {
+
             CookieManager
                 .getInstance()
                 .flush()
         }
     }
 
-    // -------------------------------------------------------------------------
+    // =====================================================================
     // CLEANUP
-    // -------------------------------------------------------------------------
+    // =====================================================================
 
     override fun onCleared() {
 
-        mainHandler.removeCallbacksAndMessages(
-            null
-        )
+        mainHandler
+            .removeCallbacksAndMessages(
+                null
+            )
 
         cancelFilePicker()
 
@@ -834,23 +986,25 @@ class RexChatViewModel(
 
         flush()
 
-        /*
-         * Destroy WebView.
-         */
         runCatching {
+
             webView.stopLoading()
+
+            webView.removeAllViews()
+
             webView.destroy()
         }
 
         super.onCleared()
     }
 
-    // -------------------------------------------------------------------------
+    // =====================================================================
     // FACTORY
-    // -------------------------------------------------------------------------
+    // =====================================================================
 
     class Factory(
-        private val activity: Activity
+        private val activity: Activity,
+        private val sessionId: Int
     ) : ViewModelProvider.Factory {
 
         @Suppress("UNCHECKED_CAST")
@@ -863,13 +1017,18 @@ class RexChatViewModel(
                     RexChatViewModel::class.java
                 )
             ) {
+
                 return RexChatViewModel(
-                    activity
+                    activity =
+                        activity,
+                    sessionId =
+                        sessionId
                 ) as T
             }
 
             throw IllegalArgumentException(
-                "Unknown ViewModel class: ${modelClass.name}"
+                "Unknown ViewModel class: " +
+                        modelClass.name
             )
         }
     }

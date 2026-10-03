@@ -15,12 +15,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -60,6 +60,7 @@ import com.rexaps.rexfox.rexPressable
 @Composable
 fun RexChatScreen(
     activity: Activity,
+    sessionId: Int,
     onExit: () -> Unit
 ) {
 
@@ -78,7 +79,10 @@ fun RexChatScreen(
     val vm =
         ViewModelProvider(
             owner,
-            RexChatViewModel.Factory(activity)
+            RexChatViewModel.Factory(
+                activity = activity,
+                sessionId = sessionId
+            )
         )[RexChatViewModel::class.java]
 
     val colors =
@@ -86,7 +90,7 @@ fun RexChatScreen(
 
     /*
      * ---------------------------------------------------------
-     * LOCAL UI STATE
+     * UI STATE
      * ---------------------------------------------------------
      */
 
@@ -165,18 +169,13 @@ fun RexChatScreen(
             vm.onPickFiles = null
             vm.onNeedPermissions = null
 
-            /*
-             * Jangan destroy WebView di sini.
-             *
-             * ViewModel masih memegang session.
-             */
             vm.flush()
         }
     }
 
     /*
      * ---------------------------------------------------------
-     * BACK BUTTON
+     * BACK
      * ---------------------------------------------------------
      */
 
@@ -226,16 +225,15 @@ fun RexChatScreen(
                 Alignment.CenterVertically
         ) {
 
-            /*
-             * BACK
-             */
-
             IconButton(
                 onClick = {
 
                     if (vm.canGoBack()) {
+
                         vm.goBack()
+
                     } else {
+
                         onExit()
                     }
                 }
@@ -300,7 +298,8 @@ fun RexChatScreen(
             ) {
 
                 Text(
-                    text = "RexChat",
+                    text =
+                        "RexChat • Session $sessionId",
                     style =
                         MaterialTheme
                             .typography
@@ -433,7 +432,7 @@ fun RexChatScreen(
 
         /*
          * =====================================================
-         * WEBVIEW AREA
+         * WEBVIEW
          * =====================================================
          */
 
@@ -443,20 +442,9 @@ fun RexChatScreen(
                 .fillMaxWidth()
         ) {
 
-            /*
-             * -------------------------------------------------
-             * WEBVIEW
-             * -------------------------------------------------
-             */
-
             AndroidView(
                 factory = {
 
-                    /*
-                     * Biasanya tidak diperlukan,
-                     * tetapi ini mencegah crash jika WebView
-                     * masih punya parent lama.
-                     */
                     (
                         vm.webView.parent
                             as? ViewGroup
@@ -468,11 +456,7 @@ fun RexChatScreen(
                 },
                 update = {
                     /*
-                     * Tidak perlu melakukan apa-apa.
-                     *
-                     * Jangan memanggil loadUrl() di sini,
-                     * karena AndroidView update dipanggil
-                     * berkali-kali saat Compose recomposition.
+                     * Jangan loadUrl di sini.
                      */
                 },
                 modifier =
@@ -480,9 +464,7 @@ fun RexChatScreen(
             )
 
             /*
-             * -------------------------------------------------
-             * ERROR OVERLAY
-             * -------------------------------------------------
+             * ERROR
              */
 
             vm.error?.let { message ->
@@ -499,10 +481,6 @@ fun RexChatScreen(
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
-
-                    /*
-                     * ERROR ICON
-                     */
 
                     Box(
                         modifier = Modifier
@@ -537,10 +515,6 @@ fun RexChatScreen(
                             Modifier.height(16.dp)
                     )
 
-                    /*
-                     * MESSAGE
-                     */
-
                     Text(
                         text = message,
                         textAlign =
@@ -557,10 +531,6 @@ fun RexChatScreen(
                         modifier =
                             Modifier.height(20.dp)
                     )
-
-                    /*
-                     * RETRY
-                     */
 
                     Box(
                         modifier = Modifier
@@ -585,7 +555,8 @@ fun RexChatScreen(
                     ) {
 
                         Text(
-                            text = "Coba lagi",
+                            text =
+                                "Coba lagi",
                             color =
                                 colors.onPrimary,
                             style =
@@ -601,7 +572,7 @@ fun RexChatScreen(
 
     /*
      * =========================================================
-     * CLEAR SESSION DIALOG
+     * CLEAR SESSION
      * =========================================================
      */
 
@@ -620,9 +591,8 @@ fun RexChatScreen(
 
             text = {
                 Text(
-                    "Sesi WhatsApp Web di RexChat akan " +
-                            "dihapus. Setelah itu kamu perlu " +
-                            "menautkan perangkat lagi."
+                    "Metadata Session $sessionId akan " +
+                            "dihapus dari daftar RexChat."
                 )
             },
 
@@ -634,6 +604,11 @@ fun RexChatScreen(
                         confirmClear = false
 
                         vm.clearSession()
+
+                        /*
+                         * Kembali ke daftar session.
+                         */
+                        onExit()
                     }
                 ) {
 
