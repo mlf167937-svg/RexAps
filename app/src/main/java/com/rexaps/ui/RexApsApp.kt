@@ -91,6 +91,7 @@ import kotlinx.coroutines.delay
 import com.rexaps.rextools.navigation.RexNavGraph
 import com.rexaps.rexmusic.RexMusicScreen
 import com.rexaps.rexmanager.RexManagerScreen
+import com.rexaps.rexgit.RexGit
 
 private data class BottomTab(
     val label: String,
@@ -171,6 +172,7 @@ fun RexApsApp(activity: Activity) {
                         RexRoute.REXMANAGER -> RexManagerScreen(
                             onExit = { route = RexRoute.NONE }
                         )
+                        RexRoute.REXGIT -> RexGit()
                         RexRoute.NONE -> Unit
                     }
                 }

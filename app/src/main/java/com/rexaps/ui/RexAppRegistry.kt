@@ -20,7 +20,7 @@ object RexAppRegistry {
         RexModule("rexcalc",    "RexCalc",    "Kalkulator Pintar",            false),
         RexModule("rextube",    "RexTube",    "Video & subscriptions",        false),
         RexModule("rextok",     "RexTok",     "Short video & feed",           false),
-        RexModule("rexgit",     "RexGit",     "Git manager & repo",           false),
+        RexModule("rexgit",     "RexGit",     "Git manager & repo",           true),
         RexModule("rexai",      "RexAI",      "AI tools & generator",         false)
     )
 
