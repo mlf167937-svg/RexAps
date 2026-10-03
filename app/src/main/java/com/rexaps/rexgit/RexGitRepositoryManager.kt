@@ -69,7 +69,10 @@ class RexGitRepositoryManager {
         repository: RexGitRepository,
         message: String
     ): RexGitNativeResult {
-        return native.commit(repository, message)
+        return native.commit(
+            repository,
+            message
+        )
     }
 
     fun push(
@@ -93,6 +96,19 @@ class RexGitRepositoryManager {
             repository,
             username,
             token
+        )
+    }
+
+    fun clone(
+        url: String,
+        name: String
+    ): RexGitNativeResult {
+
+        val destination = RexGitStorage.repository(name)
+
+        return native.clone(
+            url = url,
+            destination = destination
         )
     }
 }
