@@ -5,166 +5,78 @@ import java.time.LocalDate
 
 class RexGitVersionManager {
 
-    fun readVersion(
-        repository: RexGitRepository
-    ): RexGitVersion? {
+    private val nameRegex = Regex("""(versionName\s*=?\s*")([^"]+)(")""")
+    private val codeRegex = Regex("""(versionCode\s*=?\s*)(\d+)""")
 
-        val file =
-            findGradleFile(
-                File(repository.path)
-            ) ?: return null
+    fun readVersion(repository: RexGitRepository): RexGitVersion? {
+        val file = findGradleFile(File(repository.path)) ?: return null
+        val text = file.readText()
 
-        val text =
-            file.readText()
+        val name = nameRegex.find(text)?.groupValues?.get(2) ?: return null
+        val code = codeRegex.find(text)
+            ?.groupValues?.get(2)?.toIntOrNull() ?: return null
 
-        val name =
-            Regex(
-                """versionName\s*=\s*"([^"]+)""""
-            )
-                .find(text)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?: return null
-
-        val code =
-            Regex(
-                """versionCode\s*=\s*(\d+)"""
-            )
-                .find(text)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
-                ?: return null
-
-        return RexGitVersion(
-            name,
-            code
-        )
+        return RexGitVersion(name, code)
     }
 
-    fun bump(
-        repository: RexGitRepository
-    ): RexGitVersion? {
+    fun bump(repository: RexGitRepository): RexGitVersion? {
+        val file = findGradleFile(File(repository.path)) ?: return null
+        val text = file.readText()
 
-        val file =
-            findGradleFile(
-                File(repository.path)
-            ) ?: return null
+        val oldName = nameRegex.find(text)?.groupValues?.get(2) ?: return null
+        val oldCode = codeRegex.find(text)
+            ?.groupValues?.get(2)?.toIntOrNull() ?: return null
 
-        val text =
-            file.readText()
+        val parts = oldName.split(".")
+        val oldMajor = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val oldMinor = parts.getOrNull(1)?.toIntOrNull() ?: 0
 
-        val nameMatch =
-            Regex(
-                """versionName\s*=\s*"([^"]+)""""
-            ).find(text)
-                ?: return null
-
-        val codeMatch =
-            Regex(
-                """versionCode\s*=\s*(\d+)"""
-            ).find(text)
-                ?: return null
-
-        val oldName =
-            nameMatch.groupValues[1]
-
-        val oldCode =
-            codeMatch
-                .groupValues[1]
-                .toInt()
-
-        val parts =
-            oldName.split(".")
-
-        val oldMajor =
-            parts
-                .getOrNull(0)
-                ?.toIntOrNull()
-                ?: 0
-
-        val oldMinor =
-            parts
-                .getOrNull(1)
-                ?.toIntOrNull()
-                ?: 0
-
-        val newMajor: Int
         var newMinor = oldMinor + 1
+        val newMajor: Int
 
         if (oldMajor == 0) {
-            newMajor =
-                LocalDate.now()
-                    .year
-                    .rem(100)
-        } else {
-            if (newMinor > 99) {
-                newMinor = 1
-                newMajor = oldMajor + 1
-            } else {
-                newMajor = oldMajor
-            }
-        }
-
-        if (newMinor > 99) {
+            newMajor = LocalDate.now().year % 100
+        } else if (newMinor > 99) {
             newMinor = 1
+            newMajor = oldMajor + 1
+        } else {
+            newMajor = oldMajor
         }
 
-        val newName =
-            "$newMajor.${"%02d".format(newMinor)}"
+        if (newMinor > 99) newMinor = 1
 
-        val newCode =
-            if (oldMajor == 0) {
-                newMajor * 100 + newMinor
-            } else {
-                newMajor * 100 + newMinor
-            }
+        val newName = "$newMajor.${"%02d".format(newMinor)}"
+        // versionCode must always increase
+        val newCode = maxOf(newMajor * 100 + newMinor, oldCode + 1)
 
-        var updated =
-            text.replace(
-                nameMatch.value,
-                """versionName = "$newName""""
-            )
+        var updated = replaceFirstMatch(text, nameRegex) {
+            it.groupValues[1] + newName + it.groupValues[3]
+        }
 
-        updated =
-            updated.replace(
-                codeMatch.value,
-                "versionCode = $newCode"
-            )
+        updated = replaceFirstMatch(updated, codeRegex) {
+            it.groupValues[1] + newCode
+        }
 
         file.writeText(updated)
 
-        return RexGitVersion(
-            newName,
-            newCode
-        )
+        return RexGitVersion(newName, newCode)
     }
 
-    private fun findGradleFile(
-        root: File
-    ): File? {
+    private fun replaceFirstMatch(
+        input: String,
+        regex: Regex,
+        build: (MatchResult) -> String
+    ): String {
+        val match = regex.find(input) ?: return input
+        return input.replaceRange(match.range, build(match))
+    }
 
-        val candidates =
-            listOf(
-                File(
-                    root,
-                    "app/build.gradle.kts"
-                ),
-                File(
-                    root,
-                    "build.gradle.kts"
-                ),
-                File(
-                    root,
-                    "app/build.gradle"
-                ),
-                File(
-                    root,
-                    "build.gradle"
-                )
-            )
-
-        return candidates
-            .firstOrNull { it.isFile }
+    private fun findGradleFile(root: File): File? {
+        return listOf(
+            File(root, "app/build.gradle.kts"),
+            File(root, "build.gradle.kts"),
+            File(root, "app/build.gradle"),
+            File(root, "build.gradle")
+        ).firstOrNull { it.isFile }
     }
 }

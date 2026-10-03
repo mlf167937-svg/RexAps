@@ -15,89 +15,84 @@ class RexGitPushManager {
         token: String? = null
     ): RexGitPushResult {
 
-        val repo =
-            File(repository.path)
+        val dir = File(repository.path)
 
-        if (!repo.exists()) {
+        if (!dir.exists()) {
+            return RexGitPushResult(false, "Repository folder not found")
+        }
+
+        if (!File(dir, ".git").exists()) {
+            return RexGitPushResult(false, "This folder is not a Git repository")
+        }
+
+        val status = native.status(repository)
+
+        if (status.error != null) {
             return RexGitPushResult(
                 false,
-                "Repository tidak ditemukan"
+                "Could not read repository status:\n${status.error}"
             )
         }
 
-        if (!File(repo, ".git").exists()) {
-            return RexGitPushResult(
-                false,
-                "Folder ini bukan Git repository"
-            )
+        val hadChanges = status.hasChanges
+
+        if (hadChanges && commitMessage.isBlank()) {
+            return RexGitPushResult(false, "Commit message is empty")
         }
 
-        if (commitMessage.isBlank()) {
-            return RexGitPushResult(
-                false,
-                "Commit message kosong"
-            )
-        }
+        var newVersion: RexGitVersion? = null
 
-        var newVersion:
-            RexGitVersion? = null
-
-        if (bumpVersion) {
-            newVersion =
-                version.bump(repository)
-        }
-
-        val finalMessage =
-            if (newVersion != null) {
-                "[${newVersion.versionName}] $commitMessage"
-            } else {
-                commitMessage
+        if (hadChanges) {
+            if (bumpVersion) {
+                newVersion = try {
+                    version.bump(repository)
+                } catch (_: Throwable) {
+                    null
+                }
             }
 
-        val add =
-            native.addAll(repository)
+            val finalMessage =
+                if (newVersion != null) {
+                    "[${newVersion.versionName}] $commitMessage"
+                } else {
+                    commitMessage
+                }
 
-        if (!add.success) {
-            return RexGitPushResult(
-                false,
-                "Stage gagal:\n${add.message}",
-                newVersion
-            )
+            val add = native.addAll(repository)
+
+            if (!add.success) {
+                return RexGitPushResult(
+                    false,
+                    "Staging failed:\n${add.message}",
+                    newVersion
+                )
+            }
+
+            val commit = native.commit(repository, finalMessage, username)
+
+            if (!commit.success) {
+                return RexGitPushResult(
+                    false,
+                    "Commit failed:\n${commit.message}",
+                    newVersion
+                )
+            }
         }
 
-        val commit =
-            native.commit(
-                repository,
-                finalMessage,
-                username
-            )
-
-        if (!commit.success) {
-            return RexGitPushResult(
-                false,
-                "Commit gagal:\n${commit.message}",
-                newVersion
-            )
-        }
-
-        val push =
-            native.push(
-                repository,
-                username,
-                token
-            )
+        val push = native.push(repository, username, token)
 
         if (!push.success) {
             return RexGitPushResult(
                 false,
-                "Push gagal:\n${push.message}",
+                "Push failed:\n${push.message}",
                 newVersion
             )
         }
 
         return RexGitPushResult(
             true,
-            "Push berhasil",
+            if (hadChanges) "Committed and pushed"
+            else "Nothing to commit. Existing commits were pushed.",
             newVersion
         )
     }

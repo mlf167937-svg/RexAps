@@ -12,8 +12,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2619
-        versionName = "26.19"
+        versionCode = 2620
+        versionName = "26.20"
     }
 
     buildFeatures {
@@ -28,19 +28,39 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/*.SF",
+                "META-INF/*.DSA",
+                "META-INF/*.RSA",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/INDEX.LIST",
+                "META-INF/versions/**",
+                "plugin.properties",
+                "about.html"
+            )
+        }
+    }
 }
 
 dependencies {
+    // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")
 
+    // SSH
     implementation("com.github.mwiede:jsch:0.2.18")
 
     // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
 
+    // Compose
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
@@ -74,5 +94,10 @@ dependencies {
 
     // Image loader
     implementation("io.coil-kt:coil-compose:2.6.0")
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
+
+    // JGit
+    implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
+
+    // SLF4J - disable logging backend warnings
+    implementation("org.slf4j:slf4j-nop:1.7.36")
 }

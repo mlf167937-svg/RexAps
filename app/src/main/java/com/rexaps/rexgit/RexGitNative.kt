@@ -1,6 +1,9 @@
 package com.rexaps.rexgit
 
+import android.content.Context
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.storage.file.WindowCacheConfig
+import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import java.io.File
 
@@ -9,7 +12,56 @@ data class RexGitNativeResult(
     val message: String
 )
 
+internal fun Throwable.readableMessage(fallback: String): String {
+    val text = message?.trim()
+    return if (!text.isNullOrEmpty()) text else (javaClass.simpleName.ifBlank { fallback })
+}
+
+/** Makes JGit safe to run on Android (home dir + small memory footprint). */
+object RexGitJGit {
+
+    @Volatile
+    private var ready = false
+
+    fun init(context: Context) {
+        if (ready) return
+
+        synchronized(this) {
+            if (ready) return
+
+            try {
+                System.setProperty(
+                    "user.home",
+                    context.applicationContext.filesDir.absolutePath
+                )
+
+                WindowCacheConfig().apply {
+                    packedGitLimit = 8L * 1024 * 1024
+                    packedGitWindowSize = 512 * 1024
+                    packedGitMMAP = false
+                    deltaBaseCacheLimit = 4 * 1024 * 1024
+                    streamFileThreshold = 8 * 1024 * 1024
+                }.install()
+            } catch (_: Throwable) {
+            }
+
+            ready = true
+        }
+    }
+}
+
 class RexGitNative {
+
+    private fun credentials(
+        username: String?,
+        token: String?
+    ): UsernamePasswordCredentialsProvider? {
+        return if (!username.isNullOrBlank() && !token.isNullOrBlank()) {
+            UsernamePasswordCredentialsProvider(username, token)
+        } else {
+            null
+        }
+    }
 
     fun clone(
         url: String,
@@ -17,165 +69,97 @@ class RexGitNative {
         username: String? = null,
         token: String? = null
     ): RexGitNativeResult {
-        return try {
-            if (destination.exists()) {
-                return RexGitNativeResult(
-                    false,
-                    "Folder ${destination.name} sudah ada"
-                )
-            }
 
+        if (destination.exists()) {
+            return RexGitNativeResult(
+                false,
+                "Folder ${destination.name} already exists"
+            )
+        }
+
+        return try {
             destination.parentFile?.mkdirs()
 
             val command = Git.cloneRepository()
                 .setURI(url)
                 .setDirectory(destination)
 
-            if (
-                !username.isNullOrBlank() &&
-                !token.isNullOrBlank()
-            ) {
-                command.setCredentialsProvider(
-                    UsernamePasswordCredentialsProvider(
-                        username,
-                        token
-                    )
-                )
+            credentials(username, token)?.let {
+                command.setCredentialsProvider(it)
             }
 
-            command.call().use { }
+            command.call().close()
 
             RexGitNativeResult(
                 true,
-                "Repository ${destination.name} berhasil di-clone"
+                "${destination.name} cloned successfully"
             )
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             destination.deleteRecursively()
 
             RexGitNativeResult(
                 false,
-                e.message ?: "Clone gagal"
+                t.readableMessage("Clone failed")
             )
         }
     }
 
-    fun branch(
-        repository: RexGitRepository
-    ): String {
+    fun branch(repository: RexGitRepository): String {
         return try {
             Git.open(File(repository.path)).use { git ->
-                git.repository.branch
+                val name = git.repository.branch ?: "main"
+                if (name.length == 40) name.take(7) else name
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             "main"
         }
     }
 
-    fun remote(
-        repository: RexGitRepository
-    ): String? {
+    fun remote(repository: RexGitRepository): String? {
         return try {
             Git.open(File(repository.path)).use { git ->
-                git.repository.config
-                    .getString("remote", "origin", "url")
+                git.repository.config.getString("remote", "origin", "url")
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             null
         }
     }
 
-    fun status(
-        repository: RexGitRepository
-    ): RexGitStatus {
-        val repo = File(repository.path)
-
+    fun status(repository: RexGitRepository): RexGitStatus {
         return try {
-            Git.open(repo).use { git ->
-                val status = git.status().call()
+            Git.open(File(repository.path)).use { git ->
+                val s = git.status().call()
 
-                val modified = buildList {
-                    addAll(status.modified)
-                    addAll(status.missing)
-                    addAll(status.removed)
+                val changes = buildList {
+                    s.added.forEach { add(RexGitChange(it, RexGitChangeKind.ADDED)) }
+                    s.changed.forEach { add(RexGitChange(it, RexGitChangeKind.MODIFIED)) }
+                    s.modified.forEach { add(RexGitChange(it, RexGitChangeKind.MODIFIED)) }
+                    s.removed.forEach { add(RexGitChange(it, RexGitChangeKind.DELETED)) }
+                    s.missing.forEach { add(RexGitChange(it, RexGitChangeKind.DELETED)) }
+                    s.conflicting.forEach { add(RexGitChange(it, RexGitChangeKind.CONFLICT)) }
+                    s.untracked.forEach { add(RexGitChange(it, RexGitChangeKind.UNTRACKED)) }
                 }
+                    .distinct()
+                    .sortedBy { it.path.lowercase() }
 
-                val staged = buildList {
-                    addAll(status.added)
-                    addAll(status.changed)
-                    addAll(status.removed)
-                }
-
-                val output = buildString {
-                    status.added
-                        .sorted()
-                        .forEach {
-                            appendLine("A  $it")
-                        }
-
-                    status.changed
-                        .sorted()
-                        .forEach {
-                            appendLine("M  $it")
-                        }
-
-                    status.modified
-                        .sorted()
-                        .forEach {
-                            appendLine(" M $it")
-                        }
-
-                    status.removed
-                        .sorted()
-                        .forEach {
-                            appendLine(" D $it")
-                        }
-
-                    status.missing
-                        .sorted()
-                        .forEach {
-                            appendLine(" D $it")
-                        }
-
-                    status.untracked
-                        .sorted()
-                        .forEach {
-                            appendLine("?? $it")
-                        }
-                }.trim()
-
-                RexGitStatus(
-                    output = output,
-                    modifiedFiles = modified,
-                    stagedFiles = staged,
-                    hasChanges = status.hasUncommittedChanges()
-                )
+                RexGitStatus(changes = changes)
             }
-        } catch (e: Exception) {
-            RexGitStatus(
-                output = e.message ?: "Status gagal"
-            )
+        } catch (t: Throwable) {
+            RexGitStatus(error = t.readableMessage("Status failed"))
         }
     }
 
-    fun addAll(
-        repository: RexGitRepository
-    ): RexGitNativeResult {
+    fun addAll(repository: RexGitRepository): RexGitNativeResult {
         return try {
             Git.open(File(repository.path)).use { git ->
-                git.add()
-                    .addFilepattern(".")
-                    .call()
+                git.add().addFilepattern(".").call()
+                // Also stage deletions
+                git.add().addFilepattern(".").setUpdate(true).call()
             }
 
-            RexGitNativeResult(
-                true,
-                "Semua perubahan berhasil di-stage"
-            )
-        } catch (e: Exception) {
-            RexGitNativeResult(
-                false,
-                e.message ?: "Stage gagal"
-            )
+            RexGitNativeResult(true, "All changes staged")
+        } catch (t: Throwable) {
+            RexGitNativeResult(false, t.readableMessage("Stage failed"))
         }
     }
 
@@ -185,35 +169,24 @@ class RexGitNative {
         username: String? = null
     ): RexGitNativeResult {
         return try {
-            Git.open(File(repository.path)).use { git ->
-
-                val command = git.commit()
-                    .setMessage(message)
-
-                if (!username.isNullOrBlank()) {
-                    command
-                        .setAuthor(
-                            username,
-                            "$username@users.noreply.github.com"
-                        )
-                        .setCommitter(
-                            username,
-                            "$username@users.noreply.github.com"
-                        )
-                }
-
-                command.call()
+            val name = username?.takeIf { it.isNotBlank() } ?: "RexGit"
+            val email = if (username.isNullOrBlank()) {
+                "rexgit@users.noreply.github.com"
+            } else {
+                "$username@users.noreply.github.com"
             }
 
-            RexGitNativeResult(
-                true,
-                "Commit berhasil"
-            )
-        } catch (e: Exception) {
-            RexGitNativeResult(
-                false,
-                e.message ?: "Commit gagal"
-            )
+            Git.open(File(repository.path)).use { git ->
+                git.commit()
+                    .setMessage(message)
+                    .setAuthor(name, email)
+                    .setCommitter(name, email)
+                    .call()
+            }
+
+            RexGitNativeResult(true, "Commit created")
+        } catch (t: Throwable) {
+            RexGitNativeResult(false, t.readableMessage("Commit failed"))
         }
     }
 
@@ -224,33 +197,33 @@ class RexGitNative {
     ): RexGitNativeResult {
         return try {
             Git.open(File(repository.path)).use { git ->
+                val command = git.push().setRemote("origin")
 
-                val command = git.push()
-
-                if (
-                    !username.isNullOrBlank() &&
-                    !token.isNullOrBlank()
-                ) {
-                    command.setCredentialsProvider(
-                        UsernamePasswordCredentialsProvider(
-                            username,
-                            token
-                        )
-                    )
+                credentials(username, token)?.let {
+                    command.setCredentialsProvider(it)
                 }
 
-                command.call()
-            }
+                val problems = command.call()
+                    .flatMap { it.remoteUpdates }
+                    .filter {
+                        it.status != RemoteRefUpdate.Status.OK &&
+                            it.status != RemoteRefUpdate.Status.UP_TO_DATE
+                    }
 
-            RexGitNativeResult(
-                true,
-                "Push berhasil"
-            )
-        } catch (e: Exception) {
-            RexGitNativeResult(
-                false,
-                e.message ?: "Push gagal"
-            )
+                if (problems.isEmpty()) {
+                    RexGitNativeResult(true, "Push successful")
+                } else {
+                    RexGitNativeResult(
+                        false,
+                        problems.joinToString("\n") {
+                            "${it.remoteName}: ${it.status}" +
+                                (it.message?.let { m -> " ($m)" } ?: "")
+                        }
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            RexGitNativeResult(false, t.readableMessage("Push failed"))
         }
     }
 
@@ -261,33 +234,32 @@ class RexGitNative {
     ): RexGitNativeResult {
         return try {
             Git.open(File(repository.path)).use { git ->
-
                 val command = git.pull()
 
-                if (
-                    !username.isNullOrBlank() &&
-                    !token.isNullOrBlank()
-                ) {
-                    command.setCredentialsProvider(
-                        UsernamePasswordCredentialsProvider(
-                            username,
-                            token
-                        )
-                    )
+                credentials(username, token)?.let {
+                    command.setCredentialsProvider(it)
                 }
 
-                command.call()
-            }
+                val result = command.call()
 
-            RexGitNativeResult(
-                true,
-                "Pull berhasil"
-            )
-        } catch (e: Exception) {
-            RexGitNativeResult(
-                false,
-                e.message ?: "Pull gagal"
-            )
+                if (result.isSuccessful) {
+                    RexGitNativeResult(
+                        true,
+                        result.mergeResult?.mergeStatus?.toString()
+                            ?.let { "Pull finished: $it" }
+                            ?: "Pull successful"
+                    )
+                } else {
+                    RexGitNativeResult(
+                        false,
+                        "Pull failed: " +
+                            (result.mergeResult?.mergeStatus?.toString()
+                                ?: "conflicts or no tracking branch")
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            RexGitNativeResult(false, t.readableMessage("Pull failed"))
         }
     }
 }

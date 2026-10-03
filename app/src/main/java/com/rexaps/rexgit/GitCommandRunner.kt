@@ -11,190 +11,42 @@ data class GitCommandResult(
         get() = exitCode == 0
 }
 
-/*
- * Compatibility wrapper.
- *
- * RexGit sekarang memakai JGit melalui RexGitNative.
- * Tidak ada ProcessBuilder("git", ...) lagi.
- */
+/** Compatibility wrapper. RexGit uses JGit through RexGitNative (no ProcessBuilder). */
 object GitCommandRunner {
 
-    private val native =
-        RexGitNative()
+    private val native = RexGitNative()
 
-    fun status(
-        repo: File
-    ): GitCommandResult {
+    private fun toRepo(dir: File) = RexGitRepository(
+        name = dir.name,
+        path = dir.absolutePath,
+        isGitRepository = File(dir, ".git").exists()
+    )
 
-        return try {
+    private fun RexGitNativeResult.toCommand() =
+        GitCommandResult(
+            exitCode = if (success) 0 else 1,
+            stdout = if (success) message else "",
+            stderr = if (success) "" else message
+        )
 
-            val repository =
-                RexGitRepository(
-                    name = repo.name,
-                    path = repo.absolutePath,
-                    isGitRepository =
-                        File(repo, ".git").exists()
-                )
+    fun status(repo: File): GitCommandResult {
+        val status = native.status(toRepo(repo))
 
-            val result =
-                native.status(repository)
-
-            GitCommandResult(
-                exitCode =
-                    if (result.output.isEmpty() &&
-                        result.hasChanges.not()
-                    ) 0 else 0,
-                stdout = result.output,
-                stderr = ""
-            )
-
-        } catch (e: Exception) {
-
-            GitCommandResult(
-                1,
-                stderr =
-                    e.message ?: "Git status gagal"
-            )
+        return if (status.error != null) {
+            GitCommandResult(1, stderr = status.error)
+        } else {
+            GitCommandResult(0, stdout = status.output)
         }
     }
 
-    fun addAll(
-        repo: File
-    ): GitCommandResult {
+    fun addAll(repo: File) = native.addAll(toRepo(repo)).toCommand()
 
-        return try {
+    fun commit(repo: File, message: String) =
+        native.commit(toRepo(repo), message).toCommand()
 
-            val repository =
-                RexGitRepository(
-                    name = repo.name,
-                    path = repo.absolutePath,
-                    isGitRepository = true
-                )
+    fun branch(repo: File): String = native.branch(toRepo(repo))
 
-            val result =
-                native.addAll(repository)
+    fun remote(repo: File): String? = native.remote(toRepo(repo))
 
-            GitCommandResult(
-                if (result.success) 0 else 1,
-                stdout = result.message,
-                stderr =
-                    if (result.success)
-                        ""
-                    else
-                        result.message
-            )
-
-        } catch (e: Exception) {
-
-            GitCommandResult(
-                1,
-                stderr =
-                    e.message ?: "git add gagal"
-            )
-        }
-    }
-
-    fun commit(
-        repo: File,
-        message: String
-    ): GitCommandResult {
-
-        return try {
-
-            val repository =
-                RexGitRepository(
-                    name = repo.name,
-                    path = repo.absolutePath,
-                    isGitRepository = true
-                )
-
-            val result =
-                native.commit(
-                    repository,
-                    message
-                )
-
-            GitCommandResult(
-                if (result.success) 0 else 1,
-                stdout = result.message,
-                stderr =
-                    if (result.success)
-                        ""
-                    else
-                        result.message
-            )
-
-        } catch (e: Exception) {
-
-            GitCommandResult(
-                1,
-                stderr =
-                    e.message ?: "git commit gagal"
-            )
-        }
-    }
-
-    fun branch(
-        repo: File
-    ): String {
-
-        val repository =
-            RexGitRepository(
-                name = repo.name,
-                path = repo.absolutePath,
-                isGitRepository = true
-            )
-
-        return native.branch(repository)
-    }
-
-    fun remote(
-        repo: File
-    ): String? {
-
-        val repository =
-            RexGitRepository(
-                name = repo.name,
-                path = repo.absolutePath,
-                isGitRepository = true
-            )
-
-        return native.remote(repository)
-    }
-
-    fun pull(
-        repo: File
-    ): GitCommandResult {
-
-        return try {
-
-            val repository =
-                RexGitRepository(
-                    name = repo.name,
-                    path = repo.absolutePath,
-                    isGitRepository = true
-                )
-
-            val result =
-                native.pull(repository)
-
-            GitCommandResult(
-                if (result.success) 0 else 1,
-                stdout = result.message,
-                stderr =
-                    if (result.success)
-                        ""
-                    else
-                        result.message
-            )
-
-        } catch (e: Exception) {
-
-            GitCommandResult(
-                1,
-                stderr =
-                    e.message ?: "git pull gagal"
-            )
-        }
-    }
+    fun pull(repo: File) = native.pull(toRepo(repo)).toCommand()
 }

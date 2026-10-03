@@ -7,12 +7,14 @@ class RexGitRepositoryManager {
     private val native = RexGitNative()
 
     fun scan(): List<RexGitRepository> {
-        return RexGitStorage.scanRepositories()
+        return try {
+            RexGitStorage.scanRepositories()
+        } catch (_: Throwable) {
+            emptyList()
+        }
     }
 
-    fun status(
-        repository: RexGitRepository
-    ): RexGitStatus {
+    fun status(repository: RexGitRepository): RexGitStatus {
         return native.status(repository)
     }
 
@@ -21,50 +23,46 @@ class RexGitRepositoryManager {
         directory: String? = null
     ): List<RexGitFile> {
 
-        val root = File(
-            directory ?: repository.path
-        )
+        val root = File(directory ?: repository.path)
 
         if (!root.exists() || !root.isDirectory) {
             return emptyList()
         }
 
-        return root
-            .listFiles()
-            ?.filterNot {
-                it.name == ".git" ||
-                it.name == ".gradle" ||
-                it.name == "build"
-            }
-            ?.sortedWith(
-                compareBy<File> { !it.isDirectory }
-                    .thenBy { it.name.lowercase() }
-            )
-            ?.map {
-                RexGitFile(
-                    name = it.name,
-                    path = it.absolutePath,
-                    isDirectory = it.isDirectory
+        return try {
+            root.listFiles()
+                ?.filterNot {
+                    it.name == ".git" ||
+                        it.name == ".gradle" ||
+                        it.name == "build"
+                }
+                ?.sortedWith(
+                    compareBy<File> { !it.isDirectory }
+                        .thenBy { it.name.lowercase() }
                 )
-            }
-            ?: emptyList()
+                ?.map {
+                    RexGitFile(
+                        name = it.name,
+                        path = it.absolutePath,
+                        isDirectory = it.isDirectory,
+                        size = if (it.isFile) it.length() else 0L
+                    )
+                }
+                ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
     }
 
-    fun currentBranch(
-        repository: RexGitRepository
-    ): String {
+    fun currentBranch(repository: RexGitRepository): String {
         return native.branch(repository)
     }
 
-    fun remote(
-        repository: RexGitRepository
-    ): String? {
+    fun remote(repository: RexGitRepository): String? {
         return native.remote(repository)
     }
 
-    fun addAll(
-        repository: RexGitRepository
-    ): RexGitNativeResult {
+    fun addAll(repository: RexGitRepository): RexGitNativeResult {
         return native.addAll(repository)
     }
 
@@ -73,11 +71,7 @@ class RexGitRepositoryManager {
         message: String,
         username: String? = null
     ): RexGitNativeResult {
-        return native.commit(
-            repository,
-            message,
-            username
-        )
+        return native.commit(repository, message, username)
     }
 
     fun push(
@@ -85,11 +79,7 @@ class RexGitRepositoryManager {
         username: String? = null,
         token: String? = null
     ): RexGitNativeResult {
-        return native.push(
-            repository,
-            username,
-            token
-        )
+        return native.push(repository, username, token)
     }
 
     fun pull(
@@ -97,11 +87,7 @@ class RexGitRepositoryManager {
         username: String? = null,
         token: String? = null
     ): RexGitNativeResult {
-        return native.pull(
-            repository,
-            username,
-            token
-        )
+        return native.pull(repository, username, token)
     }
 
     fun clone(
@@ -110,13 +96,9 @@ class RexGitRepositoryManager {
         username: String? = null,
         token: String? = null
     ): RexGitNativeResult {
-
-        val destination =
-            RexGitStorage.repository(name)
-
         return native.clone(
             url = url,
-            destination = destination,
+            destination = RexGitStorage.repository(name),
             username = username,
             token = token
         )

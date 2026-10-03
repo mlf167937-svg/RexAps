@@ -3,10 +3,12 @@ package com.rexaps.rexgit
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -14,595 +16,476 @@ class RexGitViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private val repositoryManager =
-        RexGitRepositoryManager()
+    private val repositoryManager = RexGitRepositoryManager()
+    private val pushManager = RexGitPushManager()
+    private val github = RexGitGithubApi()
+    private val authStore = RexGitAuthStore(application)
 
-    private val pushManager =
-        RexGitPushManager()
+    private val _state = MutableStateFlow(RexGitUiState(isLoading = true))
+    val state: StateFlow<RexGitUiState> = _state.asStateFlow()
 
-    private val github =
-        RexGitGithubApi()
+    // Editor text lives here so typing doesn't recompose the whole screen.
+    @Volatile
+    private var editorBuffer: String = ""
 
-    private val authStore =
-        RexGitAuthStore(application)
-
-    private val _state =
-        MutableStateFlow(
-            RexGitUiState(
-                isLoading = true
-            )
-        )
-
-    val state: StateFlow<RexGitUiState> =
-        _state.asStateFlow()
+    companion object {
+        private const val MAX_EDITOR_BYTES = 400_000L
+    }
 
     init {
+        RexGitStorage.init(application)
+        RexGitJGit.init(application)
         loadInitial()
     }
 
+    // ---------- helpers ----------
+
+    /** Runs on IO and converts ANY throwable (including Errors) into a UI error instead of a crash. */
+    private fun launchIO(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                fail(t.readableMessage("Unexpected error"))
+            }
+        }
+    }
+
+    private fun fail(text: String) {
+        _state.update { it.copy(error = text, message = null) }
+    }
+
+    private fun storageInfo(): Pair<String, Boolean> {
+        return RexGitStorage.githubRoot.absolutePath to RexGitStorage.usingFallback
+    }
+
+    // ---------- home ----------
+
     private fun loadInitial() {
+        launchIO {
+            try {
+                RexGitStorage.ensureDirectories()
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+                val auth = authStore.load()
+                val repos = repositoryManager.scan()
+                val (path, fallback) = storageInfo()
 
-            RexGitStorage.ensureDirectories()
+                _state.update {
+                    it.copy(
+                        repositories = repos,
+                        githubUsername = auth?.username,
+                        isGithubConnected = auth != null,
+                        storagePath = path,
+                        storageFallback = fallback
+                    )
+                }
 
-            val auth =
-                authStore.load()
-
-            val repos =
-                repositoryManager.scan()
-
-            _state.value =
-                _state.value.copy(
-                    repositories = repos,
-                    githubUsername =
-                        auth?.username,
-                    isGithubConnected =
-                        auth != null,
-                    isLoading = false
-                )
-
-            if (auth != null) {
-                loadGithubRepositories(auth)
+                if (auth != null) fetchGithubRepositories(auth)
+            } finally {
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }
 
     fun refresh() {
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            val repos =
-                repositoryManager.scan()
-
-            _state.value =
-                _state.value.copy(
-                    repositories = repos
-                )
-
-            _state.value.selectedRepository
-                ?.let {
-                    selectRepository(it)
-                }
-        }
-    }
-
-    fun selectRepository(
-        repository: RexGitRepository
-    ) {
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            val branch =
-                repositoryManager.currentBranch(
-                    repository
-                )
-
-            val remote =
-                repositoryManager.remote(
-                    repository
-                )
-
-            val files =
-                repositoryManager.files(
-                    repository
-                )
-
-            val status =
-                repositoryManager.status(
-                    repository
-                )
-
-            val updated =
-                repository.copy(
-                    branch = branch,
-                    remoteUrl = remote,
-                    isGitRepository = true
-                )
-
-            _state.value =
-                _state.value.copy(
-                    selectedRepository = updated,
-                    files = files,
-                    currentDirectory = null,
-                    gitStatus = status,
-                    editorPath = null,
-                    editorContent = "",
-                    editorDirty = false,
-                    message = null,
-                    error = null
-                )
-        }
-    }
-
-    fun backToRepositories() {
-
-        _state.value =
-            _state.value.copy(
-                selectedRepository = null,
-                files = emptyList(),
-                currentDirectory = null,
-                editorPath = null,
-                editorContent = "",
-                editorDirty = false
-            )
-    }
-
-    fun openDirectory(
-        directory: String
-    ) {
-
-        val repo =
-            _state.value.selectedRepository
-                ?: return
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            val files =
-                repositoryManager.files(
-                    repo,
-                    directory
-                )
-
-            _state.value =
-                _state.value.copy(
-                    files = files,
-                    currentDirectory = directory
-                )
-        }
-    }
-
-    fun openRoot() {
-
-        val repo =
-            _state.value.selectedRepository
-                ?: return
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            _state.value =
-                _state.value.copy(
-                    files =
-                        repositoryManager.files(repo),
-                    currentDirectory = null
-                )
-        }
-    }
-
-    fun openFile(
-        file: RexGitFile
-    ) {
-
-        if (file.isDirectory) {
-            openDirectory(file.path)
-            return
-        }
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+        launchIO {
+            _state.update { it.copy(isLoading = true) }
 
             try {
+                val repos = repositoryManager.scan()
+                val (path, fallback) = storageInfo()
 
-                val target =
-                    File(file.path)
-
-                if (target.length() > 2_000_000L) {
-                    _state.value =
-                        _state.value.copy(
-                            error =
-                                "File terlalu besar untuk editor"
-                        )
-                    return@launch
+                _state.update {
+                    it.copy(
+                        repositories = repos,
+                        storagePath = path,
+                        storageFallback = fallback
+                    )
                 }
 
-                val content =
-                    target.readText()
-
-                _state.value =
-                    _state.value.copy(
-                        editorPath = file.path,
-                        editorContent = content,
-                        editorDirty = false,
-                        error = null
-                    )
-
-            } catch (e: Exception) {
-
-                _state.value =
-                    _state.value.copy(
-                        error =
-                            e.message
-                                ?: "File gagal dibuka"
-                    )
+                authStore.load()?.let { fetchGithubRepositories(it) }
+            } finally {
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }
 
-    fun updateEditor(
-        content: String
-    ) {
+    // ---------- repository ----------
 
-        _state.value =
-            _state.value.copy(
-                editorContent = content,
-                editorDirty = true
-            )
+    fun selectRepository(repository: RexGitRepository) {
+        if (_state.value.isRepoLoading) return
+
+        launchIO {
+            _state.update { it.copy(isRepoLoading = true, error = null) }
+
+            try {
+                val isGit = File(repository.path, ".git").exists()
+
+                val branch = if (isGit) repositoryManager.currentBranch(repository) else ""
+                val remote = if (isGit) repositoryManager.remote(repository) else null
+                val files = repositoryManager.files(repository)
+                val status = if (isGit) repositoryManager.status(repository) else RexGitStatus()
+
+                editorBuffer = ""
+
+                _state.update {
+                    it.copy(
+                        selectedRepository = repository.copy(
+                            branch = branch,
+                            remoteUrl = remote,
+                            isGitRepository = isGit
+                        ),
+                        files = files,
+                        currentDirectory = null,
+                        gitStatus = status,
+                        editorPath = null,
+                        editorContent = "",
+                        editorDirty = false,
+                        message = null
+                    )
+                }
+            } finally {
+                _state.update { it.copy(isRepoLoading = false) }
+            }
+        }
     }
 
-    fun closeEditor() {
+    fun backToRepositories() {
+        editorBuffer = ""
 
-        _state.value =
-            _state.value.copy(
+        _state.update {
+            it.copy(
+                selectedRepository = null,
+                files = emptyList(),
+                currentDirectory = null,
+                gitStatus = RexGitStatus(),
                 editorPath = null,
                 editorContent = "",
                 editorDirty = false
             )
+        }
     }
 
-    fun saveEditor() {
+    private fun reloadRepository(repo: RexGitRepository) {
+        val dir = _state.value.currentDirectory?.takeIf { File(it).isDirectory }
+        val status = if (repo.isGitRepository) repositoryManager.status(repo) else RexGitStatus()
+        val branch = if (repo.isGitRepository) repositoryManager.currentBranch(repo) else repo.branch
+        val files = repositoryManager.files(repo, dir)
 
-        val path =
-            _state.value.editorPath
-                ?: return
+        _state.update { cur ->
+            val selected = cur.selectedRepository
 
-        val content =
-            _state.value.editorContent
-
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            try {
-
-                _state.value =
-                    _state.value.copy(
-                        isSaving = true
-                    )
-
-                File(path).writeText(content)
-
-                _state.value =
-                    _state.value.copy(
-                        isSaving = false,
-                        editorDirty = false,
-                        message = "File berhasil disimpan"
-                    )
-
-                refreshStatus()
-
-            } catch (e: Exception) {
-
-                _state.value =
-                    _state.value.copy(
-                        isSaving = false,
-                        error =
-                            e.message
-                                ?: "Gagal menyimpan file"
-                    )
+            if (selected == null || selected.path != repo.path) {
+                cur
+            } else {
+                cur.copy(
+                    gitStatus = status,
+                    files = files,
+                    currentDirectory = dir,
+                    selectedRepository = selected.copy(branch = branch)
+                )
             }
         }
     }
 
     fun refreshStatus() {
+        val repo = _state.value.selectedRepository ?: return
 
-        val repo =
-            _state.value.selectedRepository
-                ?: return
+        launchIO {
+            _state.update { it.copy(isRepoLoading = true) }
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            val status =
-                repositoryManager.status(repo)
-
-            _state.value =
-                _state.value.copy(
-                    gitStatus = status
-                )
+            try {
+                reloadRepository(repo)
+            } finally {
+                _state.update { it.copy(isRepoLoading = false) }
+            }
         }
     }
 
-    fun connectGithub(
-        username: String,
-        token: String
-    ) {
+    // ---------- files ----------
 
-        if (
-            username.isBlank() ||
-            token.isBlank()
-        ) {
-            _state.value =
-                _state.value.copy(
-                    error =
-                        "Username dan token wajib diisi"
-                )
+    fun openDirectory(directory: String) {
+        val repo = _state.value.selectedRepository ?: return
+
+        launchIO {
+            val files = repositoryManager.files(repo, directory)
+
+            _state.update {
+                it.copy(files = files, currentDirectory = directory)
+            }
+        }
+    }
+
+    fun openRoot() {
+        val repo = _state.value.selectedRepository ?: return
+
+        launchIO {
+            val files = repositoryManager.files(repo)
+
+            _state.update {
+                it.copy(files = files, currentDirectory = null)
+            }
+        }
+    }
+
+    fun openParent() {
+        val repo = _state.value.selectedRepository ?: return
+        val current = _state.value.currentDirectory ?: return
+
+        val parent = File(current).parentFile
+
+        if (parent == null || parent.absolutePath == repo.path) {
+            openRoot()
+        } else {
+            openDirectory(parent.absolutePath)
+        }
+    }
+
+    fun openFile(file: RexGitFile) {
+        if (file.isDirectory) {
+            openDirectory(file.path)
             return
         }
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+        launchIO {
+            val target = File(file.path)
+
+            if (target.length() > MAX_EDITOR_BYTES) {
+                fail("This file is too large to edit on a phone (limit 400 KB).")
+                return@launchIO
+            }
+
+            if (looksBinary(target)) {
+                fail("Binary files can't be opened in the editor.")
+                return@launchIO
+            }
+
+            val content = target.readText()
+            editorBuffer = content
+
+            _state.update {
+                it.copy(
+                    editorPath = file.path,
+                    editorContent = content,
+                    editorDirty = false,
+                    error = null
+                )
+            }
+        }
+    }
+
+    private fun looksBinary(file: File): Boolean {
+        return file.inputStream().use { stream ->
+            val buffer = ByteArray(8000)
+            val read = stream.read(buffer)
+
+            if (read <= 0) {
+                false
+            } else {
+                (0 until read).any { buffer[it] == 0.toByte() }
+            }
+        }
+    }
+
+    fun updateEditor(content: String) {
+        editorBuffer = content
+
+        _state.update {
+            if (it.editorDirty) it else it.copy(editorDirty = true)
+        }
+    }
+
+    fun closeEditor() {
+        editorBuffer = ""
+
+        _state.update {
+            it.copy(editorPath = null, editorContent = "", editorDirty = false)
+        }
+    }
+
+    fun saveEditor() {
+        val path = _state.value.editorPath ?: return
+
+        if (_state.value.isSaving) return
+
+        val content = editorBuffer
+
+        launchIO {
+            _state.update { it.copy(isSaving = true) }
 
             try {
+                File(path).writeText(content)
 
-                _state.value =
-                    _state.value.copy(
-                        isGithubLoading = true,
-                        error = null,
-                        message = "Menghubungkan GitHub..."
+                val repo = _state.value.selectedRepository
+                val status =
+                    if (repo != null && repo.isGitRepository) repositoryManager.status(repo)
+                    else null
+
+                _state.update {
+                    it.copy(
+                        editorDirty = editorBuffer != content,
+                        gitStatus = status ?: it.gitStatus,
+                        message = "File saved"
                     )
+                }
+            } finally {
+                _state.update { it.copy(isSaving = false) }
+            }
+        }
+    }
 
-                val realUsername =
-                    github.getUser(token)
+    // ---------- GitHub ----------
 
-                authStore.save(
-                    realUsername,
-                    token
-                )
+    fun connectGithub(token: String) {
+        val clean = token.trim()
 
-                _state.value =
-                    _state.value.copy(
-                        githubUsername =
-                            realUsername,
+        if (clean.isEmpty()) {
+            fail("Enter your personal access token")
+            return
+        }
+
+        launchIO {
+            _state.update { it.copy(isGithubLoading = true, error = null) }
+
+            try {
+                val login = github.getUser(clean)
+
+                authStore.save(login, clean)
+
+                _state.update {
+                    it.copy(
+                        githubUsername = login,
                         isGithubConnected = true,
-                        isGithubLoading = false,
-                        message =
-                            "GitHub terhubung sebagai @$realUsername"
+                        message = "Connected as @$login"
                     )
+                }
 
-                loadGithubRepositories(
-                    RexGitAuth(
-                        realUsername,
-                        token
-                    )
-                )
-
-            } catch (e: Exception) {
-
-                _state.value =
-                    _state.value.copy(
-                        isGithubLoading = false,
-                        error =
-                            "GitHub gagal terhubung:\n" +
-                                (e.message
-                                    ?: "Token tidak valid")
-                    )
+                fetchGithubRepositories(RexGitAuth(login, clean))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                fail("Could not connect to GitHub:\n" + t.readableMessage("Invalid token"))
+            } finally {
+                _state.update { it.copy(isGithubLoading = false) }
             }
         }
     }
 
     fun disconnectGithub() {
-
         authStore.clear()
 
-        _state.value =
-            _state.value.copy(
+        _state.update {
+            it.copy(
                 githubUsername = null,
                 isGithubConnected = false,
                 githubRepositories = emptyList(),
-                message = "GitHub diputus"
+                message = "GitHub disconnected"
             )
+        }
     }
 
-    private fun loadGithubRepositories(
-        auth: RexGitAuth
-    ) {
+    private fun fetchGithubRepositories(auth: RexGitAuth) {
+        _state.update { it.copy(isGithubLoading = true) }
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+        try {
+            val repos = github.listRepositories(auth.token)
 
-            try {
+            _state.update { it.copy(githubRepositories = repos) }
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
 
-                _state.value =
-                    _state.value.copy(
-                        isGithubLoading = true
-                    )
-
-                val repos =
-                    github.listRepositories(
-                        auth.token
-                    )
-
-                _state.value =
-                    _state.value.copy(
-                        githubRepositories = repos,
-                        isGithubLoading = false
-                    )
-
-            } catch (e: Exception) {
-
-                _state.value =
-                    _state.value.copy(
-                        isGithubLoading = false,
-                        error =
-                            e.message
-                                ?: "Gagal mengambil repository"
-                    )
-            }
+            fail("Could not load GitHub repositories:\n" + t.readableMessage("Network error"))
+        } finally {
+            _state.update { it.copy(isGithubLoading = false) }
         }
     }
 
     fun reloadGithub() {
+        val auth = authStore.load() ?: return
 
-        val auth =
-            authStore.load()
-                ?: return
-
-        loadGithubRepositories(auth)
+        launchIO { fetchGithubRepositories(auth) }
     }
 
-    fun cloneRepository(
-        repository: RexGitGithubRepository
-    ) {
+    fun cloneRepository(repository: RexGitGithubRepository) {
+        if (_state.value.isCloning) return
 
-        val auth =
-            authStore.load()
+        val auth = authStore.load()
 
         if (auth == null) {
-            _state.value =
-                _state.value.copy(
-                    error =
-                        "Hubungkan GitHub terlebih dahulu"
-                )
+            fail("Connect GitHub first")
             return
         }
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+        launchIO {
+            _state.update { it.copy(cloningName = repository.name, error = null) }
 
             try {
-
-                _state.value =
-                    _state.value.copy(
-                        isCloning = true,
-                        error = null,
-                        message =
-                            "Cloning ${repository.name}..."
-                    )
-
-                val result =
-                    repositoryManager.clone(
-                        url = repository.cloneUrl,
-                        name = repository.name,
-                        username = auth.username,
-                        token = auth.token
-                    )
+                val result = repositoryManager.clone(
+                    url = repository.cloneUrl,
+                    name = repository.name,
+                    username = auth.username,
+                    token = auth.token
+                )
 
                 if (!result.success) {
-                    _state.value =
-                        _state.value.copy(
-                            isCloning = false,
-                            error = result.message,
-                            message = null
-                        )
-                    return@launch
+                    fail(result.message)
+                } else {
+                    val repos = repositoryManager.scan()
+
+                    _state.update {
+                        it.copy(repositories = repos, message = result.message)
+                    }
                 }
-
-                val repos =
-                    repositoryManager.scan()
-
-                _state.value =
-                    _state.value.copy(
-                        repositories = repos,
-                        isCloning = false,
-                        message = result.message
-                    )
-
-            } catch (e: Exception) {
-
-                _state.value =
-                    _state.value.copy(
-                        isCloning = false,
-                        error =
-                            e.message
-                                ?: "Clone gagal"
-                    )
+            } finally {
+                _state.update { it.copy(cloningName = null) }
             }
         }
     }
+
+    // ---------- pull / push ----------
 
     fun pull() {
+        val repo = _state.value.selectedRepository ?: return
+        val current = _state.value
 
-        val repo =
-            _state.value.selectedRepository
-                ?: return
+        if (!repo.isGitRepository || current.isPulling || current.isPushing) return
 
-        val auth =
-            authStore.load()
+        val auth = authStore.load()
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
+        launchIO {
+            _state.update { it.copy(isPulling = true, error = null, message = null) }
 
-            val result =
-                repositoryManager.pull(
-                    repo,
-                    auth?.username,
-                    auth?.token
-                )
+            try {
+                val result = repositoryManager.pull(repo, auth?.username, auth?.token)
 
-            if (result.success) {
+                reloadRepository(repo)
 
-                refreshStatus()
-
-                _state.value =
-                    _state.value.copy(
-                        message = result.message
-                    )
-
-            } else {
-
-                _state.value =
-                    _state.value.copy(
-                        error = result.message
-                    )
+                if (result.success) {
+                    _state.update { it.copy(message = result.message) }
+                } else {
+                    _state.update { it.copy(error = result.message) }
+                }
+            } finally {
+                _state.update { it.copy(isPulling = false) }
             }
         }
     }
 
-    fun push(
-        message: String,
-        bumpVersion: Boolean
-    ) {
+    fun push(message: String, bumpVersion: Boolean) {
+        val repo = _state.value.selectedRepository ?: return
+        val current = _state.value
 
-        val repo =
-            _state.value.selectedRepository
-                ?: return
+        if (!repo.isGitRepository || current.isPushing || current.isPulling) return
 
-        if (_state.value.isPushing) {
-            return
-        }
+        val auth = authStore.load()
 
-        val auth =
-            authStore.load()
+        launchIO {
+            _state.update { it.copy(isPushing = true, error = null, message = null) }
 
-        viewModelScope.launch(
-            Dispatchers.IO
-        ) {
-
-            _state.value =
-                _state.value.copy(
-                    isPushing = true,
-                    message = "Preparing push...",
-                    error = null
-                )
-
-            val result =
-                pushManager.push(
+            try {
+                val result = pushManager.push(
                     repository = repo,
                     commitMessage = message,
                     bumpVersion = bumpVersion,
@@ -610,51 +493,38 @@ class RexGitViewModel(
                     token = auth?.token
                 )
 
-            if (result.success) {
+                reloadRepository(repo)
 
-                val status =
-                    repositoryManager.status(
-                        repo
-                    )
+                if (result.success) {
+                    val text = buildString {
+                        append(result.message)
 
-                _state.value =
-                    _state.value.copy(
-                        isPushing = false,
-                        gitStatus = status,
-                        message = buildString {
-                            append(result.message)
+                        result.version?.let {
+                            append("\nVersion ${it.versionName} (${it.versionCode})")
+                        }
+                    }
 
-                            result.version?.let {
-                                append(
-                                    "\nVersion " +
-                                        it.versionName +
-                                        " (" +
-                                        it.versionCode +
-                                        ")"
-                                )
-                            }
-                        },
-                        error = null
-                    )
-
-            } else {
-
-                _state.value =
-                    _state.value.copy(
-                        isPushing = false,
-                        message = null,
-                        error = result.message
-                    )
+                    _state.update { it.copy(message = text) }
+                } else {
+                    _state.update { it.copy(error = result.message) }
+                }
+            } finally {
+                _state.update { it.copy(isPushing = false) }
             }
         }
     }
 
-    fun clearMessage() {
+    // ---------- messages ----------
 
-        _state.value =
-            _state.value.copy(
-                message = null,
-                error = null
-            )
+    fun dismissMessage() {
+        _state.update { it.copy(message = null) }
+    }
+
+    fun dismissError() {
+        _state.update { it.copy(error = null) }
+    }
+
+    fun clearMessage() {
+        _state.update { it.copy(message = null, error = null) }
     }
 }

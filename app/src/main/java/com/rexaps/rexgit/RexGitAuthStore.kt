@@ -1,9 +1,9 @@
 package com.rexaps.rexgit
 
 import android.content.Context
-import android.util.Base64
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -15,7 +15,7 @@ class RexGitAuthStore(
     context: Context
 ) {
     private val prefs =
-        context.getSharedPreferences(
+        context.applicationContext.getSharedPreferences(
             "rexgit_auth",
             Context.MODE_PRIVATE
         )
@@ -24,12 +24,10 @@ class RexGitAuthStore(
         private const val KEY_ALIAS = "rexgit_github_key"
         private const val USERNAME = "username"
         private const val TOKEN = "token"
+        private const val IV_SIZE = 12
     }
 
-    fun save(
-        username: String,
-        token: String
-    ) {
+    fun save(username: String, token: String) {
         prefs.edit()
             .putString(USERNAME, username)
             .putString(TOKEN, encrypt(token))
@@ -37,20 +35,14 @@ class RexGitAuthStore(
     }
 
     fun load(): RexGitAuth? {
-        val username =
-            prefs.getString(USERNAME, null)
-                ?: return null
-
-        val encrypted =
-            prefs.getString(TOKEN, null)
-                ?: return null
+        val username = prefs.getString(USERNAME, null) ?: return null
+        val encrypted = prefs.getString(TOKEN, null) ?: return null
 
         return try {
-            RexGitAuth(
-                username = username,
-                token = decrypt(encrypted)
-            )
-        } catch (_: Exception) {
+            RexGitAuth(username, decrypt(encrypted))
+        } catch (_: Throwable) {
+            // Key was lost or data is corrupted: start clean instead of crashing.
+            prefs.edit().clear().apply()
             null
         }
     }
@@ -60,133 +52,49 @@ class RexGitAuthStore(
     }
 
     private fun key(): SecretKey {
-        val store = KeyStore
-            .getInstance("AndroidKeyStore")
-            .apply {
-                load(null)
-            }
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
-        val existing =
-            store.getKey(
-                KEY_ALIAS,
-                null
-            ) as? SecretKey
+        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
 
-        if (existing != null) {
-            return existing
-        }
-
-        val generator =
-            KeyGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_AES,
-                "AndroidKeyStore"
-            )
+        val generator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore"
+        )
 
         generator.init(
             KeyGenParameterSpec.Builder(
                 KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or
-                    KeyProperties.PURPOSE_DECRYPT
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
-                .setBlockModes(
-                    KeyProperties.BLOCK_MODE_GCM
-                )
-                .setEncryptionPaddings(
-                    KeyProperties.ENCRYPTION_PADDING_NONE
-                )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
                 .build()
         )
 
         return generator.generateKey()
     }
 
-    private fun encrypt(
-        value: String
-    ): String {
+    private fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
 
-        val cipher =
-            Cipher.getInstance(
-                "AES/GCM/NoPadding"
-            )
+        val encrypted = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
+        val iv = cipher.iv
 
-        cipher.init(
-            Cipher.ENCRYPT_MODE,
-            key()
-        )
-
-        val encrypted =
-            cipher.doFinal(
-                value.toByteArray(
-                    StandardCharsets.UTF_8
-                )
-            )
-
-        val data =
-            ByteArray(
-                cipher.iv.size + encrypted.size
-            )
-
-        System.arraycopy(
-            cipher.iv,
-            0,
-            data,
-            0,
-            cipher.iv.size
-        )
-
-        System.arraycopy(
-            encrypted,
-            0,
-            data,
-            cipher.iv.size,
-            encrypted.size
-        )
-
-        return Base64.encodeToString(
-            data,
-            Base64.NO_WRAP
-        )
+        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
     }
 
-    private fun decrypt(
-        value: String
-    ): String {
+    private fun decrypt(value: String): String {
+        val data = Base64.decode(value, Base64.NO_WRAP)
+        require(data.size > IV_SIZE) { "Corrupted token" }
 
-        val data =
-            Base64.decode(
-                value,
-                Base64.NO_WRAP
-            )
+        val iv = data.copyOfRange(0, IV_SIZE)
+        val encrypted = data.copyOfRange(IV_SIZE, data.size)
 
-        val iv =
-            data.copyOfRange(
-                0,
-                12
-            )
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
 
-        val encrypted =
-            data.copyOfRange(
-                12,
-                data.size
-            )
-
-        val cipher =
-            Cipher.getInstance(
-                "AES/GCM/NoPadding"
-            )
-
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            key(),
-            GCMParameterSpec(
-                128,
-                iv
-            )
-        )
-
-        return String(
-            cipher.doFinal(encrypted),
-            StandardCharsets.UTF_8
-        )
+        return String(cipher.doFinal(encrypted), StandardCharsets.UTF_8)
     }
 }
