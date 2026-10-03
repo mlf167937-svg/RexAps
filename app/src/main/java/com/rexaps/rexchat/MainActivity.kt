@@ -1,17 +1,20 @@
 package com.rexaps.rexchat
 
-import android.Manifest
+import android.content.Context
 import android.content.Intent
-import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import android.text.format.DateUtils
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,390 +22,254 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.rexaps.rexchat.rexchat.RexChatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+
+// =====================================================================
+// THEME
+// =====================================================================
+
+@Composable
+fun RexTheme(content: @Composable () -> Unit) {
+    val scheme =
+        if (isSystemInDarkTheme()) {
+            darkColorScheme(
+                primary = Color(0xFF25D366),
+                tertiary = Color(0xFF34B7F1)
+            )
+        } else {
+            lightColorScheme(
+                primary = Color(0xFF128C7E),
+                tertiary = Color(0xFF075E54)
+            )
+        }
+
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+// =====================================================================
+// OPEN SESSION (dipakai MainActivity dan route UI utama)
+// =====================================================================
+
+fun openRexChatSession(
+    context: Context,
+    session: SessionManager.Session,
+    method: String = ""
+) {
+    val modern = SessionManager.profilesSupported()
+
+    val intent = Intent(
+        context,
+        if (modern) WaActivity::class.java else WaLegacyActivity::class.java
+    )
+        .putExtra(WaActivity.EXTRA_SESSION_ID, session.id)
+        .putExtra(WaActivity.EXTRA_METHOD, method)
+
+    if (modern) {
+        // Setiap session = task sendiri di Recents
+        intent.data = Uri.parse("rexchat://session/${session.id}")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+    }
+
+    // Aman dipanggil dari Context non-Activity
+    if (context !is android.app.Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    context.startActivity(intent)
+}
+
+// =====================================================================
+// ACTIVITY (opsional, kalau mau dijalankan standalone)
+// =====================================================================
 
 class MainActivity : ComponentActivity() {
 
-    private val storagePermissionLauncher =
-        registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) {
-        }
+    private var tick by mutableIntStateOf(0)
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (
-            Build.VERSION.SDK_INT <=
-            Build.VERSION_CODES.P
-        ) {
-            runCatching {
-                storagePermissionLauncher.launch(
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+        setContent {
+            RexTheme {
+                SessionListScreen(
+                    refreshTick = tick,
+                    onOpen = { session, method ->
+                        openRexChatSession(this, session, method)
+                    }
                 )
             }
-        }
-
-        setContent {
-            RexChatSessionScreen(
-                onOpenSession = { session ->
-                    openSession(session)
-                }
-            )
         }
     }
 
-    private fun openSession(
-        session: SessionManager.Session
-    ) {
-        val intent =
-            Intent(
-                this,
-                RexChatActivity::class.java
-            ).apply {
-                putExtra(
-                    RexChatActivity.EXTRA_SESSION_ID,
-                    session.id
-                )
-            }
-
-        startActivity(intent)
+    override fun onResume() {
+        super.onResume()
+        SessionManager.purgePending(this)
+        tick++
     }
 }
 
+// =====================================================================
+// SESSION LIST SCREEN
+// =====================================================================
+
 @Composable
-fun RexChatSessionScreen(
-    onOpenSession:
-        (SessionManager.Session) -> Unit,
+fun SessionListScreen(
+    refreshTick: Int = 0,
+    onOpen: (SessionManager.Session, String) -> Unit,
     onExit: (() -> Unit)? = null
 ) {
-    val context =
-        androidx.compose.ui.platform.LocalContext.current
+    val ctx = LocalContext.current
 
-    var sessions by remember {
-        mutableStateOf(
-            emptyList<SessionManager.Session>()
-        )
-    }
-
-    var showCreate by remember {
-        mutableStateOf(false)
-    }
-
-    var editSession by remember {
-        mutableStateOf<
-            SessionManager.Session?
-        >(null)
-    }
-
-    var deleteSession by remember {
-        mutableStateOf<
-            SessionManager.Session?
-        >(null)
-    }
+    var sessions by remember { mutableStateOf(emptyList<SessionManager.Session>()) }
+    var showCreate by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<SessionManager.Session?>(null) }
+    var deleting by remember { mutableStateOf<SessionManager.Session?>(null) }
 
     fun refresh() {
-        sessions =
-            SessionManager.getSessions(
-                context
-            )
+        sessions = SessionManager.list(ctx)
     }
 
-    LaunchedEffect(Unit) {
+    // Refresh saat layar tampil dan tiap kembali dari layar WhatsApp
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner, refreshTick) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                SessionManager.purgePending(ctx)
+                refresh()
+            }
+        }
+        owner.lifecycle.addObserver(observer)
         refresh()
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+
+    if (onExit != null) {
+        BackHandler { onExit() }
     }
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    showCreate = true
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Tambah session"
-                )
-            }
+            ExtendedFloatingActionButton(
+                onClick = { showCreate = true },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("New session") }
+            )
         }
-    ) { paddingValues ->
+    ) { pad ->
 
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .background(
-                    MaterialTheme
-                        .colorScheme
-                        .background
-                )
-                .padding(paddingValues)
+                .background(MaterialTheme.colorScheme.background)
+                .padding(pad)
                 .padding(horizontal = 16.dp)
         ) {
 
-            Spacer(
-                modifier = Modifier.height(16.dp)
-            )
+            Spacer(Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment =
-                    Alignment.CenterVertically
-            ) {
-
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onExit != null) {
-                    IconButton(
-                        onClick = onExit
-                    ) {
-                        Icon(
-                            imageVector =
-                                Icons.Default.ArrowBack,
-                            contentDescription =
-                                "Kembali"
-                        )
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(
-                            RoundedCornerShape(16.dp)
-                        )
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme
-                                        .colorScheme
-                                        .primary,
-                                    MaterialTheme
-                                        .colorScheme
-                                        .tertiary
-                                )
-                            )
-                        ),
-                    contentAlignment =
-                        Alignment.Center
-                ) {
-                    Icon(
-                        imageVector =
-                            Icons.Default.Chat,
-                        contentDescription = null,
-                        tint =
-                            MaterialTheme
-                                .colorScheme
-                                .onPrimary,
-                        modifier =
-                            Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(
-                    modifier = Modifier.size(14.dp)
-                )
-
                 Column {
                     Text(
-                        text = "RexChat",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .headlineSmall
+                        "RexChat",
+                        style = MaterialTheme.typography.headlineMedium
                     )
-
                     Text(
-                        text =
-                            "WhatsApp Web Sessions",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .onSurfaceVariant
+                        "Multiple WhatsApp Web sessions, each with its own login.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(
-                modifier = Modifier.height(20.dp)
-            )
-
-            Card(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor =
-                            MaterialTheme
-                                .colorScheme
-                                .surfaceVariant
-                    )
-            ) {
-                Column(
-                    modifier =
-                        Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text =
-                            "Session tersimpan terpisah",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .titleSmall
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(4.dp)
-                    )
-
-                    Text(
-                        text =
-                            "Setiap session memiliki data " +
-                            "WebView sendiri sehingga login " +
-                            "Session 1 tidak bercampur " +
-                            "dengan Session 2.",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(
-                modifier = Modifier.height(20.dp)
-            )
+            Spacer(Modifier.height(16.dp))
 
             if (sessions.isEmpty()) {
 
                 Column(
-                    modifier =
-                        Modifier.fillMaxSize(),
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally,
-                    verticalArrangement =
-                        Arrangement.Center
+                    Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-
                     Icon(
-                        imageVector =
-                            Icons.Default.Chat,
-                        contentDescription = null,
-                        modifier =
-                            Modifier.size(64.dp),
-                        tint =
-                            MaterialTheme
-                                .colorScheme
-                                .onSurfaceVariant
+                        Icons.Default.Chat,
+                        null,
+                        Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(16.dp)
-                    )
-
+                    Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "Belum ada session"
+                        "No sessions yet",
+                        style = MaterialTheme.typography.titleMedium
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(8.dp)
-                    )
-
                     Text(
-                        text =
-                            "Tekan + untuk membuat " +
-                            "session WhatsApp baru.",
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .onSurfaceVariant
+                        "Tap New session to link a WhatsApp account.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(20.dp)
-                    )
-
-                    Button(
-                        onClick = {
-                            showCreate = true
-                        }
-                    ) {
-                        Text("Buat session")
-                    }
                 }
 
             } else {
 
                 LazyColumn(
-                    modifier =
-                        Modifier.fillMaxSize(),
-                    verticalArrangement =
-                        Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 88.dp)
                 ) {
-
-                    items(
-                        items = sessions,
-                        key = {
-                            it.id
-                        }
-                    ) { session ->
-
+                    items(sessions, key = { it.id }) { s ->
                         SessionCard(
-                            session = session,
-                            onClick = {
-                                onOpenSession(session)
-                            },
-                            onRename = {
-                                editSession = session
-                            },
-                            onDelete = {
-                                deleteSession = session
-                            }
+                            s = s,
+                            onClick = { onOpen(s, "") },
+                            onRename = { renaming = s },
+                            onDelete = { deleting = s }
                         )
                     }
                 }
@@ -410,326 +277,200 @@ fun RexChatSessionScreen(
         }
     }
 
+    // ---------- create ----------
+
     if (showCreate) {
-
-        CreateSessionDialog(
-            onDismiss = {
-                showCreate = false
-            },
-            onCreate = { name ->
-
-                SessionManager.createSession(
-                    context = context,
-                    name = name
-                )
-
-                showCreate = false
-                refresh()
-            }
-        )
-    }
-
-    editSession?.let { session ->
-
-        RenameSessionDialog(
-            session = session,
-            onDismiss = {
-                editSession = null
-            },
-            onRename = { name ->
-
-                SessionManager.renameSession(
-                    context = context,
-                    id = session.id,
-                    newName = name
-                )
-
-                editSession = null
-                refresh()
-            }
-        )
-    }
-
-    deleteSession?.let { session ->
+        var name by remember { mutableStateOf("") }
 
         AlertDialog(
-            onDismissRequest = {
-                deleteSession = null
-            },
-            title = {
-                Text(
-                    "Hapus ${session.name}?"
-                )
-            },
+            onDismissRequest = { showCreate = false },
+            title = { Text("New session") },
             text = {
-                Text(
-                    "Folder metadata Session " +
-                    "${session.id} akan dihapus."
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        label = { Text("Name (optional)") },
+                        placeholder = { Text("e.g. Personal") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Text(
+                        "How do you want to link it?",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            val s = SessionManager.create(ctx, name)
+                            showCreate = false
+                            refresh()
+                            onOpen(s, "pair")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Phone, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Phone number (this phone)")
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            val s = SessionManager.create(ctx, name)
+                            showCreate = false
+                            refresh()
+                            onOpen(s, "qr")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.QrCode2, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("QR code (another phone)")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCreate = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // ---------- rename ----------
+
+    renaming?.let { s ->
+        var name by remember(s.id) { mutableStateOf(s.name) }
+
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename session") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-
-                        SessionManager.deleteSession(
-                            context = context,
-                            id = session.id
-                        )
-
-                        deleteSession = null
+                        SessionManager.rename(ctx, s.id, name)
+                        renaming = null
                         refresh()
                     }
-                ) {
-                    Text("Hapus")
-                }
+                ) { Text("Save") }
             },
             dismissButton = {
+                TextButton(onClick = { renaming = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // ---------- delete ----------
+
+    deleting?.let { s ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete ${s.name}?") },
+            text = {
+                Text("The saved login and all data for this session will be removed.")
+            },
+            confirmButton = {
                 TextButton(
                     onClick = {
-                        deleteSession = null
+                        SessionManager.delete(ctx, s.id)
+                        deleting = null
+                        refresh()
                     }
-                ) {
-                    Text("Batal")
-                }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text("Cancel") }
             }
         )
     }
 }
 
+// =====================================================================
+// SESSION CARD
+// =====================================================================
+
 @Composable
 private fun SessionCard(
-    session: SessionManager.Session,
+    s: SessionManager.Session,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
-        modifier =
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
             Modifier
                 .fillMaxWidth()
-                .clickable {
-                    onClick()
-                },
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    MaterialTheme
-                        .colorScheme
-                        .surface
-            )
-    ) {
-
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-            verticalAlignment =
-                Alignment.CenterVertically
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
 
             Box(
-                modifier = Modifier
-                    .size(48.dp)
+                Modifier
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(
-                        MaterialTheme
-                            .colorScheme
-                            .primaryContainer
-                    ),
-                contentAlignment =
-                    Alignment.Center
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text =
-                        session.id.toString(),
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium,
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .onPrimaryContainer
+                    s.id.toString(),
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
 
-            Spacer(
-                modifier = Modifier.size(14.dp)
-            )
+            Spacer(Modifier.width(14.dp))
 
-            Column(
-                modifier =
-                    Modifier.weight(1f)
-            ) {
-
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = session.name,
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium,
+                    s.name,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
-                    overflow =
-                        TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis
                 )
 
+                val status = if (s.linked) "Linked" else "Not linked"
+                val last =
+                    if (s.lastOpened > 0) {
+                        " • " + DateUtils.getRelativeTimeSpanString(
+                            s.lastOpened,
+                            System.currentTimeMillis(),
+                            DateUtils.MINUTE_IN_MILLIS
+                        )
+                    } else ""
+
                 Text(
-                    text =
-                        "Session ${session.id}",
-                    style =
-                        MaterialTheme
-                            .typography
-                            .bodySmall,
+                    status + last,
+                    style = MaterialTheme.typography.bodySmall,
                     color =
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant
+                        if (s.linked) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            IconButton(
-                onClick = onRename
-            ) {
-                Icon(
-                    imageVector =
-                        Icons.Default.Edit,
-                    contentDescription =
-                        "Rename"
-                )
+            IconButton(onClick = onRename) {
+                Icon(Icons.Default.Edit, "Rename")
             }
 
-            IconButton(
-                onClick = onDelete
-            ) {
-                Icon(
-                    imageVector =
-                        Icons.Default.Delete,
-                    contentDescription =
-                        "Hapus"
-                )
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, "Delete")
             }
         }
     }
-}
-
-@Composable
-private fun CreateSessionDialog(
-    onDismiss: () -> Unit,
-    onCreate: (String) -> Unit
-) {
-
-    var name by remember {
-        mutableStateOf("")
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Session baru")
-        },
-        text = {
-            Column {
-
-                Text(
-                    "Buat session WhatsApp Web " +
-                    "yang terpisah."
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(12.dp)
-                )
-
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                    },
-                    modifier =
-                        Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = {
-                        Text("Nama session")
-                    },
-                    placeholder = {
-                        Text("Contoh: WhatsApp Utama")
-                    }
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onCreate(
-                        if (name.isBlank()) {
-                            "Session"
-                        } else {
-                            name.trim()
-                        }
-                    )
-                }
-            ) {
-                Text("Buat")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
-                Text("Batal")
-            }
-        }
-    )
-}
-
-@Composable
-private fun RenameSessionDialog(
-    session: SessionManager.Session,
-    onDismiss: () -> Unit,
-    onRename: (String) -> Unit
-) {
-
-    var name by remember {
-        mutableStateOf(session.name)
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Rename session")
-        },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                },
-                modifier =
-                    Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = {
-                    Text("Nama")
-                }
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        onRename(name.trim())
-                    }
-                }
-            ) {
-                Text("Simpan")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
-                Text("Batal")
-            }
-        }
-    )
 }

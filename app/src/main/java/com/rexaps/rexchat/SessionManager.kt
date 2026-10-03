@@ -1,415 +1,150 @@
 package com.rexaps.rexchat
 
 import android.content.Context
-import android.os.Build
-import android.os.Environment
 import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Mengelola daftar session RexChat.
- *
- * Folder metadata:
- *
- * /sdcard/Download/RexAps/RexChat/Session/1/
- * /sdcard/Download/RexAps/RexChat/Session/2/
- * /sdcard/Download/RexAps/RexChat/Session/3/
- *
- * CATATAN:
- *
- * Data aktif WebView TIDAK disimpan di folder ini.
- *
- * WebView menyimpan:
- * - Cookie
- * - IndexedDB
- * - LocalStorage
- * - Service Worker
- * - Chromium data
- *
- * pada data directory internal Android berdasarkan
- * WebView.setDataDirectorySuffix().
- */
 object SessionManager {
 
-    private const val ROOT_NAME = "RexAps"
-    private const val CHAT_NAME = "RexChat"
-    private const val SESSION_NAME = "Session"
-
-    private const val FILE_NAME = "session.json"
-
-    private const val KEY_ID = "id"
-    private const val KEY_NAME = "name"
-    private const val KEY_CREATED = "created"
-
-    /**
-     * Model session.
-     */
     data class Session(
         val id: Int,
         val name: String,
-        val created: Long
+        val created: Long,
+        val lastOpened: Long = 0L,
+        val linked: Boolean = false
     )
 
-    /**
-     * Root folder.
-     *
-     * Android modern:
-     *
-     * /storage/emulated/0/Download
-     */
-    fun getRootDirectory(): File {
+    private const val FILE = "session.json"
+    private const val PENDING = "pending_delete"
 
-        val download =
-            Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS
-            )
+    private fun root(ctx: Context) =
+        File(ctx.applicationContext.filesDir, "sessions").apply { mkdirs() }
 
-        return File(
-            download,
-            "$ROOT_NAME/$CHAT_NAME/$SESSION_NAME"
+    private fun dir(ctx: Context, id: Int) = File(root(ctx), id.toString())
+
+    fun suffix(id: Int) = "rexchat_session_$id"
+    fun profileName(id: Int) = "rexchat_session_$id"
+
+    // ---------- read ----------
+
+    private fun read(ctx: Context, id: Int): Session? = runCatching {
+        val f = File(dir(ctx, id), FILE)
+        if (!f.exists()) return null
+        val j = JSONObject(f.readText())
+        Session(
+            id = id,
+            name = j.optString("name", "Session $id"),
+            created = j.optLong("created", 0L),
+            lastOpened = j.optLong("lastOpened", 0L),
+            linked = j.optBoolean("linked", false)
         )
-    }
+    }.getOrNull()
 
-    /**
-     * Folder sebuah session.
-     */
-    fun getSessionDirectory(
-        id: Int
-    ): File {
+    fun get(ctx: Context, id: Int): Session? = read(ctx, id)
 
-        return File(
-            getRootDirectory(),
-            id.toString()
-        )
-    }
-
-    /**
-     * File metadata session.
-     */
-    private fun getSessionFile(
-        id: Int
-    ): File {
-
-        return File(
-            getSessionDirectory(id),
-            FILE_NAME
-        )
-    }
-
-    /**
-     * Membuat root directory.
-     */
-    private fun ensureRoot() {
-
-        runCatching {
-
-            getRootDirectory()
-                .mkdirs()
-
-        }
-    }
-
-    /**
-     * Membuat session baru.
-     */
-    @Synchronized
-    fun createSession(
-        context: Context,
-        name: String? = null
-    ): Session {
-
-        ensureRoot()
-
-        val nextId =
-            findNextId()
-
-        val sessionName =
-            if (
-                name.isNullOrBlank()
-            ) {
-                "Session $nextId"
-            } else {
-                name.trim()
-            }
-
-        val session =
-            Session(
-                id = nextId,
-                name = sessionName,
-                created = System.currentTimeMillis()
-            )
-
-        saveSession(session)
-
-        return session
-    }
-
-    /**
-     * Cari ID kosong berikutnya.
-     */
-    private fun findNextId(): Int {
-
-        ensureRoot()
-
-        val root =
-            getRootDirectory()
-
-        var id = 1
-
-        while (true) {
-
-            val directory =
-                File(
-                    root,
-                    id.toString()
-                )
-
-            if (!directory.exists()) {
-                return id
-            }
-
-            id++
-        }
-    }
-
-    /**
-     * Simpan metadata.
-     */
-    @Synchronized
-    fun saveSession(
-        session: Session
-    ) {
-
-        ensureRoot()
-
-        val directory =
-            getSessionDirectory(
-                session.id
-            )
-
-        if (!directory.exists()) {
-            directory.mkdirs()
-        }
-
-        val json =
-            JSONObject().apply {
-
-                put(
-                    KEY_ID,
-                    session.id
-                )
-
-                put(
-                    KEY_NAME,
-                    session.name
-                )
-
-                put(
-                    KEY_CREATED,
-                    session.created
-                )
-            }
-
-        runCatching {
-
-            getSessionFile(
-                session.id
-            ).writeText(
-                json.toString(4),
-                Charsets.UTF_8
-            )
-        }
-    }
-
-    /**
-     * Load semua session.
-     */
-    @Synchronized
-    fun getSessions(
-        context: Context
-    ): List<Session> {
-
-        ensureRoot()
-
-        val root =
-            getRootDirectory()
-
-        if (!root.exists()) {
-            return emptyList()
-        }
-
-        return root
-            .listFiles()
-            ?.filter {
-                it.isDirectory
-            }
-            ?.mapNotNull {
-                readSession(
-                    it.name.toIntOrNull()
-                )
-            }
-            ?.sortedBy {
-                it.id
-            }
+    fun list(ctx: Context): List<Session> =
+        root(ctx).listFiles()
+            ?.filter { it.isDirectory && !File(it, PENDING).exists() }
+            ?.mapNotNull { it.name.toIntOrNull()?.let { id -> read(ctx, id) } }
+            ?.sortedBy { it.id }
             ?: emptyList()
-    }
 
-    /**
-     * Load satu session.
-     */
+    // ---------- write ----------
+
     @Synchronized
-    fun getSession(
-        context: Context,
-        id: Int
-    ): Session? {
-
-        return readSession(id)
+    private fun write(ctx: Context, s: Session) {
+        val d = dir(ctx, s.id).apply { mkdirs() }
+        val json = JSONObject()
+            .put("name", s.name)
+            .put("created", s.created)
+            .put("lastOpened", s.lastOpened)
+            .put("linked", s.linked)
+        val tmp = File(d, "$FILE.tmp")
+        tmp.writeText(json.toString(2))
+        tmp.renameTo(File(d, FILE))
     }
 
-    /**
-     * Membaca metadata.
-     */
-    private fun readSession(
-        id: Int?
-    ): Session? {
-
-        if (id == null) {
-            return null
-        }
-
-        val file =
-            getSessionFile(id)
-
-        if (!file.exists()) {
-            return null
-        }
-
-        return runCatching {
-
-            val json =
-                JSONObject(
-                    file.readText(
-                        Charsets.UTF_8
-                    )
-                )
-
-            Session(
-                id =
-                    json.optInt(
-                        KEY_ID,
-                        id
-                    ),
-
-                name =
-                    json.optString(
-                        KEY_NAME,
-                        "Session $id"
-                    ),
-
-                created =
-                    json.optLong(
-                        KEY_CREATED,
-                        0L
-                    )
-            )
-
-        }.getOrNull()
-    }
-
-    /**
-     * Rename session.
-     */
     @Synchronized
-    fun renameSession(
-        context: Context,
-        id: Int,
-        newName: String
-    ): Boolean {
+    fun create(ctx: Context, name: String?): Session {
+        val r = root(ctx)
+        val counterFile = File(r, "next_id")
+        val counter = counterFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        val maxExisting = r.listFiles()?.mapNotNull { it.name.toIntOrNull() }?.maxOrNull() ?: 0
+        val id = maxOf(counter, maxExisting) + 1
+        counterFile.writeText(id.toString()) // ids are never reused
 
-        val current =
-            getSession(
-                context,
-                id
-            )
-                ?: return false
-
-        val name =
-            newName.trim()
-
-        if (name.isBlank()) {
-            return false
-        }
-
-        saveSession(
-            current.copy(
-                name = name
-            )
+        val s = Session(
+            id = id,
+            name = name?.trim().takeUnless { it.isNullOrBlank() } ?: "Session $id",
+            created = System.currentTimeMillis()
         )
-
-        return true
+        write(ctx, s)
+        return s
     }
 
-    /**
-     * Hapus metadata session.
-     *
-     * PENTING:
-     *
-     * Ini TIDAK menghapus WebView Chromium data.
-     *
-     * Data WebView akan tetap ada karena WebView
-     * data directory berada di internal storage.
-     *
-     * Untuk benar-benar menghapus data WebView,
-     * kita gunakan suffix dan process cleanup.
-     *
-     * Penghapusan data Chromium secara langsung
-     * tidak disarankan.
-     */
+    fun rename(ctx: Context, id: Int, newName: String) {
+        val s = read(ctx, id) ?: return
+        if (newName.isNotBlank()) write(ctx, s.copy(name = newName.trim()))
+    }
+
+    fun touch(ctx: Context, id: Int) {
+        read(ctx, id)?.let { write(ctx, it.copy(lastOpened = System.currentTimeMillis())) }
+    }
+
+    fun markLinked(ctx: Context, id: Int, linked: Boolean = true) {
+        read(ctx, id)?.let { if (it.linked != linked) write(ctx, it.copy(linked = linked)) }
+    }
+
+    // ---------- delete ----------
+
+    /** Flags the session for deletion. Actual wipe happens in the main process via purgePending. */
+    fun markPendingDelete(ctx: Context, id: Int) {
+        runCatching { File(dir(ctx, id), PENDING).apply { parentFile?.mkdirs() }.writeText("1") }
+    }
+
+    fun delete(ctx: Context, id: Int) {
+        markPendingDelete(ctx, id)
+        purgePending(ctx)
+    }
+
+    /** Call from the MAIN process only (MainActivity.onResume). */
     @Synchronized
-    fun deleteSession(
-        context: Context,
-        id: Int
-    ): Boolean {
+    fun purgePending(ctx: Context) {
+        root(ctx).listFiles()?.forEach { d ->
+            val id = d.name.toIntOrNull() ?: return@forEach
+            if (File(d, PENDING).exists() && wipeWebViewData(ctx, id)) {
+                d.deleteRecursively()
+            }
+        }
+    }
 
-        val directory =
-            getSessionDirectory(id)
+    private fun wipeWebViewData(ctx: Context, id: Int): Boolean {
+        var ok = true
 
-        if (!directory.exists()) {
-            return false
+        // Profile mode
+        if (profilesSupported()) {
+            ok = runCatching {
+                val store = androidx.webkit.ProfileStore.getInstance()
+                if (store.getProfile(profileName(id)) != null) {
+                    store.deleteProfile(profileName(id))
+                } else true
+            }.getOrDefault(false)
         }
 
-        return runCatching {
-            directory.deleteRecursively()
-        }.getOrDefault(false)
-    }
-
-    /**
-     * Pastikan folder session ada.
-     */
-    fun ensureSessionDirectory(
-        id: Int
-    ): File {
-
-        val directory =
-            getSessionDirectory(id)
-
-        if (!directory.exists()) {
-            directory.mkdirs()
+        // Legacy (data directory suffix) mode
+        val sfx = suffix(id)
+        runCatching {
+            File(ctx.applicationInfo.dataDir).listFiles()
+                ?.filter { it.name == "app_webview_$sfx" }
+                ?.forEach { it.deleteRecursively() }
+            ctx.cacheDir.listFiles()
+                ?.filter { it.name.contains(sfx) }
+                ?.forEach { it.deleteRecursively() }
         }
-
-        return directory
+        return ok
     }
 
-    /**
-     * Nama suffix WebView.
-     *
-     * HARUS unik antar session.
-     */
-    fun getWebViewDataSuffix(
-        id: Int
-    ): String {
-
-        return "rexchat_session_$id"
-    }
+    fun profilesSupported(): Boolean = runCatching {
+        androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE)
+    }.getOrDefault(false)
 }

@@ -38,6 +38,12 @@
     <!-- Wake Lock -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- RexChat: deteksi aplikasi WhatsApp (Android 11+) -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+    </queries>
+
     <application
         android:theme="@style/AppTheme"
         android:label="RexAps"
@@ -80,7 +86,7 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Main Activity -->
+        <!-- Main Activity (com.rexaps.MainActivity) -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -91,6 +97,21 @@
             </intent-filter>
 
         </activity>
+
+        <!-- RexChat: mode normal (WebView Profiles, satu proses) -->
+        <activity
+            android:name="com.rexaps.rexchat.WaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+
+        <!-- RexChat: fallback WebView lama (proses terpisah) -->
+        <activity
+            android:name="com.rexaps.rexchat.WaLegacyActivity"
+            android:exported="false"
+            android:process=":rexchat_webview"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 
     </application>
 
