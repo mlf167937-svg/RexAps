@@ -96,6 +96,31 @@ class RexGitNative {
         }
     }
 
+    fun branch(
+        repository: RexGitRepository
+    ): String {
+        return try {
+            Git.open(File(repository.path)).use { git ->
+                git.repository.branch
+            }
+        } catch (_: Exception) {
+            "main"
+        }
+    }
+
+    fun remote(
+        repository: RexGitRepository
+    ): String? {
+        return try {
+            Git.open(File(repository.path)).use { git ->
+                git.repository.config
+                    .getString("remote", "origin", "url")
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun addAll(
         repository: RexGitRepository
     ): RexGitNativeResult {

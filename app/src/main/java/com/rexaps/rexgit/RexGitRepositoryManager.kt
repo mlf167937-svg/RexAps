@@ -50,38 +50,49 @@ class RexGitRepositoryManager {
     fun currentBranch(
         repository: RexGitRepository
     ): String {
-        return GitCommandRunner.branch(
-            File(repository.path)
-        )
+        return native.branch(repository)
     }
 
     fun remote(
         repository: RexGitRepository
     ): String? {
-        return GitCommandRunner.remote(
-            File(repository.path)
-        )
+        return native.remote(repository)
     }
 
     fun addAll(
         repository: RexGitRepository
-    ): GitCommandResult {
-
-        val result = GitCommandRunner.addAll(
-            File(repository.path)
-        )
-
-        return result
+    ): RexGitNativeResult {
+        return native.addAll(repository)
     }
 
     fun commit(
         repository: RexGitRepository,
         message: String
-    ): GitCommandResult {
+    ): RexGitNativeResult {
+        return native.commit(repository, message)
+    }
 
-        return GitCommandRunner.commit(
-            File(repository.path),
-            message
+    fun push(
+        repository: RexGitRepository,
+        username: String? = null,
+        token: String? = null
+    ): RexGitNativeResult {
+        return native.push(
+            repository,
+            username,
+            token
+        )
+    }
+
+    fun pull(
+        repository: RexGitRepository,
+        username: String? = null,
+        token: String? = null
+    ): RexGitNativeResult {
+        return native.pull(
+            repository,
+            username,
+            token
         )
     }
 }
