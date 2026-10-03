@@ -156,9 +156,18 @@ private class Lane(private val opener: () -> ChannelSftp) {
             val alive = { job?.isActive != false }
             val cur = ch
             val chan = if (cur != null && cur.isConnected && !cur.isClosed) cur else opener().also { ch = it }
-            val r = block(chan, alive)
-            ensureActive()
-            r
+            try {
+                val r = block(chan, alive)
+                ensureActive()
+                r
+            } catch (e: Throwable) {
+                // Channel yang transfernya dibatalkan atau error aneh tidak dipakai ulang.
+                if (!alive() || e !is SftpException) {
+                    runCatching { chan.disconnect() }
+                    if (ch === chan) ch = null
+                }
+                throw e
+            }
         }
     }
 
@@ -176,6 +185,8 @@ class SftpClient(opener: () -> ChannelSftp) {
     private val browse = Lane(opener)   // list, mkdir, rename, delete
     private val thumbs = Lane(opener)   // thumbnail kecil
     private val xfer = Lane(opener)     // unduhan untuk pratinjau
+    private val dlLane = Lane(opener)   // unduhan ke /sdcard/Download
+    private val upLane = Lane(opener)   // unggahan
 
     suspend fun home(): String = browse.use { c, _ -> c.home }
 
@@ -218,13 +229,32 @@ class SftpClient(opener: () -> ChannelSftp) {
         }
     }
 
+    /** Unduh langsung ke OutputStream (dipakai untuk menyimpan ke folder Download). */
+    suspend fun downloadTo(remote: String, out: OutputStream, onProgress: (Long) -> Unit) {
+        dlLane.use { c, alive -> c.get(remote, out, monitor(alive, onProgress)) }
+    }
+
+    /** Unggah dari InputStream ke path server. */
+    suspend fun upload(input: InputStream, remote: String, onProgress: (Long) -> Unit) {
+        upLane.use { c, alive -> c.put(input, remote, monitor(alive, onProgress), ChannelSftp.OVERWRITE) }
+    }
+
+    suspend fun exists(path: String): Boolean =
+        upLane.use { c, _ -> runCatching { c.stat(path) }.isSuccess }
+
+    suspend fun removeQuiet(path: String) {
+        upLane.use { c, _ -> runCatching { c.rm(path) }; Unit }
+    }
+
     suspend fun mkdir(path: String) = browse.use { c, _ -> c.mkdir(path) }
     suspend fun rename(from: String, to: String) = browse.use { c, _ -> c.rename(from, to) }
     suspend fun remove(f: RemoteFile) = browse.use { c, _ ->
         if (f.isDir && !f.isLink) c.rmdir(f.path) else c.rm(f.path)
     }
 
-    fun close() { browse.close(); thumbs.close(); xfer.close() }
+    fun close() {
+        browse.close(); thumbs.close(); xfer.close(); dlLane.close(); upLane.close()
+    }
 }
 
 /* --------------------------- state file browser -------------------------- */
@@ -234,7 +264,8 @@ class FileBrowserState(
     private val sftp: SftpClient,
     private val scope: CoroutineScope,
     private val exec: suspend (String) -> String,
-    private val cacheDir: File
+    private val cacheDir: File,
+    appContext: Context
 ) {
     var path by mutableStateOf("")
         private set
@@ -250,12 +281,32 @@ class FileBrowserState(
     var sort by mutableStateOf(SortBy.Name)
     var preview by mutableStateOf<RemoteFile?>(null)
 
+    /** Path berkas yang sedang dipilih (multi-select). */
+    var selected by mutableStateOf<Set<String>>(emptySet())
+        private set
+    val selecting: Boolean get() = selected.isNotEmpty()
+
+    val transfers = TransferManager(
+        sftp = sftp,
+        scope = scope,
+        context = appContext,
+        onUploaded = { refresh() },
+        onNotice = { notice = it }
+    )
+
     private var home = ""
     private var job: Job? = null
     private var req = 0
     private val failedThumbs = HashSet<String>()
 
     val canGoUp: Boolean get() = path.isNotEmpty() && path != "/"
+
+    fun toggleSelect(f: RemoteFile) {
+        selected = if (f.path in selected) selected - f.path else selected + f.path
+    }
+
+    fun selectAll(list: List<RemoteFile>) { selected = list.map { it.path }.toSet() }
+    fun clearSelection() { selected = emptySet() }
 
     fun start() {
         scope.launch {
@@ -280,7 +331,7 @@ class FileBrowserState(
             if (path.isEmpty()) error = null
             try {
                 val list = sftp.list(target)
-                if (id == req) { entries = list; path = target; error = null }
+                if (id == req) { entries = list; path = target; error = null; selected = emptySet() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -324,6 +375,27 @@ class FileBrowserState(
     fun rename(f: RemoteFile, newName: String) = mutate("Nama diubah") { sftp.rename(f.path, join(path, newName)) }
     fun delete(f: RemoteFile) = mutate("Dihapus") { sftp.remove(f) }
 
+    fun deleteAll(list: List<RemoteFile>) {
+        scope.launch {
+            var ok = 0
+            var fail = 0
+            var last: String? = null
+            for (f in list) {
+                try {
+                    sftp.remove(f)
+                    ok++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    fail++
+                    last = sftpMessage(e)
+                }
+            }
+            notice = if (fail == 0) "$ok item dihapus" else "$ok dihapus, $fail gagal" + (last?.let { ": $it" } ?: "")
+            refresh()
+        }
+    }
+
     private fun thumbKey(f: RemoteFile) = "${f.path}|${f.mtimeSec}"
 
     fun cachedThumb(f: RemoteFile): Bitmap? = ThumbCache.get(thumbKey(f))
@@ -359,6 +431,7 @@ class FileBrowserState(
 
     fun close() {
         job?.cancel()
+        transfers.cancel()
         sftp.close()
         ThumbCache.clear()
         runCatching { File(cacheDir, "rexpanel").deleteRecursively() }

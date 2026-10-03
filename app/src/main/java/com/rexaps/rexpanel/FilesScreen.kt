@@ -5,6 +5,8 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.MediaController
 import android.widget.VideoView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -46,8 +49,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -103,8 +109,73 @@ private fun styleOf(f: RemoteFile, fallback: Color): KindStyle = when {
 
 @Composable
 fun FilesScreen(b: FileBrowserState, modifier: Modifier = Modifier) {
-    val preview = b.preview
-    if (preview != null) FilePreview(b, preview, modifier) else FileBrowser(b, modifier)
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(b.notice) {
+        b.notice?.let {
+            snackbar.showSnackbar(it)
+            b.notice = null
+        }
+    }
+
+    Box(modifier) {
+        val p = b.preview
+        if (p != null) FilePreview(b, p, Modifier.fillMaxSize()) else FileBrowser(b, Modifier.fillMaxSize())
+
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            b.transfers.ui?.let { TransferBar(it, onCancel = { b.transfers.cancel() }) }
+            SnackbarHost(snackbar)
+        }
+    }
+}
+
+@Composable
+private fun TransferBar(t: TransferUi, onCancel: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = colors.surfaceVariant,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {}
+    ) {
+        Row(
+            Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${t.title} ${t.index}/${t.count}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant
+                )
+                Text(t.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(6.dp))
+                if (t.total > 0) {
+                    LinearProgressIndicator(
+                        progress = (t.done.toFloat() / t.total).coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${fmtBytes(t.done)} / ${fmtBytes(t.total)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+            IconButton(onClick = onCancel) { Icon(Icons.Default.Close, "Batalkan transfer") }
+        }
+    }
 }
 
 /* =============================== BROWSER ================================== */
@@ -113,21 +184,20 @@ fun FilesScreen(b: FileBrowserState, modifier: Modifier = Modifier) {
 @Composable
 private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
-    val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
 
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var menuFor by remember { mutableStateOf<RemoteFile?>(null) }
     var renameFor by remember { mutableStateOf<RemoteFile?>(null) }
-    var deleteFor by remember { mutableStateOf<RemoteFile?>(null) }
+    var deleteFor by remember { mutableStateOf<List<RemoteFile>?>(null) }
     var newFolder by remember { mutableStateOf(false) }
 
-    LaunchedEffect(b.notice) {
-        b.notice?.let {
-            snackbar.showSnackbar(it)
-            b.notice = null
-        }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) b.transfers.upload(uris, b.path)
+    }
+    fun startUpload() {
+        if (b.path.isEmpty()) b.notice = "Tunggu folder selesai dimuat." else picker.launch(arrayOf("*/*"))
     }
 
     val visible = remember(b.entries, b.showHidden, b.sort, query) {
@@ -141,9 +211,21 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
             .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
             .sortedWith(compareByDescending<RemoteFile> { it.isDir }.then(cmp))
     }
+    val chosen = remember(b.entries, b.selected) { b.entries.filter { it.path in b.selected } }
+    val selecting = b.selecting
 
-    Box(modifier) {
-        Column(Modifier.fillMaxSize()) {
+    Column(modifier) {
+        if (selecting) {
+            SelectionBar(
+                count = chosen.size,
+                canRename = chosen.size == 1,
+                onClose = { b.clearSelection() },
+                onAll = { b.selectAll(visible) },
+                onDownload = { if (b.transfers.download(chosen)) b.clearSelection() },
+                onRename = { chosen.firstOrNull()?.let { renameFor = it } },
+                onDelete = { deleteFor = chosen }
+            )
+        } else {
             BrowserToolbar(
                 b = b,
                 searching = searching,
@@ -151,76 +233,78 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
                 onQuery = { query = it },
                 onToggleSearch = { searching = !searching; if (!searching) query = "" },
                 onNewFolder = { newFolder = true },
-                onCopyPath = { clipboard.setText(AnnotatedString(b.path)); b.notice = "Path disalin" }
+                onCopyPath = { clipboard.setText(AnnotatedString(b.path)); b.notice = "Path disalin" },
+                onUpload = { startUpload() },
+                onSelectAll = { b.selectAll(visible) }
             )
-            Breadcrumbs(b)
+        }
+        Breadcrumbs(b)
 
-            Box(Modifier.fillMaxWidth().height(3.dp)) {
-                if (b.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
+        Box(Modifier.fillMaxWidth().height(3.dp)) {
+            if (b.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
 
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                val err = b.error
-                when {
-                    err != null && b.entries.isEmpty() -> StateMessage(
-                        icon = Icons.Default.Warning,
-                        title = "Tidak bisa membuka folder",
-                        message = err,
-                        actionLabel = "Coba lagi",
-                        onAction = { b.refresh() },
-                        secondaryLabel = "Ke home",
-                        onSecondary = { b.goHome() }
-                    )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val err = b.error
+            when {
+                err != null && b.entries.isEmpty() -> StateMessage(
+                    icon = Icons.Default.Warning,
+                    title = "Tidak bisa membuka folder",
+                    message = err,
+                    actionLabel = "Coba lagi",
+                    onAction = { b.refresh() },
+                    secondaryLabel = "Ke home",
+                    onSecondary = { b.goHome() }
+                )
 
-                    b.loading && b.entries.isEmpty() -> SkeletonRows()
+                b.loading && b.entries.isEmpty() -> SkeletonRows()
 
-                    visible.isEmpty() -> StateMessage(
-                        icon = Icons.Default.FolderOpen,
-                        title = if (query.isNotBlank()) "Tidak ada hasil" else "Folder kosong",
-                        message = if (query.isNotBlank()) "Tidak ada berkas yang cocok dengan “${query.trim()}”."
-                        else if (!b.showHidden && b.entries.isNotEmpty()) "Hanya ada berkas tersembunyi. Aktifkan “Tampilkan tersembunyi” di menu ⋮."
-                        else "Belum ada berkas di sini.",
-                        actionLabel = if (query.isBlank() && b.entries.isEmpty()) "Buat folder" else null,
-                        onAction = { newFolder = true }
-                    )
+                visible.isEmpty() -> StateMessage(
+                    icon = Icons.Default.FolderOpen,
+                    title = if (query.isNotBlank()) "Tidak ada hasil" else "Folder kosong",
+                    message = if (query.isNotBlank()) "Tidak ada berkas yang cocok dengan “${query.trim()}”."
+                    else if (!b.showHidden && b.entries.isNotEmpty()) "Hanya ada berkas tersembunyi. Aktifkan “Tampilkan tersembunyi” di menu ⋮."
+                    else "Belum ada berkas di sini.",
+                    actionLabel = if (query.isBlank() && b.entries.isEmpty()) "Unggah berkas" else null,
+                    onAction = { startUpload() },
+                    secondaryLabel = if (query.isBlank() && b.entries.isEmpty()) "Buat folder" else null,
+                    onSecondary = { newFolder = true }
+                )
 
-                    b.grid -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(104.dp),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(visible, key = { it.path }, contentType = { it.kind }) { f ->
-                            GridTile(f, b, onMenu = { menuFor = it })
-                        }
+                b.grid -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(104.dp),
+                    contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(visible, key = { it.path }, contentType = { it.kind }) { f ->
+                        GridTile(f, b, isSel = f.path in b.selected, selecting = selecting, onMenu = { menuFor = it })
                     }
+                }
 
-                    else -> LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        items(visible, key = { it.path }, contentType = { it.kind }) { f ->
-                            FileRow(f, b, onMenu = { menuFor = it })
-                        }
-                        item {
-                            val dirs = visible.count { it.isDir }
-                            Text(
-                                "$dirs folder · ${visible.size - dirs} berkas",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = colors.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(16.dp)
-                            )
-                        }
+                else -> LazyColumn(
+                    contentPadding = PaddingValues(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    items(visible, key = { it.path }, contentType = { it.kind }) { f ->
+                        FileRow(f, b, isSel = f.path in b.selected, selecting = selecting, onMenu = { menuFor = it })
+                    }
+                    item {
+                        val dirs = visible.count { it.isDir }
+                        Text(
+                            "$dirs folder · ${visible.size - dirs} berkas",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp)
+                        )
                     }
                 }
             }
         }
-
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(12.dp))
     }
 
-    /* ---- bottom sheet aksi ---- */
+    /* ---- bottom sheet aksi (satu berkas) ---- */
     val sheet = menuFor
     if (sheet != null) {
         val st = styleOf(sheet, colors.onSurfaceVariant)
@@ -255,11 +339,18 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
                     if (sheet.isDir) Icons.Default.FolderOpen else Icons.Default.Visibility,
                     if (sheet.isDir) "Buka folder" else "Pratinjau"
                 ) { menuFor = null; b.open(sheet) }
+                if (!sheet.isDir) {
+                    SheetAction(Icons.Default.Download, "Unduh ke $DOWNLOAD_LABEL") {
+                        menuFor = null
+                        b.transfers.download(listOf(sheet))
+                    }
+                }
+                SheetAction(Icons.Default.CheckCircle, "Pilih") { menuFor = null; b.toggleSelect(sheet) }
                 SheetAction(Icons.Default.ContentCopy, "Salin path") {
                     clipboard.setText(AnnotatedString(sheet.path)); b.notice = "Path disalin"; menuFor = null
                 }
                 SheetAction(Icons.Default.DriveFileRenameOutline, "Ganti nama") { menuFor = null; renameFor = sheet }
-                SheetAction(Icons.Default.Delete, "Hapus", danger = true) { menuFor = null; deleteFor = sheet }
+                SheetAction(Icons.Default.Delete, "Hapus", danger = true) { menuFor = null; deleteFor = listOf(sheet) }
             }
         }
     }
@@ -267,6 +358,7 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
     renameFor?.let { f ->
         NameDialog("Ganti nama", f.name, "Simpan", { renameFor = null }) { name ->
             renameFor = null
+            b.clearSelection()
             if (name != f.name) b.rename(f, name)
         }
     }
@@ -278,23 +370,63 @@ private fun FileBrowser(b: FileBrowserState, modifier: Modifier) {
         }
     }
 
-    deleteFor?.let { f ->
+    deleteFor?.let { items ->
+        val one = items.singleOrNull()
         AlertDialog(
             onDismissRequest = { deleteFor = null },
-            title = { Text("Hapus “${f.name}”?") },
+            title = { Text(if (one != null) "Hapus “${one.name}”?" else "Hapus ${items.size} item?") },
             text = {
                 Text(
-                    if (f.isDir) "Hanya folder kosong yang bisa dihapus. Tindakan ini tidak bisa dibatalkan."
+                    if (items.any { it.isDir }) "Folder hanya bisa dihapus jika kosong. Tindakan ini tidak bisa dibatalkan."
                     else "Berkas akan dihapus permanen dari server. Tindakan ini tidak bisa dibatalkan."
                 )
             },
             confirmButton = {
-                TextButton(onClick = { deleteFor = null; b.delete(f) }) {
+                TextButton(onClick = { deleteFor = null; b.deleteAll(items) }) {
                     Text("Hapus", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = { TextButton(onClick = { deleteFor = null }) { Text("Batal") } }
         )
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    count: Int,
+    canRename: Boolean,
+    onClose: () -> Unit,
+    onAll: () -> Unit,
+    onDownload: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    CompositionLocalProvider(LocalContentColor provides colors.onPrimaryContainer) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(colors.primaryContainer)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Batalkan pilihan") }
+            Text(
+                "$count dipilih",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+            )
+            if (canRename) {
+                IconButton(onClick = onRename) { Icon(Icons.Default.DriveFileRenameOutline, "Ganti nama") }
+            }
+            IconButton(onClick = onAll) { Icon(Icons.Default.SelectAll, "Pilih semua") }
+            IconButton(onClick = onDownload) { Icon(Icons.Default.Download, "Unduh yang dipilih") }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, "Hapus yang dipilih", tint = colors.error)
+            }
+        }
     }
 }
 
@@ -306,7 +438,9 @@ private fun BrowserToolbar(
     onQuery: (String) -> Unit,
     onToggleSearch: () -> Unit,
     onNewFolder: () -> Unit,
-    onCopyPath: () -> Unit
+    onCopyPath: () -> Unit,
+    onUpload: () -> Unit,
+    onSelectAll: () -> Unit
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(searching) { if (searching) focus.requestFocus() }
@@ -334,6 +468,7 @@ private fun BrowserToolbar(
             IconButton(onClick = { b.goHome() }) { Icon(Icons.Default.Home, "Ke folder home") }
             IconButton(onClick = onToggleSearch) { Icon(Icons.Default.Search, "Cari") }
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onUpload) { Icon(Icons.Default.Upload, "Unggah berkas ke folder ini") }
             IconButton(onClick = { b.grid = !b.grid }) {
                 Icon(
                     if (b.grid) Icons.Default.ViewList else Icons.Default.GridView,
@@ -341,24 +476,22 @@ private fun BrowserToolbar(
                 )
             }
 
-            var sortOpen by remember { mutableStateOf(false) }
-            Box {
-                IconButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, "Urutkan") }
-                DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
-                    SortBy.values().forEach { s ->
-                        DropdownMenuItem(
-                            text = { Text(s.label) },
-                            onClick = { b.sort = s; sortOpen = false },
-                            trailingIcon = { if (b.sort == s) Icon(Icons.Default.Check, "Dipilih") }
-                        )
-                    }
-                }
-            }
-
             var moreOpen by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { moreOpen = true }) { Icon(Icons.Default.MoreVert, "Menu lainnya") }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Pilih semua") },
+                        leadingIcon = { Icon(Icons.Default.SelectAll, null) },
+                        onClick = { moreOpen = false; onSelectAll() }
+                    )
+                    SortBy.values().forEach { s ->
+                        DropdownMenuItem(
+                            text = { Text("Urutkan: ${s.label}") },
+                            onClick = { b.sort = s; moreOpen = false },
+                            trailingIcon = { if (b.sort == s) Icon(Icons.Default.Check, "Dipilih") }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Tampilkan tersembunyi") },
                         onClick = { b.showHidden = !b.showHidden; moreOpen = false },
@@ -428,7 +561,13 @@ private fun Breadcrumbs(b: FileBrowserState) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileRow(f: RemoteFile, b: FileBrowserState, onMenu: (RemoteFile) -> Unit) {
+private fun FileRow(
+    f: RemoteFile,
+    b: FileBrowserState,
+    isSel: Boolean,
+    selecting: Boolean,
+    onMenu: (RemoteFile) -> Unit
+) {
     val colors = MaterialTheme.colorScheme
     val sub = buildString {
         append(if (f.isDir) "Folder" else fmtBytes(f.size))
@@ -439,14 +578,20 @@ private fun FileRow(f: RemoteFile, b: FileBrowserState, onMenu: (RemoteFile) -> 
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
+            .background(if (isSel) colors.primaryContainer.copy(alpha = 0.6f) else Color.Transparent)
             .combinedClickable(
-                onClick = { b.open(f) },
-                onLongClick = { onMenu(f) },
-                onLongClickLabel = "Opsi"
+                onClick = { if (selecting) b.toggleSelect(f) else b.open(f) },
+                onLongClick = { b.toggleSelect(f) },
+                onLongClickLabel = "Pilih"
             )
+            .semantics { selected = isSel }
             .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selecting) {
+            Checkbox(checked = isSel, onCheckedChange = null)
+            Spacer(Modifier.width(12.dp))
+        }
         FileThumb(f, b, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -455,3 +600,552 @@ private fun FileRow(f: RemoteFile, b: FileBrowserState, onMenu: (RemoteFile) -> 
                 sub,
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (selecting) {
+            Spacer(Modifier.width(16.dp))
+        } else {
+            IconButton(onClick = { onMenu(f) }) { Icon(Icons.Default.MoreVert, "Opsi ${f.name}") }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GridTile(
+    f: RemoteFile,
+    b: FileBrowserState,
+    isSel: Boolean,
+    selecting: Boolean,
+    onMenu: (RemoteFile) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (isSel) colors.primaryContainer.copy(alpha = 0.6f) else Color.Transparent)
+            .combinedClickable(
+                onClick = { if (selecting) b.toggleSelect(f) else b.open(f) },
+                onLongClick = { b.toggleSelect(f) },
+                onLongClickLabel = "Pilih"
+            )
+            .semantics {
+                selected = isSel
+                customActions = listOf(CustomAccessibilityAction("Opsi") { onMenu(f); true })
+            }
+            .padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+            FileThumb(f, b, Modifier.fillMaxSize(), big = true)
+            if (f.kind == FileKind.Video) {
+                Icon(
+                    Icons.Default.PlayArrow, null,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                )
+            }
+            if (selecting) {
+                Icon(
+                    if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    null,
+                    tint = if (isSel) colors.primary else Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(24.dp)
+                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            f.name,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        if (!f.isDir) {
+            Text(
+                fmtBytes(f.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun FileThumb(f: RemoteFile, b: FileBrowserState, modifier: Modifier, big: Boolean = false) {
+    val st = styleOf(f, MaterialTheme.colorScheme.onSurfaceVariant)
+    val wantThumb = f.kind == FileKind.Image && f.size in 1..THUMB_MAX
+    var bmp by remember(f.path, f.mtimeSec) {
+        mutableStateOf(if (wantThumb) b.cachedThumb(f)?.asImageBitmap() else null)
+    }
+    if (wantThumb) {
+        LaunchedEffect(f.path, f.mtimeSec) {
+            if (bmp == null) bmp = b.thumbnail(f)?.asImageBitmap()
+        }
+    }
+    val shown = bmp
+    Box(
+        modifier
+            .clip(RoundedCornerShape(if (big) 16.dp else 14.dp))
+            .background(st.color.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (shown != null) {
+            Image(shown, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Icon(st.icon, null, tint = st.color, modifier = Modifier.fillMaxSize(if (big) 0.42f else 0.55f))
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val c = if (danger) colors.error else colors.onSurface
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = c)
+        Spacer(Modifier.width(16.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = c)
+    }
+}
+
+@Composable
+private fun NameDialog(
+    title: String,
+    initial: String,
+    confirm: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initial) }
+    val invalid = '/' in text
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                label = { Text("Nama") },
+                isError = invalid,
+                supportingText = { if (invalid) Text("Nama tidak boleh mengandung “/”.") },
+                shape = RoundedCornerShape(16.dp)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text.trim()) }, enabled = text.isNotBlank() && !invalid) {
+                Text(confirm)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
+    )
+}
+
+@Composable
+private fun StateMessage(
+    icon: ImageVector,
+    title: String,
+    message: String,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+    secondaryLabel: String? = null,
+    onSecondary: () -> Unit = {}
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, null, Modifier.size(48.dp), tint = colors.onSurfaceVariant)
+        Spacer(Modifier.height(12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        if (actionLabel != null) {
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onAction) { Text(actionLabel) }
+        }
+        if (secondaryLabel != null) {
+            TextButton(onClick = onSecondary) { Text(secondaryLabel) }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonRows() {
+    val c = MaterialTheme.colorScheme.surfaceVariant
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        repeat(7) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(c))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Box(Modifier.width(160.dp).height(14.dp).clip(RoundedCornerShape(6.dp)).background(c))
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.width(100.dp).height(10.dp).clip(RoundedCornerShape(6.dp)).background(c))
+                }
+            }
+        }
+    }
+}
+
+/* =============================== PREVIEW ================================== */
+
+@Composable
+private fun FilePreview(b: FileBrowserState, file: RemoteFile, modifier: Modifier) {
+    val siblings = remember(b.entries, file.path) {
+        if (file.kind == FileKind.Other) emptyList()
+        else b.entries.filter { !it.isDir && it.kind == file.kind }.sortedBy { it.name.lowercase() }
+    }
+    val idx = siblings.indexOfFirst { it.path == file.path }
+    val prev = if (idx > 0) siblings[idx - 1] else null
+    val next = if (idx in 0 until siblings.lastIndex) siblings[idx + 1] else null
+
+    Column(modifier.background(Color.Black)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { b.preview = null }) {
+                Icon(Icons.Default.Close, "Tutup pratinjau", tint = Color.White)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(file.name, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${fmtBytes(file.size)} · ${fmtDate(file.mtimeSec)}" +
+                        if (siblings.size > 1 && idx >= 0) " · ${idx + 1}/${siblings.size}" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    maxLines = 1
+                )
+            }
+            if (siblings.size > 1) {
+                IconButton(onClick = { prev?.let { b.preview = it } }, enabled = prev != null) {
+                    Icon(Icons.Default.SkipPrevious, "Sebelumnya", tint = Color.White.copy(alpha = if (prev != null) 1f else 0.3f))
+                }
+                IconButton(onClick = { next?.let { b.preview = it } }, enabled = next != null) {
+                    Icon(Icons.Default.SkipNext, "Berikutnya", tint = Color.White.copy(alpha = if (next != null) 1f else 0.3f))
+                }
+            }
+            IconButton(onClick = { b.transfers.download(listOf(file)) }) {
+                Icon(Icons.Default.Download, "Unduh ke $DOWNLOAD_LABEL", tint = Color.White)
+            }
+        }
+
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            key(file.path) {
+                when (file.kind) {
+                    FileKind.Image -> ImagePreview(b, file)
+                    FileKind.Video, FileKind.Audio -> PlayerPreview(b, file)
+                    FileKind.Text -> TextPreview(b, file)
+                    else -> NoPreview(file)
+                }
+            }
+        }
+    }
+}
+
+private sealed interface ImgLoad {
+    data class Ready(val bmp: ImageBitmap) : ImgLoad
+    data class Failed(val msg: String) : ImgLoad
+}
+
+@Composable
+private fun ImagePreview(b: FileBrowserState, f: RemoteFile) {
+    var progress by remember { mutableLongStateOf(0L) }
+    var attempt by remember { mutableIntStateOf(0) }
+    var result by remember { mutableStateOf<ImgLoad?>(null) }
+
+    LaunchedEffect(f.path, attempt) {
+        result = null
+        progress = 0
+        result = try {
+            val local = b.fetch(f) { progress = it }
+            val bmp = withContext(Dispatchers.Default) { decodeFileSampled(local, 2048) }
+            if (bmp != null) ImgLoad.Ready(bmp.asImageBitmap()) else ImgLoad.Failed("Format gambar ini tidak bisa ditampilkan.")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ImgLoad.Failed(sftpMessage(e))
+        } catch (e: OutOfMemoryError) {
+            ImgLoad.Failed("Gambar terlalu besar untuk ditampilkan.")
+        }
+    }
+
+    when (val r = result) {
+        null -> DownloadProgress(progress, f.size, "Mengunduh gambar")
+        is ImgLoad.Ready -> ZoomableImage(r.bmp, f.name)
+        is ImgLoad.Failed -> PreviewError(r.msg) { attempt++ }
+    }
+}
+
+@Composable
+private fun ZoomableImage(bmp: ImageBitmap, description: String) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var box by remember { mutableStateOf(IntSize.Zero) }
+
+    fun clamp(o: Offset, s: Float): Offset {
+        val mx = box.width * (s - 1f) / 2f
+        val my = box.height * (s - 1f) / 2f
+        return Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .onSizeChanged { box = it }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val s = (scale * zoom).coerceIn(1f, 6f)
+                    scale = s
+                    offset = if (s == 1f) Offset.Zero else clamp(offset + pan, s)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    if (scale > 1f) { scale = 1f; offset = Offset.Zero } else scale = 2.5f
+                })
+            }
+    ) {
+        Image(
+            bitmap = bmp,
+            contentDescription = description,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale; scaleY = scale
+                    translationX = offset.x; translationY = offset.y
+                }
+        )
+    }
+}
+
+@Composable
+private fun PlayerPreview(b: FileBrowserState, f: RemoteFile) {
+    var started by remember { mutableStateOf(f.size <= AUTO_DOWNLOAD) }
+    var attempt by remember { mutableIntStateOf(0) }
+    var progress by remember { mutableLongStateOf(0L) }
+    var local by remember { mutableStateOf<File?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(started, attempt) {
+        if (!started) return@LaunchedEffect
+        local = null; error = null; progress = 0
+        try {
+            local = b.fetch(f) { progress = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = sftpMessage(e)
+        }
+    }
+
+    val err = error
+    val ready = local
+    when {
+        err != null -> PreviewError(err) { attempt++ }
+        ready != null -> VideoPlayer(ready, audio = f.kind == FileKind.Audio) {
+            error = "Format ini tidak didukung pemutar bawaan Android."
+        }
+        !started -> Column(
+            Modifier.padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                if (f.kind == FileKind.Audio) Icons.Default.Audiotrack else Icons.Default.Movie,
+                null, Modifier.size(56.dp), tint = Color.White.copy(alpha = 0.8f)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Berkas besar (${fmtBytes(f.size)})",
+                style = MaterialTheme.typography.titleMedium, color = Color.White
+            )
+            Text(
+                "Berkas diunduh dulu ke cache lalu diputar. Pakai Wi-Fi jika bisa.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = { started = true }) { Text("Unduh dan putar") }
+        }
+        else -> DownloadProgress(progress, f.size, "Mengunduh untuk diputar")
+    }
+}
+
+@Composable
+private fun VideoPlayer(file: File, audio: Boolean, onFail: () -> Unit) {
+    val holder = remember { arrayOfNulls<VideoView>(1) }
+    DisposableEffect(Unit) { onDispose { holder[0]?.stopPlayback() } }
+
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                val vv = VideoView(ctx)
+                val mc = MediaController(ctx)
+                mc.setAnchorView(vv)
+                vv.setMediaController(mc)
+                vv.setOnPreparedListener { it.start() }
+                vv.setOnErrorListener { _, _, _ -> onFail(); true }
+                vv.setVideoPath(file.absolutePath)
+                holder[0] = vv
+                FrameLayout(ctx).apply {
+                    addView(
+                        vv,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            Gravity.CENTER
+                        )
+                    )
+                }
+            }
+        )
+        if (audio) {
+            Icon(
+                Icons.Default.Audiotrack, null,
+                tint = CAudio,
+                modifier = Modifier.align(Alignment.Center).size(96.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextPreview(b: FileBrowserState, f: RemoteFile) {
+    var text by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(f.path) {
+        text = try {
+            b.readText(f)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "Gagal membaca berkas: ${sftpMessage(e)}"
+        }
+    }
+    val t = text
+    when {
+        t == null -> CircularProgressIndicator(color = Color.White)
+        '\u0000' in t -> NoPreview(f, "Berkas ini biner, jadi tidak bisa ditampilkan sebagai teks.")
+        else -> SelectionContainer {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState())
+                    .padding(12.dp)
+            ) {
+                Text(
+                    t,
+                    color = PreviewFg,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    softWrap = false
+                )
+                if (f.size > 65536) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "… dipotong, hanya 64 KB pertama dari ${fmtBytes(f.size)}.",
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoPreview(f: RemoteFile, message: String = "Pratinjau belum tersedia untuk jenis berkas ini. Kamu tetap bisa mengunduhnya.") {
+    val st = styleOf(f, Color.White)
+    Column(
+        Modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(st.icon, null, Modifier.size(64.dp), tint = st.color)
+        Spacer(Modifier.height(12.dp))
+        Text(f.name, style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.Center)
+        Text(
+            "${st.label} · ${fmtBytes(f.size)} · ${f.perms}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.7f)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DownloadProgress(done: Long, total: Long, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (total > 0) {
+            CircularProgressIndicator(progress = (done.toFloat() / total).coerceIn(0f, 1f), color = Color.White)
+        } else {
+            CircularProgressIndicator(color = Color.White)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+        if (total > 0) {
+            Text(
+                "${fmtBytes(done)} / ${fmtBytes(total)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreviewError(message: String, onRetry: () -> Unit) {
+    Column(
+        Modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.Warning, null, Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.8f))
+        Spacer(Modifier.height(12.dp))
+        Text("Pratinjau gagal", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onRetry) { Text("Coba lagi") }
+    }
+}
