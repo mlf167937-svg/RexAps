@@ -1,6 +1,7 @@
 package com.rexaps.rexpanel
 
 import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
@@ -15,11 +16,12 @@ import java.io.InputStreamReader
 
 data class SshTarget(val host: String, val port: Int, val user: String)
 
-/** Membaca: ssh -p 8022 root@192.168.0.101 */
+/** Membaca: ssh -p 8022 user@192.168.0.101  (juga: ssh -l user host). User wajib ada. */
 fun parseSshCommand(input: String): SshTarget? {
     val tokens = input.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     var port = 22
     var dest: String? = null
+    var login: String? = null
     var i = 0
     while (i < tokens.size) {
         val t = tokens[i]
@@ -27,15 +29,17 @@ fun parseSshCommand(input: String): SshTarget? {
             t == "ssh" -> {}
             t == "-p" -> { port = tokens.getOrNull(i + 1)?.toIntOrNull() ?: return null; i++ }
             t.startsWith("-p") && t.length > 2 -> port = t.drop(2).toIntOrNull() ?: return null
+            t == "-l" -> { login = tokens.getOrNull(i + 1) ?: return null; i++ }
+            t == "-i" || t == "-o" -> i++
             t.startsWith("-") -> {}
             else -> dest = t
         }
         i++
     }
     val d = dest ?: return null
-    val user = if ('@' in d) d.substringBefore('@') else "root"
+    val user = if ('@' in d) d.substringBefore('@') else login
     val host = d.substringAfter('@')
-    if (host.isBlank()) return null
+    if (host.isBlank() || user.isNullOrBlank()) return null
     return SshTarget(host, port, user)
 }
 
@@ -114,6 +118,14 @@ class SshSession {
         } finally {
             ch.disconnect()
         }
+    }
+
+    /** Membuka channel SFTP baru (satu session SSH bisa punya banyak channel). */
+    fun openSftp(): ChannelSftp {
+        val s = session ?: error("Tidak terhubung")
+        val c = s.openChannel("sftp") as ChannelSftp
+        c.connect(10_000)
+        return c
     }
 
     fun close() {

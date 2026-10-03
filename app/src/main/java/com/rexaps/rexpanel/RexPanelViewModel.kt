@@ -13,6 +13,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 sealed interface ConnState {
     object Idle : ConnState
@@ -53,20 +54,27 @@ class RawSample(
     val rx: Long?, val tx: Long?,
     val batPct: Int?, val batStatus: String?, val batTemp: Float?,
     val host: String?,
+    val topCpu: Float?,
     val at: Long = System.currentTimeMillis()
 )
 
 // § diganti menjadi $ supaya tidak bentrok dengan string template Kotlin.
+// @@ELEV@@ = 1 jika pengguna mengizinkan sudo/su. Default 0: aman untuk akun biasa (non-root).
 private val MON_CMD = """
 T=""; command -v timeout >/dev/null 2>&1 && T="timeout 3"
+E=@@ELEV@@
 rd() {
   cat "§1" 2>/dev/null && return 0
   [ "§(id -u)" = 0 ] && return 1
+  [ "§E" = 1 ] || return 1
   [ -n "§T" ] || return 1
   §T sudo -n cat "§1" 2>/dev/null && return 0
   command -v su >/dev/null 2>&1 && §T su -c "cat §1" 2>/dev/null
 }
-echo "##STAT"; rd /proc/stat | head -n1
+STATLINE="§(rd /proc/stat 2>/dev/null | head -n1)"
+echo "##STAT"; echo "§STATLINE"
+echo "##TOP"
+[ -z "§STATLINE" ] && §T top -bn1 2>/dev/null | head -n5
 echo "##MEM"; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
 echo "##LOAD"; rd /proc/loadavg
 echo "##UPTIME"; cat /proc/uptime 2>/dev/null
@@ -89,10 +97,31 @@ command -v termux-battery-status >/dev/null 2>&1 && §T termux-battery-status 2>
 echo "##HOST"; hostname 2>/dev/null
 """.trimIndent().replace("§", "$")
 
+private fun monCmd(elevate: Boolean) = MON_CMD.replace("@@ELEV@@", if (elevate) "1" else "0")
+
 private val LOAD_RE = Regex("""^\d+\.\d+ \d+\.\d+ \d+\.\d+ \d+/\d+ \d+$""")
 private val UPCMD_LOAD_RE = Regex("""load averages?:\s*([\d.]+),?\s+([\d.]+),?\s+([\d.]+)""")
 private val UPCMD_UP_RE = Regex("""up\s+(.+?),\s+(?:\d+\s+users?|load)""")
 private val WS = Regex("\\s+")
+private val TOP_TOYBOX = Regex("""(\d+)%cpu.*?(\d+)%idle""", RegexOption.IGNORE_CASE)
+private val TOP_LINUX = Regex("""(\d+(?:[.,]\d+)?)\s*id\b""")
+private val TOP_BUSY = Regex("""(\d+)%\s*idle""", RegexOption.IGNORE_CASE)
+
+/** CPU dari keluaran `top` (Android toybox, procps Linux, busybox). Dipakai saat /proc/stat tidak bisa dibaca. */
+private fun parseTopCpu(t: String): Float? {
+    TOP_TOYBOX.find(t)?.let {
+        val tot = it.groupValues[1].toFloat()
+        val idle = it.groupValues[2].toFloat()
+        if (tot > 0) return ((tot - idle) / tot).coerceIn(0f, 1f)
+    }
+    TOP_LINUX.find(t)?.let {
+        return (1f - it.groupValues[1].replace(',', '.').toFloat() / 100f).coerceIn(0f, 1f)
+    }
+    TOP_BUSY.find(t)?.let {
+        return (1f - it.groupValues[1].toFloat() / 100f).coerceIn(0f, 1f)
+    }
+    return null
+}
 
 fun parseSample(raw: String): RawSample {
     val sec = HashMap<String, MutableList<String>>()
@@ -115,6 +144,7 @@ fun parseSample(raw: String): RawSample {
         val n = line.split(WS).drop(1).mapNotNull { it.toLongOrNull() }
         if (n.size >= 5) { cpuT = n.take(8).sum(); cpuI = n[3] + n[4] }
     }
+    val topCpu = lines("TOP").takeIf { it.isNotEmpty() }?.let { parseTopCpu(it.joinToString("\n")) }
 
     // Frekuensi CPU (cadangan)
     val freqs = lines("FREQ").mapNotNull { l ->
@@ -189,7 +219,8 @@ fun parseSample(raw: String): RawSample {
         diskMount = d?.drop(5)?.joinToString(" "),
         rx = if (hasNet) rx else null, tx = if (hasNet) tx else null,
         batPct = batPct, batStatus = batStatus, batTemp = batTemp,
-        host = lines("HOST").firstOrNull()
+        host = lines("HOST").firstOrNull(),
+        topCpu = topCpu
     )
 }
 
@@ -212,6 +243,7 @@ private fun buildMetrics(cur: RawSample, prev: RawSample?): Metrics {
             txBps = ((ctx - ptx) / secs).toLong().coerceAtLeast(0)
         }
     }
+    if (cpu == null) cpu = cur.topCpu
     val total = cur.memTotalKb
     val avail = cur.memAvailKb
     return Metrics(
@@ -255,6 +287,8 @@ class RexPanelViewModel : ViewModel() {
         private set
     var metrics by mutableStateOf<Metrics?>(null)
         private set
+    var files by mutableStateOf<FileBrowserState?>(null)
+        private set
     val cpuHistory = mutableStateListOf<Float>()
 
     val term = TermBuffer(80, 24)
@@ -280,10 +314,10 @@ class RexPanelViewModel : ViewModel() {
     fun toggleAlt() { alt = !alt }
     fun toggleShift() { shift = !shift }
 
-    fun connect(command: String, password: String) {
+    fun connect(command: String, password: String, elevate: Boolean, cacheDir: File) {
         val target = parseSshCommand(command)
         if (target == null) {
-            conn = ConnState.Error("Format salah. Contoh: ssh -p 8022 root@192.168.0.101")
+            conn = ConnState.Error("Format salah. Tulis user-nya, contoh: ssh -p 8022 u0_a123@192.168.0.101")
             return
         }
         if (conn is ConnState.Connecting) return
@@ -298,10 +332,16 @@ class RexPanelViewModel : ViewModel() {
                     onClosed = { viewModelScope.launch { onClosed(session) } }
                 )
                 ssh = session
+                val client = SftpClient { session.openSftp() }
+                val browser = FileBrowserState(client, viewModelScope, { cmd -> session.exec(cmd) }, cacheDir)
+                files = browser
                 conn = ConnState.Connected(target)
-                startMonitor(session)
+                browser.start()
+                startMonitor(session, elevate)
             } catch (e: Exception) {
                 session.close()
+                files?.close()
+                files = null
                 conn = ConnState.Error(friendly(e))
             }
         }
@@ -310,20 +350,23 @@ class RexPanelViewModel : ViewModel() {
     private fun onClosed(session: SshSession) {
         if (ssh === session) {
             monitorJob?.cancel()
+            files?.close()
+            files = null
             ssh = null
             metrics = null
             conn = ConnState.Error("Koneksi terputus.")
         }
     }
 
-    private fun startMonitor(session: SshSession) {
+    private fun startMonitor(session: SshSession, elevate: Boolean) {
         monitorJob?.cancel()
         cpuHistory.clear()
+        val cmd = monCmd(elevate)
         monitorJob = viewModelScope.launch {
             var prev: RawSample? = null
             while (isActive) {
                 try {
-                    val raw = withTimeoutOrNull(8_000) { session.exec(MON_CMD) }
+                    val raw = withTimeoutOrNull(8_000) { session.exec(cmd) }
                     if (raw != null) {
                         val sample = parseSample(raw)
                         val m = buildMetrics(sample, prev)
@@ -345,6 +388,8 @@ class RexPanelViewModel : ViewModel() {
 
     fun disconnect() {
         monitorJob?.cancel()
+        files?.close()
+        files = null
         ssh?.close()
         ssh = null
         metrics = null
@@ -402,6 +447,7 @@ class RexPanelViewModel : ViewModel() {
 
     override fun onCleared() {
         monitorJob?.cancel()
+        files?.close()
         ssh?.close()
         super.onCleared()
     }
