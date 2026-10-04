@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -60,6 +61,8 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -76,6 +79,7 @@ import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Visibility
@@ -98,6 +102,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -119,10 +124,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -135,6 +142,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class CreateKind { FILE, FOLDER }
@@ -1375,6 +1383,10 @@ private val EditorKeys = listOf(
     "=" to "=", "/" to "/", "#" to "#"
 )
 
+private const val EDITOR_MIN_FONT = 6
+private const val EDITOR_MAX_FONT = 48
+private const val EDITOR_DEFAULT_FONT = 14
+
 @Composable
 private fun EditorScreen(
     state: RexGitUiState,
@@ -1384,8 +1396,11 @@ private fun EditorScreen(
 ) {
     val path = state.editorPath ?: return
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
 
     var field by remember(path) { mutableStateOf(TextFieldValue(state.editorContent)) }
+    var fontSize by rememberSaveable { mutableStateOf(EDITOR_DEFAULT_FONT) }
 
     val repoPath = state.selectedRepository?.path ?: ""
     val name = path.substringAfterLast('/')
@@ -1398,6 +1413,10 @@ private fun EditorScreen(
 
         field = TextFieldValue(updated, TextRange(sel.min + snippet.length))
         onEdit(updated)
+    }
+
+    fun toast(text: String) {
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
     }
 
     Column(
@@ -1452,6 +1471,133 @@ private fun EditorScreen(
 
         ProgressSlot(state.isSaving)
 
+        // ----- editor tools: copy all / paste / select all -----
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(field.text))
+                    toast("All text copied")
+                },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Copy all")
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    val text = clipboard.getText()?.text.orEmpty()
+                    if (text.isNotEmpty()) insert(text) else toast("Clipboard is empty")
+                },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Icon(
+                    Icons.Default.ContentPaste,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Paste")
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    field = field.copy(selection = TextRange(0, field.text.length))
+                },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Icon(
+                    Icons.Default.SelectAll,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Select all")
+            }
+        }
+
+        // ----- font size: A-  slider  A+ -----
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = {
+                    fontSize = (fontSize - 1).coerceAtLeast(EDITOR_MIN_FONT)
+                },
+                enabled = fontSize > EDITOR_MIN_FONT,
+                shape = RoundedCornerShape(10.dp),
+                color = scheme.surfaceVariant
+            ) {
+                Text(
+                    "A−",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .heightIn(min = 40.dp)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+
+            Slider(
+                value = fontSize.toFloat(),
+                onValueChange = {
+                    fontSize = it.toInt().coerceIn(EDITOR_MIN_FONT, EDITOR_MAX_FONT)
+                },
+                valueRange = EDITOR_MIN_FONT.toFloat()..EDITOR_MAX_FONT.toFloat(),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+            )
+
+            Surface(
+                onClick = {
+                    fontSize = (fontSize + 1).coerceAtMost(EDITOR_MAX_FONT)
+                },
+                enabled = fontSize < EDITOR_MAX_FONT,
+                shape = RoundedCornerShape(10.dp),
+                color = scheme.surfaceVariant
+            ) {
+                Text(
+                    "A+",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .heightIn(min = 40.dp)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            Text(
+                "${fontSize}px",
+                style = MaterialTheme.typography.labelLarge,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.width(46.dp)
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+
         Surface(
             modifier = Modifier
                 .weight(1f)
@@ -1470,7 +1616,9 @@ private fun EditorScreen(
                 },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = FontFamily.Monospace,
-                    color = scheme.onSurface
+                    color = scheme.onSurface,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.4f).sp
                 ),
                 cursorBrush = SolidColor(scheme.primary),
                 keyboardOptions = KeyboardOptions(
