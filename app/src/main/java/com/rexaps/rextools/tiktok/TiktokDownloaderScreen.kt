@@ -3,20 +3,27 @@ package com.rexaps.rextools.tiktok
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +32,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -41,16 +56,27 @@ fun TiktokDownloaderScreen(
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("TikTok Downloader") },
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        "TikTok Downloader",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "back")
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Kembali")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { pad ->
@@ -59,30 +85,87 @@ fun TiktokDownloaderScreen(
                 .fillMaxSize()
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Intro
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Unduh video & foto TikTok",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { heading() }
+                )
+                Text(
+                    "Tempel link TikTok untuk mengambil video, foto, atau musiknya.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // URL
             OutlinedTextField(
                 value = state.url,
                 onValueChange = vm::onUrlChange,
                 label = { Text("URL TikTok") },
                 placeholder = { Text("https://vt.tiktok.com/xxx/") },
+                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                trailingIcon = {
+                    if (state.url.isNotEmpty()) {
+                        IconButton(onClick = { vm.onUrlChange("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Hapus URL")
+                        }
+                    }
+                },
                 singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Go
+                ),
+                keyboardActions = KeyboardActions(onGo = {
+                    focusManager.clearFocus()
+                    if (!state.loading) vm.download()
+                }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             Button(
-                onClick = { vm.download() },
+                onClick = {
+                    focusManager.clearFocus()
+                    vm.download()
+                },
                 enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
             ) {
-                Text(if (state.loading) "Loading..." else "Ambil Media")
+                if (state.loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("Memproses…", fontWeight = FontWeight.SemiBold)
+                } else {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ambil Media", fontWeight = FontWeight.SemiBold)
+                }
             }
 
-            state.error?.let {
-                Text("Error: $it", color = MaterialTheme.colorScheme.error)
+            // Error
+            AnimatedVisibility(
+                visible = state.error != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                state.error?.let { ErrorBanner(it) }
             }
 
+            // Result
             state.result?.let { r ->
                 ResultCard(
                     result = r,
@@ -113,8 +196,78 @@ fun TiktokDownloaderScreen(
                 )
             }
 
+            // Empty hint
+            if (state.result == null && state.error == null && !state.loading) {
+                EmptyHint()
+            }
+
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = scheme.errorContainer,
+        contentColor = scheme.onErrorContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.ErrorOutline, contentDescription = null)
+            Column {
+                Text(
+                    "Gagal mengambil media",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(message, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyHint() {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(scheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Link,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text(
+            "Belum ada media",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            "Tempel link TikTok lalu tekan Ambil Media.",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -130,33 +283,44 @@ private fun ResultCard(
     val mediaList = result.data.orEmpty()
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.5f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Author
             result.author?.let { a ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     AsyncImage(
                         model = a.avatar,
-                        contentDescription = a.nickname,
-                        modifier = Modifier.size(40.dp).clip(CircleShape).background(scheme.surfaceVariant),
+                        contentDescription = a.nickname?.let { "Foto profil $it" } ?: "Foto profil",
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(scheme.surfaceVariant),
                         contentScale = ContentScale.Crop
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text(
                             a.nickname ?: "-",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             "@${a.fullname ?: "-"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -164,41 +328,56 @@ private fun ResultCard(
 
             // Title
             result.title?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             // Cover
             result.cover?.let { cover ->
-                AsyncImage(
-                    model = cover,
-                    contentDescription = "cover",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Fit
-                )
+                MediaFrame {
+                    AsyncImage(
+                        model = cover,
+                        contentDescription = "Sampul konten",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
             }
 
             // Video case
             if (result.isVideo && mediaList.isNotEmpty()) {
                 val videoUrl = mediaList[0]
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     OutlinedButton(
                         onClick = { onOpen(videoUrl) },
-                        modifier = Modifier.weight(1f)
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Putar")
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Putar", fontWeight = FontWeight.SemiBold)
                     }
                     Button(
                         onClick = { onDownloadVideo(videoUrl) },
-                        modifier = Modifier.weight(1f)
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Video")
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Video", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -208,29 +387,32 @@ private fun ResultCard(
                 Text(
                     "Foto (${mediaList.size})",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.semantics { heading() }
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     mediaList.forEachIndexed { i, imgUrl ->
-                        Card(shape = RoundedCornerShape(12.dp)) {
-                            Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MediaFrame {
                                 AsyncImage(
                                     model = imgUrl,
-                                    contentDescription = "foto $i",
+                                    contentDescription = "Foto ${i + 1} dari ${mediaList.size}",
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 320.dp)
-                                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                                        .heightIn(max = 320.dp),
                                     contentScale = ContentScale.Fit
                                 )
-                                Button(
-                                    onClick = { onDownloadImage(imgUrl) },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Simpan foto ${i + 1}")
-                                }
+                            }
+                            FilledTonalButton(
+                                onClick = { onDownloadImage(imgUrl) },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Simpan foto ${i + 1}", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -239,33 +421,51 @@ private fun ResultCard(
 
             // Music
             result.music_info?.let { m ->
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = scheme.surfaceVariant)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = scheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.MusicNote, contentDescription = null, tint = scheme.primary)
-                        Spacer(Modifier.width(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(scheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = scheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                         Column(Modifier.weight(1f)) {
                             Text(
                                 m.title ?: "-",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 m.author ?: "-",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = scheme.onSurfaceVariant,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         m.url?.takeIf { it.isNotBlank() }?.let { url ->
                             IconButton(onClick = { onDownloadMusic(url) }) {
-                                Icon(Icons.Default.Download, contentDescription = "simpan musik")
+                                Icon(Icons.Default.Download, contentDescription = "Simpan musik")
                             }
                         }
                     }
@@ -274,14 +474,15 @@ private fun ResultCard(
 
             // Stats
             result.stats?.let { s ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    StatBox("Views", s.views ?: "-")
-                    StatBox("Likes", s.likes ?: "-")
-                    StatBox("Comment", s.comment ?: "-")
-                    StatBox("Share", s.share ?: "-")
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatBox("Views", s.views ?: "-", Modifier.weight(1f))
+                        StatBox("Likes", s.likes ?: "-", Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatBox("Comment", s.comment ?: "-", Modifier.weight(1f))
+                        StatBox("Share", s.share ?: "-", Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -289,9 +490,50 @@ private fun ResultCard(
 }
 
 @Composable
-private fun StatBox(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun MediaFrame(content: @Composable () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun StatBox(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = "$label: $value"
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
