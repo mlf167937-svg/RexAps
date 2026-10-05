@@ -919,6 +919,14 @@ class RexGitViewModel(
             _state.update {
                 it.copy(
                     isPushing = true,
+                    pushStage = "Checking Files...",
+                    pushDetail = "Preparing RexPush",
+                    pushLog = emptyList(),
+                    pushFinished = false,
+                    pushSuccess = false,
+                    pushError = null,
+                    pushCommitMessage = null,
+                    pushVersion = null,
                     error = null,
                     message = null
                 )
@@ -938,37 +946,85 @@ class RexGitViewModel(
                     commitType = commitType,
                     commitFolder = commitFolder,
                     username = auth.username,
-                    token = auth.token
-                )
-
-                reloadRepository(repo)
-
-                if (result.success) {
-                    val text = buildString {
-                        append(result.message)
-
-                        result.version?.let {
-                            append(
-                                "\nVersion " +
-                                    "${it.versionName} " +
-                                    "(${it.versionCode})"
+                    token = auth.token,
+                    onProgress = { stage, detail, logLine ->
+                        _state.update { cur ->
+                            cur.copy(
+                                pushStage = stage,
+                                pushDetail = detail,
+                                pushLog = if (logLine.isNullOrBlank()) {
+                                    cur.pushLog
+                                } else {
+                                    (cur.pushLog + logLine).takeLast(80)
+                                }
                             )
                         }
                     }
+                )
 
+                _state.update {
+                    it.copy(
+                        pushStage = if (result.success) "RexPush" else "Push failed",
+                        pushDetail = if (result.success) "Successfully pushed" else result.message,
+                        pushFinished = true,
+                        pushSuccess = result.success,
+                        pushError = result.message.takeIf { !result.success },
+                        pushVersion = result.version,
+                        pushCommitMessage = if (result.success && message.isNotBlank()) {
+                            RexGitCommitMeta.buildMessage(
+                                version = result.version,
+                                type = commitType,
+                                folder = commitFolder,
+                                description = message
+                            )
+                        } else null
+                    )
+                }
+
+                if (result.success) {
                     _state.update {
-                        it.copy(message = text)
+                        it.copy(pushStage = "Refreshing", pushDetail = "Updating repository status")
                     }
-                } else {
+                    reloadRepository(repo)
                     _state.update {
-                        it.copy(error = result.message)
+                        it.copy(
+                            pushStage = "RexPush",
+                            pushDetail = "Successfully pushed",
+                            pushFinished = true,
+                            pushSuccess = true
+                        )
                     }
+                }
+            } catch (t: Throwable) {
+                _state.update {
+                    it.copy(
+                        pushStage = "Push failed",
+                        pushDetail = t.readableMessage("Push failed"),
+                        pushFinished = true,
+                        pushSuccess = false,
+                        pushError = t.readableMessage("Push failed")
+                    )
                 }
             } finally {
                 _state.update {
                     it.copy(isPushing = false)
                 }
             }
+        }
+    }
+
+    fun clearPushState() {
+        _state.update {
+            it.copy(
+                pushStage = "Checking Files...",
+                pushDetail = "",
+                pushLog = emptyList(),
+                pushFinished = false,
+                pushSuccess = false,
+                pushError = null,
+                pushCommitMessage = null,
+                pushVersion = null
+            )
         }
     }
 

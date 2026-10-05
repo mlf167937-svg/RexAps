@@ -15,8 +15,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -87,6 +93,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -121,9 +128,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -147,6 +156,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class CreateKind { FILE, FOLDER }
@@ -292,28 +303,39 @@ fun RexGitScreen(
     }
 
     if (pushDialog) {
-        PushDialog(
-            message = commitMessage,
-            onMessageChange = { commitMessage = it },
-            type = RexGitCommitType.valueOf(commitType),
-            onTypeChange = { commitType = it.name },
-            folder = commitFolder,
-            folders = detectedCommitFolders,
-            onFolderChange = { commitFolder = it },
-            bumpVersion = bumpVersion,
-            onBumpChange = { bumpVersion = it },
-            changeCount = state.gitStatus.changes.size,
-            onDismiss = { pushDialog = false },
-            onPush = {
-                viewModel.push(
-                    message = commitMessage.trim(),
-                    bumpVersion = bumpVersion,
-                    commitType = RexGitCommitType.valueOf(commitType),
-                    commitFolder = commitFolder
-                )
-                pushDialog = false
-            }
-        )
+        if (state.isPushing || state.pushFinished) {
+            RexPushProgressDialog(
+                state = state,
+                onDismiss = {
+                    if (!state.isPushing) {
+                        viewModel.clearPushState()
+                        pushDialog = false
+                    }
+                }
+            )
+        } else {
+            PushDialog(
+                message = commitMessage,
+                onMessageChange = { commitMessage = it },
+                type = RexGitCommitType.valueOf(commitType),
+                onTypeChange = { commitType = it.name },
+                folder = commitFolder,
+                folders = detectedCommitFolders,
+                onFolderChange = { commitFolder = it },
+                bumpVersion = bumpVersion,
+                onBumpChange = { bumpVersion = it },
+                changeCount = state.gitStatus.changes.size,
+                onDismiss = { pushDialog = false },
+                onPush = {
+                    viewModel.push(
+                        message = commitMessage.trim(),
+                        bumpVersion = bumpVersion,
+                        commitType = RexGitCommitType.valueOf(commitType),
+                        commitFolder = commitFolder
+                    )
+                }
+            )
+        }
     }
 
     if (discardDialog) {
@@ -2366,6 +2388,278 @@ private fun PushDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+
+@Composable
+private fun RexPushProgressDialog(
+    state: RexGitUiState,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!state.isPushing) onDismiss()
+        }
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp),
+            shape = RoundedCornerShape(30.dp),
+            tonalElevation = 10.dp,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (state.pushSuccess) {
+                    RexPushSuccessAnimation()
+                } else {
+                    RexPushLoader(active = state.isPushing)
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    if (state.pushSuccess) "✓ RexPush" else "RexPush",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (state.pushSuccess) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+
+                Spacer(Modifier.height(5.dp))
+
+                Text(
+                    state.pushDetail.ifBlank { state.pushStage },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(18.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            state.pushStage,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (state.pushSuccess) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+
+                        if (state.pushLog.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 170.dp)
+                            ) {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    reverseLayout = true,
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    items(state.pushLog.asReversed()) { line ->
+                                        Text(
+                                            line,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!state.pushSuccess && state.pushError != null) {
+                            Text(
+                                state.pushError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        if (state.pushSuccess) {
+                            state.pushCommitMessage?.let { commit ->
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    commit,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (state.pushSuccess) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Successfully pushed",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (!state.isPushing) {
+                    Spacer(Modifier.height(18.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (state.pushSuccess) "Done" else "Close")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RexPushLoader(active: Boolean) {
+    val transition = rememberInfiniteTransition(label = "rexPushLoader")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    Canvas(Modifier.size(104.dp)) {
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * 0.34f
+
+        drawCircle(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            radius = radius,
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.dp.toPx()
+            )
+        )
+
+        repeat(8) { index ->
+            val angle = Math.toRadians(
+                (rotation + index * 45f).toDouble()
+            )
+            val x = center.x + cos(angle).toFloat() * radius
+            val y = center.y + sin(angle).toFloat() * radius
+            val emphasis = if (index == 0) 1f else 0.28f
+            drawCircle(
+                color = MaterialTheme.colorScheme.primary.copy(
+                    alpha = if (active) emphasis * pulse else 0.25f
+                ),
+                radius = if (index == 0) 5.dp.toPx() else 3.dp.toPx(),
+                center = androidx.compose.ui.geometry.Offset(x, y)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RexPushSuccessAnimation() {
+    val transition = rememberInfiniteTransition(label = "rexPushSuccess")
+    val ring by transition.animateFloat(
+        initialValue = 0.82f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "successRing"
+    )
+    val alpha by transition.animateFloat(
+        initialValue = 0.18f,
+        targetValue = 0.38f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "successAlpha"
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(420),
+        label = "successIcon"
+    )
+
+    Box(
+        modifier = Modifier.size(112.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                radius = size.minDimension * 0.38f * ring,
+                center = androidx.compose.ui.geometry.Offset(
+                    size.width / 2f,
+                    size.height / 2f
+                ),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 3.dp.toPx()
+                )
+            )
+
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val r = size.minDimension * 0.43f
+
+            listOf(0f, 60f, 120f, 180f, 240f, 300f).forEach { deg ->
+                val a = Math.toRadians(deg.toDouble())
+                drawCircle(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                    radius = 2.5.dp.toPx(),
+                    center = androidx.compose.ui.geometry.Offset(
+                        cx + cos(a).toFloat() * r,
+                        cy + sin(a).toFloat() * r
+                    )
+                )
+            }
+        }
+
+        Icon(
+            Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(62.dp)
+                .scale(iconScale)
+        )
+    }
 }
 
 @Composable
