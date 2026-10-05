@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2649
-        versionName = "26.49"
+        versionCode = 2650
+        versionName = "26.50"
     }
 
     buildFeatures {

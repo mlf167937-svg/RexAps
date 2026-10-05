@@ -1,3 +1,4 @@
+
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
@@ -137,6 +138,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1398,25 +1400,100 @@ private fun EditorScreen(
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val focusRequester = remember { FocusRequester() }
 
     var field by remember(path) { mutableStateOf(TextFieldValue(state.editorContent)) }
     var fontSize by rememberSaveable { mutableStateOf(EDITOR_DEFAULT_FONT) }
+    var searchOpen by rememberSaveable(path) { mutableStateOf(false) }
+    var searchQuery by rememberSaveable(path) { mutableStateOf("") }
+    var searchIndex by rememberSaveable(path) { mutableStateOf(0) }
+    var goToLineOpen by rememberSaveable(path) { mutableStateOf(false) }
+    var goToLineText by rememberSaveable(path) { mutableStateOf("1") }
 
     val repoPath = state.selectedRepository?.path ?: ""
     val name = path.substringAfterLast('/')
     val relative = path.removePrefix(repoPath).trimStart('/')
     val lines = remember(field.text) { field.text.count { it == '\n' } + 1 }
+    val language = remember(path) { RexGitSyntax.detect(path) }
+
+    val syntaxColors = RexGitSyntaxColors(
+        keyword = scheme.primary,
+        string = scheme.tertiary,
+        number = scheme.secondary,
+        comment = scheme.onSurfaceVariant.copy(alpha = 0.72f),
+        type = scheme.primary.copy(alpha = 0.82f),
+        property = scheme.secondary,
+        tag = scheme.primary,
+        punctuation = scheme.onSurfaceVariant
+    )
+
+    val highlighted = remember(
+        field.text,
+        language,
+        syntaxColors
+    ) {
+        RexGitSyntax.highlight(field.text, language, syntaxColors)
+    }
+
+    val visualTransformation = remember(highlighted) {
+        VisualTransformation { transformed ->
+            TransformedText(
+                highlighted,
+                androidx.compose.ui.text.input.OffsetMapping.Identity
+            )
+        }
+    }
 
     fun insert(snippet: String) {
         val sel = field.selection
         val updated = field.text.replaceRange(sel.min, sel.max, snippet)
-
         field = TextFieldValue(updated, TextRange(sel.min + snippet.length))
         onEdit(updated)
     }
 
     fun toast(text: String) {
         Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+
+    fun searchMatches(query: String): List<Int> {
+        if (query.isBlank()) return emptyList()
+        val result = mutableListOf<Int>()
+        var from = 0
+        while (from < field.text.length) {
+            val found = field.text.indexOf(query, from, ignoreCase = true)
+            if (found < 0) break
+            result += found
+            from = found + maxOf(query.length, 1)
+        }
+        return result
+    }
+
+    fun selectSearchMatch(direction: Int) {
+        val matches = searchMatches(searchQuery)
+        if (matches.isEmpty()) {
+            toast("No match")
+            return
+        }
+        searchIndex = (searchIndex + direction).mod(matches.size)
+        val start = matches[searchIndex]
+        field = field.copy(selection = TextRange(start, start + searchQuery.length))
+        focusRequester.requestFocus()
+    }
+
+    fun goToLine() {
+        val requested = goToLineText.toIntOrNull() ?: 1
+        val targetLine = requested.coerceIn(1, lines)
+        var currentLine = 1
+        var offset = 0
+        while (currentLine < targetLine) {
+            val next = field.text.indexOf('\n', offset)
+            if (next < 0) break
+            offset = next + 1
+            currentLine++
+        }
+        field = field.copy(selection = TextRange(offset))
+        focusRequester.requestFocus()
+        goToLineOpen = false
     }
 
     Column(
@@ -1446,7 +1523,6 @@ private fun EditorScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
                 Text(
                     if (state.editorDirty) "Unsaved changes" else relative,
                     style = MaterialTheme.typography.labelMedium,
@@ -1456,13 +1532,26 @@ private fun EditorScreen(
                 )
             }
 
-            Spacer(Modifier.width(8.dp))
+            Text(
+                RexGitSyntax.label(language),
+                style = MaterialTheme.typography.labelMedium,
+                color = scheme.primary,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+
+            HeaderIconButton(
+                icon = Icons.Default.Search,
+                description = "Search",
+                onClick = { searchOpen = true }
+            )
+
+            Spacer(Modifier.width(6.dp))
 
             Button(
                 onClick = onSave,
                 enabled = state.editorDirty && !state.isSaving,
                 shape = RoundedCornerShape(14.dp),
-                contentPadding = PaddingValues(horizontal = 20.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
                 modifier = Modifier.heightIn(min = 44.dp)
             ) {
                 Text(if (state.isSaving) "Saving" else "Save")
@@ -1471,7 +1560,6 @@ private fun EditorScreen(
 
         ProgressSlot(state.isSaving)
 
-        // ----- editor tools: copy all / paste / select all -----
         Row(
             Modifier
                 .fillMaxWidth()
@@ -1481,6 +1569,29 @@ private fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             FilledTonalButton(
+                onClick = { searchOpen = true },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Search")
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    goToLineText = "${field.text.substring(0, field.selection.start).count { it == '\n' } + 1}"
+                    goToLineOpen = true
+                },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Text("Go to line")
+            }
+
+            FilledTonalButton(
                 onClick = {
                     clipboard.setText(AnnotatedString(field.text))
                     toast("All text copied")
@@ -1489,11 +1600,7 @@ private fun EditorScreen(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                 modifier = Modifier.heightIn(min = 40.dp)
             ) {
-                Icon(
-                    Icons.Default.ContentCopy,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Copy all")
             }
@@ -1507,34 +1614,23 @@ private fun EditorScreen(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                 modifier = Modifier.heightIn(min = 40.dp)
             ) {
-                Icon(
-                    Icons.Default.ContentPaste,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Paste")
             }
 
             FilledTonalButton(
-                onClick = {
-                    field = field.copy(selection = TextRange(0, field.text.length))
-                },
+                onClick = { field = field.copy(selection = TextRange(0, field.text.length)) },
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                 modifier = Modifier.heightIn(min = 40.dp)
             ) {
-                Icon(
-                    Icons.Default.SelectAll,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Default.SelectAll, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Select all")
             }
         }
 
-        // ----- font size: A-  slider  A+ -----
         Row(
             Modifier
                 .fillMaxWidth()
@@ -1542,67 +1638,35 @@ private fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                onClick = {
-                    fontSize = (fontSize - 1).coerceAtLeast(EDITOR_MIN_FONT)
-                },
+                onClick = { fontSize = (fontSize - 1).coerceAtLeast(EDITOR_MIN_FONT) },
                 enabled = fontSize > EDITOR_MIN_FONT,
                 shape = RoundedCornerShape(10.dp),
                 color = scheme.surfaceVariant
             ) {
-                Text(
-                    "A−",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .heightIn(min = 40.dp)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+                Text("A−", style = MaterialTheme.typography.labelLarge, modifier = Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp, vertical = 10.dp))
             }
-
             Slider(
                 value = fontSize.toFloat(),
-                onValueChange = {
-                    fontSize = it.toInt().coerceIn(EDITOR_MIN_FONT, EDITOR_MAX_FONT)
-                },
+                onValueChange = { fontSize = it.toInt().coerceIn(EDITOR_MIN_FONT, EDITOR_MAX_FONT) },
                 valueRange = EDITOR_MIN_FONT.toFloat()..EDITOR_MAX_FONT.toFloat(),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
             )
-
             Surface(
-                onClick = {
-                    fontSize = (fontSize + 1).coerceAtMost(EDITOR_MAX_FONT)
-                },
+                onClick = { fontSize = (fontSize + 1).coerceAtMost(EDITOR_MAX_FONT) },
                 enabled = fontSize < EDITOR_MAX_FONT,
                 shape = RoundedCornerShape(10.dp),
                 color = scheme.surfaceVariant
             ) {
-                Text(
-                    "A+",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .heightIn(min = 40.dp)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+                Text("A+", style = MaterialTheme.typography.labelLarge, modifier = Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp, vertical = 10.dp))
             }
-
             Spacer(Modifier.width(8.dp))
-
-            Text(
-                "${fontSize}px",
-                style = MaterialTheme.typography.labelLarge,
-                color = scheme.onSurfaceVariant,
-                modifier = Modifier.width(46.dp)
-            )
+            Text("${fontSize}px", style = MaterialTheme.typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.width(46.dp))
         }
 
         Spacer(Modifier.height(4.dp))
 
         Surface(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
             shape = RoundedCornerShape(18.dp),
             color = scheme.surface,
             border = BorderStroke(1.dp, scheme.outlineVariant)
@@ -1620,6 +1684,7 @@ private fun EditorScreen(
                     fontSize = fontSize.sp,
                     lineHeight = (fontSize * 1.4f).sp
                 ),
+                visualTransformation = visualTransformation,
                 cursorBrush = SolidColor(scheme.primary),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
@@ -1628,6 +1693,7 @@ private fun EditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .focusRequester(focusRequester)
                     .padding(14.dp)
             )
         }
@@ -1645,14 +1711,7 @@ private fun EditorScreen(
                     shape = RoundedCornerShape(10.dp),
                     color = scheme.surfaceVariant
                 ) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .heightIn(min = 40.dp)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    )
+                    Text(label, style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace, modifier = Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
         }
@@ -1661,9 +1720,57 @@ private fun EditorScreen(
             "$lines lines  •  ${field.text.length} characters",
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+            modifier = Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+        )
+    }
+
+    if (searchOpen) {
+        AlertDialog(
+            onDismissRequest = { searchOpen = false },
+            title = { Text("Search in file") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            searchIndex = 0
+                        },
+                        singleLine = true,
+                        label = { Text("Find") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                    )
+                    val count = searchMatches(searchQuery).size
+                    Text(
+                        if (searchQuery.isBlank()) "Type text to search" else "$count match${if (count == 1) "" else "es"}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { selectSearchMatch(-1) }, enabled = searchQuery.isNotBlank()) { Text("Previous") }
+                        OutlinedButton(onClick = { selectSearchMatch(1) }, enabled = searchQuery.isNotBlank()) { Text("Next") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { searchOpen = false }) { Text("Done") } }
+        )
+    }
+
+    if (goToLineOpen) {
+        AlertDialog(
+            onDismissRequest = { goToLineOpen = false },
+            title = { Text("Go to line") },
+            text = {
+                OutlinedTextField(
+                    value = goToLineText,
+                    onValueChange = { goToLineText = it.filter(Char::isDigit) },
+                    singleLine = true,
+                    label = { Text("Line 1–$lines") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            },
+            confirmButton = { TextButton(onClick = ::goToLine) { Text("Go") } },
+            dismissButton = { TextButton(onClick = { goToLineOpen = false }) { Text("Cancel") } }
         )
     }
 }
@@ -2644,3 +2751,5 @@ private fun openAllFilesAccess(context: Context) {
         }
     }
 }
+
+
