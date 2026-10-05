@@ -20,7 +20,10 @@ class RexWarpRepository private constructor(context: Context) {
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val preferences = RexWarpPreferences(context)
-    val usage = RexWarpUsageRepository(RexWarpDatabase.get(context).usageDao())
+    val usage = RexWarpUsageRepository(
+        RexWarpDatabase.get(context).usageDao(),
+        RexWarpBackupStore.get(context)
+    )
 
     private val _state = MutableStateFlow(
         RexWarpState(engineUnavailableReason = RexWarpTunnelRegistry.provider.unavailableReason)

@@ -8,6 +8,11 @@ data class RexWarpDailyUsage(val date: LocalDate, val downloadBytes: Long, val u
     val totalBytes: Long get() = downloadBytes + uploadBytes
 }
 
+/** Satu batang grafik: bisa mewakili satu jam atau satu hari. */
+data class RexWarpBucket(val label: String, val downloadBytes: Long, val uploadBytes: Long) {
+    val totalBytes: Long get() = downloadBytes + uploadBytes
+}
+
 data class DateRange(val start: LocalDate, val end: LocalDate) {
     operator fun contains(d: LocalDate) = !d.isBefore(start) && !d.isAfter(end)
 
@@ -34,7 +39,7 @@ enum class RexWarpRangePreset(val label: String) {
 }
 
 enum class RexWarpGraphRange(val label: String, val days: Int?) {
-    DAYS_7("7 days", 7), DAYS_30("30 days", 30), DAYS_90("90 days", 90), CUSTOM("Custom", null)
+    HOURS_24("24 hours", 1), DAYS_7("7 days", 7), DAYS_30("30 days", 30), DAYS_90("90 days", 90), CUSTOM("Custom", null)
 }
 
 data class RexWarpSelection(
@@ -54,7 +59,9 @@ data class RexWarpUsageUi(
     val selection: RexWarpSelection,
     val range: DateRange?,
     val rangeSummary: RexWarpUsageSummary,
-    val graphSeries: List<RexWarpDailyUsage>,
+    val graphBuckets: List<RexWarpBucket>,
     val hasAnyData: Boolean,
     val hasDataInGraphRange: Boolean
 )
+
+data class RexWarpBackupUi(val folderName: String?, val recording: Boolean)

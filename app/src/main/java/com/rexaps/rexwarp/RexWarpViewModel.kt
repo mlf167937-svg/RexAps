@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.rexaps.rexwarp.model.RexWarpUsageSummary
 import com.rexaps.rexwarp.tunnel.RexWarpTunnelRegistry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -19,6 +20,7 @@ import java.util.Locale
 
 class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = RexWarpRepository.get(app)
+    private val store = RexWarpBackupStore.get(app)
     private val sharing = SharingStarted.WhileSubscribed(5_000)
 
     val state: StateFlow<RexWarpState> = repo.state
@@ -27,13 +29,24 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
         repo.preferences.settings.stateIn(viewModelScope, sharing, RexWarpSettings())
 
     private val today = MutableStateFlow(LocalDate.now())
+    private val tick = MutableStateFlow(0)
     private val selection = MutableStateFlow(RexWarpSelection())
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages = _messages.asSharedFlow()
 
+    private val _backup = MutableStateFlow(RexWarpBackupUi(null, store.recording))
+    val backup: StateFlow<RexWarpBackupUi> = _backup.asStateFlow()
+
+    init { refreshBackup() }
+
     /** null = masih loading. */
     val allUsage: StateFlow<List<RexWarpDailyUsage>?> =
         repo.usage.observeAll().stateIn<List<RexWarpDailyUsage>?>(viewModelScope, sharing, null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val hourly: Flow<List<RexWarpBucket>> =
+        combine(selection.map { it.graph == RexWarpGraphRange.HOURS_24 }.distinctUntilChanged(), tick) { h, _ -> h }
+            .flatMapLatest { wanted -> if (wanted) repo.usage.observeHours(24) else flowOf(emptyList()) }
 
     val periods: StateFlow<RexWarpPeriodSummaries?> = combine(allUsage, today) { rows, t ->
         rows?.let {
@@ -46,17 +59,24 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, sharing, null)
 
-    val usageUi: StateFlow<RexWarpUsageUi?> = combine(allUsage, selection, today) { rows, sel, t ->
+    val usageUi: StateFlow<RexWarpUsageUi?> = combine(allUsage, selection, today, hourly) { rows, sel, t, hours ->
         rows?.let {
             val range = sel.preset.resolve(t, sel.custom)
-            val graphRange = sel.graph.days?.let { n -> DateRange(t.minusDays((n - 1).toLong()), t) } ?: sel.custom
-            val byDate = it.associateBy { d -> d.date }
-            val series = graphRange?.days()?.map { d -> byDate[d] ?: RexWarpDailyUsage(d, 0, 0) }.orEmpty()
+            val buckets: List<RexWarpBucket> = if (sel.graph == RexWarpGraphRange.HOURS_24) {
+                hours
+            } else {
+                val graphRange = sel.graph.days?.let { n -> DateRange(t.minusDays((n - 1).toLong()), t) } ?: sel.custom
+                val byDate = it.associateBy { d -> d.date }
+                graphRange?.days()?.map { d ->
+                    byDate[d]?.let { u -> RexWarpBucket(d.toString(), u.downloadBytes, u.uploadBytes) }
+                        ?: RexWarpBucket(d.toString(), 0, 0)
+                }.orEmpty()
+            }
             RexWarpUsageUi(
                 selection = sel, range = range,
                 rangeSummary = range?.let { r -> it.summary(r) } ?: RexWarpUsageSummary(),
-                graphSeries = series, hasAnyData = it.isNotEmpty(),
-                hasDataInGraphRange = series.any { s -> s.totalBytes > 0 }
+                graphBuckets = buckets, hasAnyData = it.isNotEmpty(),
+                hasDataInGraphRange = buckets.any { b -> b.totalBytes > 0 }
             )
         }
     }.stateIn(viewModelScope, sharing, null)
@@ -69,7 +89,7 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
     private fun List<RexWarpDailyUsage>.summary(range: DateRange) =
         filter { it.date in range }.fold(RexWarpUsageSummary()) { a, d -> a + RexWarpUsageSummary(d.downloadBytes, d.uploadBytes) }
 
-    fun refreshToday() { today.value = LocalDate.now() }
+    fun refreshToday() { today.value = LocalDate.now(); tick.update { it + 1 } }
     fun selectPreset(p: RexWarpRangePreset) = selection.update { it.copy(preset = p) }
     fun selectGraph(g: RexWarpGraphRange) = selection.update { it.copy(graph = g) }
     fun setCustomRange(r: DateRange) = selection.update { it.copy(custom = r) }
@@ -81,6 +101,33 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- settings ----
     fun saveSettings(s: RexWarpSettings) { viewModelScope.launch { repo.preferences.save(s) } }
+
+    // ---- pencatatan & backup folder ----
+    fun refreshBackup() {
+        viewModelScope.launch(Dispatchers.IO) { _backup.value = RexWarpBackupUi(store.folderName(), store.recording) }
+    }
+
+    fun setBackupFolder(uri: Uri) {
+        viewModelScope.launch {
+            val ok = runCatching { withContext(Dispatchers.IO) { store.setTree(uri) } }.isSuccess
+            refreshBackup()
+            _messages.emit(if (ok) "Backup folder saved." else "Could not use that folder. Choose another one.")
+        }
+    }
+
+    fun setRecording(on: Boolean) {
+        store.recording = on
+        if (on) RexWarpRecorderService.start(getApplication()) else RexWarpRecorderService.stop(getApplication())
+        refreshBackup()
+    }
+
+    fun restoreFromFolder() = viewModelScope.launch {
+        val result = repo.usage.restoreFromFolder()
+        _messages.emit(
+            result.fold({ "Restored $it day(s) from the backup folder." },
+                { (it as? IllegalArgumentException)?.message ?: "Restore failed. Check the folder and try again." })
+        )
+    }
 
     // ---- data ----
     fun resetToday() = viewModelScope.launch { repo.usage.deleteDay(LocalDate.now()); _messages.emit("Today's statistics were reset.") }

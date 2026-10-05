@@ -1,5 +1,6 @@
 package com.rexaps.rexwarp.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,7 +16,6 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import androidx.compose.foundation.horizontalScroll
 
 private val dateFmt: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
@@ -30,11 +30,11 @@ fun RexWarpUsageScreen(
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (!ui.hasAnyData) {
-            RexWarpEmptyState("No usage data yet", "Traffic is recorded while the RexWARP tunnel is connected. You can also import a RexWARP export in Settings.")
+            RexWarpEmptyState("No usage data yet", "Turn on usage recording below, or connect the tunnel. You can also import a RexWARP export in Settings.")
         }
 
         Text("Date range", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.horizontalScrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.chipRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RexWarpRangePreset.entries.forEach { p ->
                 FilterChip(selected = ui.selection.preset == p, label = { Text(p.label) }, onClick = {
                     if (p == RexWarpRangePreset.CUSTOM) pickerFor = "usage"
@@ -54,7 +54,7 @@ fun RexWarpUsageScreen(
         }
 
         Text("Traffic graph", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.horizontalScrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.chipRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RexWarpGraphRange.entries.forEach { g ->
                 FilterChip(selected = ui.selection.graph == g, label = { Text(g.label) }, onClick = {
                     if (g == RexWarpGraphRange.CUSTOM) pickerFor = "graph"
@@ -64,13 +64,15 @@ fun RexWarpUsageScreen(
         }
         when {
             !ui.hasAnyData -> Unit
-            ui.graphSeries.isEmpty() -> RexWarpEmptyState("Pick a custom range", "Select start and end dates to draw the graph.")
+            ui.graphBuckets.isEmpty() -> RexWarpEmptyState("Pick a custom range", "Select start and end dates to draw the graph.")
             !ui.hasDataInGraphRange -> RexWarpEmptyState("No usage data in this range", "Try a longer range.")
-            else -> ElevatedCard(Modifier.fillMaxWidth()) { RexWarpGraph(ui.graphSeries, Modifier.padding(16.dp)) }
+            else -> ElevatedCard(Modifier.fillMaxWidth()) { RexWarpGraph(ui.graphBuckets, Modifier.padding(16.dp)) }
         }
+
+        RexWarpBackupCard()
     }
 
-    pickerFor?.let { target ->
+    pickerFor?.let {
         val today = remember { LocalDate.now() }
         val state = rememberDateRangePickerState(selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long) = !utcDate(utcTimeMillis).isAfter(today)
@@ -91,5 +93,4 @@ fun RexWarpUsageScreen(
 private fun utcDate(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
 
 @Composable
-private fun Modifier.horizontalScrollRow(): Modifier =
-    this.fillMaxWidth().then(Modifier.horizontalScroll(rememberScrollState()))
+private fun Modifier.chipRow(): Modifier = this.fillMaxWidth().horizontalScroll(rememberScrollState())

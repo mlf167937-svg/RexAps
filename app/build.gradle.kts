@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2640
-        versionName = "26.40"
+        versionCode = 2641
+        versionName = "26.41"
     }
 
     buildFeatures {
@@ -89,6 +89,7 @@ dependencies {
 
     // Tunnel CloudFlare
     implementation("com.wireguard.android:tunnel:1.0.20230706")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Room
     val room = "2.6.1"

@@ -11,6 +11,11 @@ import kotlinx.coroutines.launch
 class RexWarpBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+
+        if (RexWarpBackupStore.get(context).recording) {
+            runCatching { RexWarpRecorderService.start(context) }
+        }
+
         val pending = goAsync()
         val repo = RexWarpRepository.get(context)
         repo.appScope.launch {
