@@ -5,3 +5,4 @@ echo "Aps = $Aps"
 echo "AndroidManifest.xml = $AndroXml"
 
 alias copy="termux-clipboard-set"
+export MainActivity="$PWD/app/src/main/java/com/rexaps/MainActivity.kt"
