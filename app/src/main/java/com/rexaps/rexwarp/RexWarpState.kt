@@ -16,7 +16,9 @@ enum class RexWarpError(val userMessage: String) {
     UNEXPECTED_DISCONNECT("The connection was lost unexpectedly."),
     INVALID_CONFIG("Connection settings are invalid. Check DNS, IP and MTU settings."),
     UNSUPPORTED_ANDROID("This Android version is not supported."),
-    ENGINE_UNAVAILABLE("The WARP tunnel engine is not installed in this build.")
+    ENGINE_UNAVAILABLE("The WARP tunnel engine is not installed in this build."),
+    REGISTRATION_FAILED("Could not create a Cloudflare WARP account. Check your internet connection and try again."),
+    WARP_NOT_ACTIVE("Tunnel is up, but Cloudflare does not see this traffic as WARP (warp=off).")
 }
 
 data class RexWarpState(

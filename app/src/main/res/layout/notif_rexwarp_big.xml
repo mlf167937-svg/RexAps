@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp"
+    android:background="@drawable/bg_nt_root">
+
+    <!-- Header: logo, nama, status -->
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="40dp"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <ImageView
+            android:layout_width="36dp" android:layout_height="36dp"
+            android:src="@drawable/rexwarp_notif_logo" />
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical"
+            android:layout_marginStart="10dp">
+            <TextView
+                android:id="@+id/nt_title"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"
+                android:maxLines="1" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView
+                    android:layout_width="8dp" android:layout_height="8dp"
+                    android:src="@drawable/bg_nt_dot" />
+                <TextView
+                    android:id="@+id/nt_status"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textColor="#B8C6F0" android:textSize="12sp"
+                    android:maxLines="1" android:ellipsize="end" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Kartu Download / Upload -->
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:layout_marginTop="5dp">
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical"
+            android:layout_marginEnd="3dp" android:padding="7dp"
+            android:background="@drawable/bg_nt_card_dl">
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView
+                    android:layout_width="26dp" android:layout_height="26dp"
+                    android:padding="5dp"
+                    android:background="@drawable/bg_nt_circle_dl"
+                    android:src="@drawable/ic_nt_down" />
+                <LinearLayout
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical"
+                    android:layout_marginStart="7dp">
+                    <TextView
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Download"
+                        android:textColor="#9DB4E8" android:textSize="11sp" />
+                    <LinearLayout
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="bottom">
+                        <TextView
+                            android:id="@+id/nt_dl_value"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="#FFFFFF" android:textSize="19sp" android:textStyle="bold"
+                            android:maxLines="1" />
+                        <TextView
+                            android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginStart="3dp" android:layout_marginBottom="2dp"
+                            android:text="Mb/s"
+                            android:textColor="#7FB2FF" android:textSize="11sp" android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+            <ImageView
+                android:id="@+id/nt_dl_graph"
+                android:layout_width="match_parent" android:layout_height="22dp"
+                android:layout_marginTop="3dp" android:scaleType="fitXY" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical"
+            android:layout_marginStart="3dp" android:padding="7dp"
+            android:background="@drawable/bg_nt_card_ul">
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView
+                    android:layout_width="26dp" android:layout_height="26dp"
+                    android:padding="5dp"
+                    android:background="@drawable/bg_nt_circle_ul"
+                    android:src="@drawable/ic_nt_up" />
+                <LinearLayout
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical"
+                    android:layout_marginStart="7dp">
+                    <TextView
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Upload"
+                        android:textColor="#B9A6FF" android:textSize="11sp" />
+                    <LinearLayout
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="bottom">
+                        <TextView
+                            android:id="@+id/nt_ul_value"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:textColor="#FFFFFF" android:textSize="19sp" android:textStyle="bold"
+                            android:maxLines="1" />
+                        <TextView
+                            android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginStart="3dp" android:layout_marginBottom="2dp"
+                            android:text="Mb/s"
+                            android:textColor="#B9A6FF" android:textSize="11sp" android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+            <ImageView
+                android:id="@+id/nt_ul_graph"
+                android:layout_width="match_parent" android:layout_height="22dp"
+                android:layout_marginTop="3dp" android:scaleType="fitXY" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Baris info: Server | Jaringan | Waktu | Status -->
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="34dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_nt_server" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginStart="4dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Server" android:textColor="#8FA3D8" android:textSize="9sp" />
+                <TextView android:id="@+id/nt_server"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold"
+                    android:maxLines="1" android:ellipsize="end" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_nt_globe" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginStart="4dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Jaringan" android:textColor="#8FA3D8" android:textSize="9sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="WARP" android:textColor="#2D8CFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_nt_clock" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginStart="4dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Waktu" android:textColor="#8FA3D8" android:textSize="9sp" />
+                <Chronometer android:id="@+id/nt_timer"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_nt_shield" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginStart="4dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Status" android:textColor="#8FA3D8" android:textSize="9sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Aman" android:textColor="#19E58A" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Banner -->
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:layout_marginTop="4dp" android:padding="7dp"
+        android:background="@drawable/bg_nt_banner">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_nt_bolt" />
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="8dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Koneksi stabil dan cepat!"
+                android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Nikmati internet tanpa batas bersama RexWARP."
+                android:textColor="#9DB4E8" android:textSize="10sp"
+                android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_nt_chevron" />
+    </LinearLayout>
+</LinearLayout>

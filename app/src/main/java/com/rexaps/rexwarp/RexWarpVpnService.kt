@@ -8,6 +8,7 @@ import android.net.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -44,6 +45,8 @@ class RexWarpVpnService : VpnService() {
     private var lastRx = 0L; private var lastTx = 0L; private var lastSampleAt = 0L
     private var pendingDl = 0L; private var pendingUl = 0L; private var pendingDate: LocalDate = LocalDate.now()
     private var lastSpeed = RexWarpSpeed()
+    private val dlHist = ArrayDeque<Long>()   // riwayat kecepatan untuk grafik notifikasi
+    private val ulHist = ArrayDeque<Long>()
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { physical[network] = caps; evaluatePolicy() }
@@ -113,8 +116,10 @@ class RexWarpVpnService : VpnService() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "connect failed", e) // detail hanya di log, bukan ke user
-                handleFailure(RexWarpError.TUNNEL_FAILED)
+                Log.w(TAG, "connect failed", e)
+                // Ambil penyebab spesifik dari tunnel (mis. WARP_NOT_ACTIVE, REGISTRATION_FAILED).
+                val specific = (tunnel?.state?.value as? RexWarpTunnelState.Failed)?.error
+                handleFailure(specific ?: RexWarpError.TUNNEL_FAILED)
             }
         }
     }
@@ -145,6 +150,7 @@ class RexWarpVpnService : VpnService() {
             } else {
                 userWantsConnection = false
                 repo.setError(error)
+                updateNotification()
                 finishService()
             }
         }
@@ -172,12 +178,14 @@ class RexWarpVpnService : VpnService() {
         val t = tunnel ?: return
         tunnel = null; sessionActive = false
         runCatching { sample(t) }; flushPending()
+        lastSpeed = RexWarpSpeed(); dlHist.clear(); ulHist.clear()
         monitorJob?.cancel(); stateJob?.cancel(); infoJob?.cancel(); connectJob?.cancel()
         runCatching { withTimeout(DISCONNECT_TIMEOUT_MS) { t.disconnect() } }
     }
 
     private fun finishService() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        // Notifikasi error tetap terlihat setelah service berhenti (jangan dihapus bila ERROR).
+        stopForeground(if (repo.state.value.connection == RexWarpConnectionState.ERROR) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
@@ -193,7 +201,7 @@ class RexWarpVpnService : VpnService() {
                 delay(SAMPLE_MS)
                 tick++
                 sample(t)
-                if (tick % 3 == 0) updateNotification()   // notifikasi tidak di-update tiap detik
+                updateNotification(force = false)         // real-time tiap detik (dilewati saat layar mati)
                 if (tick % 15 == 0) flushPending()        // tulis DB tiap ~15 detik
             }
         }
@@ -209,6 +217,9 @@ class RexWarpVpnService : VpnService() {
         if (today != pendingDate) { flushPending(); pendingDate = today }
         pendingDl += dRx; pendingUl += dTx
         lastSpeed = RexWarpSpeed(dRx * 1000 / dt, dTx * 1000 / dt)
+        dlHist.addLast(lastSpeed.downBytesPerSec); ulHist.addLast(lastSpeed.upBytesPerSec)
+        while (dlHist.size > HISTORY_SIZE) dlHist.removeFirst()
+        while (ulHist.size > HISTORY_SIZE) ulHist.removeFirst()
         repo.updateLive(lastSpeed, s)
     }
 
@@ -251,21 +262,43 @@ class RexWarpVpnService : VpnService() {
 
     // ---- notifikasi / lifecycle ----------------------------------------------------------
 
-    private fun startForegroundSafely(): Boolean = try {
+    /**
+     * Android 14+: tipe SYSTEM_EXEMPTED bisa ditolak untuk app yang tidak memenuhi syarat.
+     * Coba beberapa tipe berurutan supaya service tidak langsung mati.
+     */
+    private fun startForegroundSafely(): Boolean {
         val n = RexWarpNotification.build(this, RexWarpConnectionState.CONNECTING, null, null, null)
-        if (Build.VERSION.SDK_INT >= 34) startForeground(RexWarpNotification.ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
-        else startForeground(RexWarpNotification.ID, n)
-        true
-    } catch (e: Exception) {
-        Log.w(TAG, "startForeground failed", e)
-        repo.setError(RexWarpError.SERVICE_STOPPED); stopSelf(); false
+        val types: List<Int> = if (Build.VERSION.SDK_INT >= 34)
+            listOf(ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        else listOf(0)
+        for (type in types) {
+            try {
+                if (Build.VERSION.SDK_INT >= 34) startForeground(RexWarpNotification.ID, n, type)
+                else startForeground(RexWarpNotification.ID, n)
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "startForeground(type=$type) failed", e)
+            }
+        }
+        repo.setError(RexWarpError.SERVICE_STOPPED); stopSelf()
+        return false
     }
 
-    private fun updateNotification() {
+    /** [force] = false: lewati bila layar mati (hemat baterai); notifikasi segar lagi saat layar menyala. */
+    private fun updateNotification(force: Boolean = true) {
+        if (!force && getSystemService(PowerManager::class.java)?.isInteractive == false) return
         val st = repo.state.value
+        val connected = st.connection == RexWarpConnectionState.CONNECTED
         val wall = st.sessionStartElapsedMs?.let { System.currentTimeMillis() - (SystemClock.elapsedRealtime() - it) }
-        getSystemService(NotificationManager::class.java)
-            .notify(RexWarpNotification.ID, RexWarpNotification.build(this, st.connection, lastSpeed, wall, st.pausedReason))
+        getSystemService(NotificationManager::class.java).notify(
+            RexWarpNotification.ID,
+            RexWarpNotification.build(
+                this, st.connection,
+                if (connected) lastSpeed else null,
+                wall, st.pausedReason, st.stats, st.info,
+                if (connected) RexWarpSpeedHistory(dlHist.toList(), ulHist.toList()) else null
+            )
+        )
     }
 
     override fun onRevoke() {
@@ -291,7 +324,8 @@ class RexWarpVpnService : VpnService() {
         const val ACTION_DISCONNECT = "com.rexaps.rexwarp.DISCONNECT"
         private const val TAG = "RexWarp"
         private const val SAMPLE_MS = 1_000L
-        private const val CONNECT_TIMEOUT_MS = 30_000L
+        private const val HISTORY_SIZE = 40
+        private const val CONNECT_TIMEOUT_MS = 70_000L   // registrasi + handshake + verifikasi warp=on
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
         private const val RECONNECT_BASE_DELAY_MS = 3_000L
         private const val MAX_RECONNECT = 5

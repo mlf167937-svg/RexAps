@@ -95,18 +95,37 @@
 
         <!-- RexWarp VPN Service -->
         <service
+            android:name="com.rexaps.rexwarp.RexWarpVpnService"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted|specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+
+        </service>
+
+        <!-- RexWarp Recorder Service -->
+        <service
             android:name="com.rexaps.rexwarp.RexWarpRecorderService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
+
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Local network usage statistics recording" />
+                android:value="usage_recorder" />
+
         </service>
 
         <!-- RexWarp Boot Receiver -->
         <receiver
             android:name="com.rexaps.rexwarp.RexWarpBootReceiver"
-            android:exported="false">
+            android:exported="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

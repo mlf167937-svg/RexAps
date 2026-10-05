@@ -27,6 +27,8 @@ data class RexWarpAccount(
     val ipv6: String?
 )
 
+class RexWarpRegistrationException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
 private fun RexWarpAccount.toJson() = JSONObject()
     .put("id", id).put("token", token).put("privateKey", privateKey)
     .put("peerPublicKey", peerPublicKey).put("endpointHost", endpointHost)
@@ -78,24 +80,39 @@ class RexWarpAccountStore(context: Context) {
     }
 }
 
-// GANTI object RexWarpRegistration di tunnel/RexWarpWarpAccount.kt dengan ini.
-// Perbaikan: (1) device diaktifkan (PATCH warp_enabled) seperti wgcf, (2) endpoint pakai IP langsung
-// sehingga tidak bergantung DNS saat handshake, (3) pesan error HTTP jelas.
+/**
+ * Mendaftarkan akun WARP gratis (endpoint tidak resmi Cloudflare; sama seperti tool wgcf).
+ * Blocking: panggil dari IO. Mencoba beberapa versi API bila yang pertama ditolak.
+ */
 object RexWarpRegistration {
-    private const val BASE = "https://api.cloudflareclient.com/v0a1922/reg"
-    const val ENDPOINT_HOST = "162.159.192.1"   // engage.cloudflareclient.com, tanpa lookup DNS
+    /** IP engage.cloudflareclient.com. Dipakai langsung supaya handshake tidak bergantung DNS. */
+    const val ENDPOINT_HOST = "162.159.192.1"
     const val ENDPOINT_PORT = 2408
+    private val API_VERSIONS = listOf("v0a1922", "v0a2158")
+
+    fun register(): RexWarpAccount {
+        var last: Exception? = null
+        for (v in API_VERSIONS) {
+            try {
+                return registerAt("https://api.cloudflareclient.com/$v/reg")
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        throw RexWarpRegistrationException("WARP registration failed: ${last?.message}", last)
+    }
 
     private fun open(url: String, method: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 10_000; readTimeout = 15_000
+            connectTimeout = 10_000
+            readTimeout = 15_000
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             setRequestProperty("User-Agent", "okhttp/3.12.1")
             setRequestProperty("CF-Client-Version", "a-6.3-1922")
         }
 
-    fun register(): RexWarpAccount {
+    private fun registerAt(base: String): RexWarpAccount {
         val pair = KeyPair()
         val body = JSONObject()
             .put("key", pair.publicKey.toBase64())
@@ -103,14 +120,16 @@ object RexWarpRegistration {
             .put("tos", Instant.now().toString())
             .put("type", "Android").put("model", "PC").put("locale", "en_US")
 
-        val conn = open(BASE, "POST").apply { doOutput = true }
+        val conn = open(base, "POST").apply { doOutput = true }
         val root: JSONObject
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = conn.responseCode
-            if (code !in 200..299) throw IOException("WARP registration failed: HTTP $code")
+            if (code !in 200..299) throw IOException("HTTP $code")
             root = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-        } finally { conn.disconnect() }
+        } finally {
+            conn.disconnect()
+        }
 
         val id = root.getString("id")
         val token = root.optString("token")
@@ -118,16 +137,18 @@ object RexWarpRegistration {
         val peer = config.getJSONArray("peers").getJSONObject(0)
         val addresses = config.getJSONObject("interface").getJSONObject("addresses")
 
-        // Aktifkan device (best effort; gagal tidak membatalkan registrasi).
+        // Aktifkan device seperti wgcf. Best effort: gagal tidak membatalkan pendaftaran.
         runCatching {
-            val c = open("$BASE/$id", "PATCH").apply {
+            val c = open("$base/$id", "PATCH").apply {
                 doOutput = true
                 setRequestProperty("Authorization", "Bearer $token")
             }
             try {
                 c.outputStream.use { it.write("""{"warp_enabled":true}""".toByteArray()) }
                 c.responseCode
-            } finally { c.disconnect() }
+            } finally {
+                c.disconnect()
+            }
         }
 
         return RexWarpAccount(

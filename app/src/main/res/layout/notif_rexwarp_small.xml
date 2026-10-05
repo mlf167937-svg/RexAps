@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="8dp" android:paddingEnd="8dp"
+    android:paddingTop="5dp" android:paddingBottom="5dp"
+    android:background="@drawable/bg_nt_root">
+
+    <ImageView
+        android:layout_width="32dp" android:layout_height="32dp"
+        android:src="@drawable/rexwarp_notif_logo" />
+
+    <LinearLayout
+        android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:orientation="vertical"
+        android:layout_marginStart="8dp">
+
+        <TextView
+            android:id="@+id/nt_s_speed"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"
+            android:maxLines="1" android:ellipsize="end" />
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView
+                android:layout_width="7dp" android:layout_height="7dp"
+                android:src="@drawable/bg_nt_dot" />
+            <TextView
+                android:id="@+id/nt_s_status"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:textColor="#9DB4E8" android:textSize="11sp"
+                android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
