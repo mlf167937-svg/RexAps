@@ -1,6 +1,7 @@
 package com.rexaps.rexwarp
 
 import android.app.*
+import com.rexaps.R
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
@@ -41,7 +42,7 @@ object RexWarpNotification {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_vpn_ic) // ganti dengan ikon RexAps
+            .setSmallIcon(R.drawable.ic_rexwarp_notification)
             .setContentTitle("RexWARP")
             .setContentText(live ?: status)
             .setSubText(if (live != null) status else null)
