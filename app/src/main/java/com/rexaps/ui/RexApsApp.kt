@@ -128,7 +128,7 @@ fun RexApsApp(activity: Activity) {
     }
 
     /*
-     * SUB-APP ROUTES (RexFox / RexPanel / RexChat / RexNux)
+     * SUB-APP ROUTES (RexFox / RexPanel / RexChat / RexNux / RexWARP ...)
      */
 
     if (route != RexRoute.NONE) {
@@ -154,8 +154,8 @@ fun RexApsApp(activity: Activity) {
                             activity = activity,
                             onExit = { route = RexRoute.NONE }
                         )
-                            
-                       RexRoute.REXCHAT -> com.rexaps.rexchat.SessionListScreen(
+
+                        RexRoute.REXCHAT -> com.rexaps.rexchat.SessionListScreen(
                             onOpen = { session, method ->
                                 com.rexaps.rexchat.openRexChatSession(activity, session, method)
                             },
@@ -165,16 +165,25 @@ fun RexApsApp(activity: Activity) {
                         RexRoute.REXNUX -> RexNuxScreen(
                             onExit = { route = RexRoute.NONE }
                         )
+
                         RexRoute.REXTOOLS -> RexNavGraph(
                             onBack = { route = RexRoute.NONE }
                         )
+
                         RexRoute.REXMUSIC -> RexMusicScreen(
                             onBack = { route = RexRoute.NONE }
                         )
+
                         RexRoute.REXMANAGER -> RexManagerScreen(
                             onExit = { route = RexRoute.NONE }
                         )
+
                         RexRoute.REXGIT -> RexGit()
+
+                        RexRoute.REXWARP -> com.rexaps.rexwarp.RexWarpScreen(
+                            onExit = { route = RexRoute.NONE }
+                        )
+
                         RexRoute.NONE -> Unit
                     }
                 }

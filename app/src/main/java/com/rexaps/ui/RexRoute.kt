@@ -12,7 +12,8 @@ enum class RexRoute(
     REXTOOLS("rextools", "RexTools"),
     REXMUSIC("rexmusic", "RexMusic"),
     REXMANAGER("rexmanager", "RexManager"),
-    REXGIT("rexgit", "RexGit");
+    REXGIT("rexgit", "RexGit"),
+    REXWARP("rexwarp", "RexWARP");
 
     companion object {
         fun fromModuleId(id: String): RexRoute? =

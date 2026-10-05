@@ -31,6 +31,10 @@
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Hanya diperlukan jika RexWarp benar-benar memenuhi syarat systemExempted -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
     <!-- Notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -38,7 +42,10 @@
     <!-- Wake Lock -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- RexChat: deteksi aplikasi WhatsApp (Android 11+) -->
+    <!-- Boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- RexChat: deteksi aplikasi WhatsApp -->
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
@@ -86,7 +93,31 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Main Activity (com.rexaps.MainActivity) -->
+        <!-- RexWarp VPN Service -->
+        <service
+            android:name="com.rexaps.rexwarp.RexWarpVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted">
+
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+
+        </service>
+
+        <!-- RexWarp Boot Receiver -->
+        <receiver
+            android:name="com.rexaps.rexwarp.RexWarpBootReceiver"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+
+        </receiver>
+
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -98,14 +129,14 @@
 
         </activity>
 
-        <!-- RexChat: mode normal (WebView Profiles, satu proses) -->
+        <!-- RexChat: mode normal -->
         <activity
             android:name="com.rexaps.rexchat.WaActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 
-        <!-- RexChat: fallback WebView lama (proses terpisah) -->
+        <!-- RexChat: fallback WebView lama -->
         <activity
             android:name="com.rexaps.rexchat.WaLegacyActivity"
             android:exported="false"

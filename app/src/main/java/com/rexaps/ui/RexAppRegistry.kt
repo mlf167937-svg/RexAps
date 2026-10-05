@@ -10,18 +10,20 @@ data class RexModule(
 object RexAppRegistry {
 
     val modules = listOf(
-        RexModule("rexfox",     "RexFox",     "Browser cepat & ringan",       true),
-        RexModule("rextools",   "RexTools",   "Kumpulan tools harian",        true),
-        RexModule("rexmusic",   "RexMusic",   "Streaming & playlist",         true),
-        RexModule("rexgit",     "RexGit",     "Git manager & repo",           true),
-        RexModule("rexmanager", "RexManager", "File manager lengkap",         true),
-        RexModule("rexpanel",   "RexPanel",   "Monitoring dan kontrol SSH",   true),
-        RexModule("rexchat",    "RexChat",    "WA Client - Pairing only",     true),
-        RexModule("rexnux",     "RexNux",     "Terminal & Linux",             true),
-        RexModule("rexcalc",    "RexCalc",    "Kalkulator Pintar",            false),
-        RexModule("rextube",    "RexTube",    "Video & subscriptions",        false),
-        RexModule("rextok",     "RexTok",     "Short video & feed",           false),
-        RexModule("rexai",      "RexAI",      "AI tools & generator",         false)
+        RexModule("rexfox",     "RexFox",     "Browser cepat & ringan",                true),
+        RexModule("rextools",   "RexTools",   "Kumpulan tools harian",                 true),
+        RexModule("rexmusic",   "RexMusic",   "Streaming & playlist",                  true),
+        RexModule("rexgit",     "RexGit",     "Git manager & repo",                    true),
+        RexModule("rexmanager", "RexManager", "File manager lengkap",                  true),
+        RexModule("rexpanel",   "RexPanel",   "Monitoring dan kontrol SSH",            true),
+        RexModule("rexchat",    "RexChat",    "WA Client - Pairing only",              true),
+        RexModule("rexnux",     "RexNux",     "Terminal & Linux",                      true),
+        RexModule("rexwarp",    "RexWARP",    "Cloudflare WARP & network monitoring",  true),
+        RexModule("rexcalc",    "RexCalc",    "Kalkulator Pintar",                     false),
+        RexModule("rexalbum",   "RexAlbum",   "Smart Galery",                          false),
+        RexModule("rextube",    "RexTube",    "Video & subscriptions",                 false),
+        RexModule("rextok",     "RexTok",     "Short video & feed",                    false),
+        RexModule("rexai",      "RexAI",      "AI tools & generator",                  false)
     )
 
     fun getModule(id: String): RexModule? =
