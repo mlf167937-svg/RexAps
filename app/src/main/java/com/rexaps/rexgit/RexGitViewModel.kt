@@ -898,7 +898,9 @@ class RexGitViewModel(
 
     fun push(
         message: String,
-        bumpVersion: Boolean
+        bumpVersion: Boolean,
+        commitType: RexGitCommitType = RexGitCommitType.FIX,
+        commitFolder: String = ""
     ) {
         val repo = _state.value.selectedRepository
             ?: return
@@ -933,6 +935,8 @@ class RexGitViewModel(
                     repository = repo,
                     commitMessage = message,
                     bumpVersion = bumpVersion,
+                    commitType = commitType,
+                    commitFolder = commitFolder,
                     username = auth.username,
                     token = auth.token
                 )

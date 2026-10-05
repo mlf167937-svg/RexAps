@@ -90,6 +90,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
@@ -163,8 +165,32 @@ fun RexGitScreen(
     var githubDialog by rememberSaveable { mutableStateOf(false) }
     var pushDialog by rememberSaveable { mutableStateOf(false) }
     var discardDialog by rememberSaveable { mutableStateOf(false) }
-    var commitMessage by rememberSaveable { mutableStateOf("Update from RexGit") }
+    var commitMessage by rememberSaveable { mutableStateOf("") }
     var bumpVersion by rememberSaveable { mutableStateOf(true) }
+    var commitType by rememberSaveable { mutableStateOf(RexGitCommitType.FIX.name) }
+    var commitFolder by rememberSaveable { mutableStateOf("") }
+
+    val detectedCommitFolders = remember(
+        state.selectedRepository?.path,
+        state.gitStatus.changes
+    ) {
+        RexGitCommitMeta.detectFolders(
+            state.selectedRepository,
+            state.gitStatus.changes
+        )
+    }
+
+    LaunchedEffect(pushDialog) {
+        if (pushDialog) {
+            val suggested = RexGitCommitMeta.inferFolder(
+                state.selectedRepository,
+                state.gitStatus.changes
+            )
+            val suggestedType = RexGitCommitMeta.inferType(state.gitStatus.changes)
+            commitFolder = suggested ?: detectedCommitFolders.firstOrNull().orEmpty()
+            commitType = suggestedType.name
+        }
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -269,14 +295,21 @@ fun RexGitScreen(
         PushDialog(
             message = commitMessage,
             onMessageChange = { commitMessage = it },
+            type = RexGitCommitType.valueOf(commitType),
+            onTypeChange = { commitType = it.name },
+            folder = commitFolder,
+            folders = detectedCommitFolders,
+            onFolderChange = { commitFolder = it },
             bumpVersion = bumpVersion,
             onBumpChange = { bumpVersion = it },
             changeCount = state.gitStatus.changes.size,
             onDismiss = { pushDialog = false },
             onPush = {
                 viewModel.push(
-                    commitMessage.trim().ifBlank { "Update from RexGit" },
-                    bumpVersion
+                    message = commitMessage.trim(),
+                    bumpVersion = bumpVersion,
+                    commitType = RexGitCommitType.valueOf(commitType),
+                    commitFolder = commitFolder
                 )
                 pushDialog = false
             }
@@ -1385,8 +1418,8 @@ private val EditorKeys = listOf(
     "=" to "=", "/" to "/", "#" to "#"
 )
 
-private const val EDITOR_MIN_FONT = 6
-private const val EDITOR_MAX_FONT = 48
+private const val EDITOR_MIN_FONT = 2
+private const val EDITOR_MAX_FONT = 38
 private const val EDITOR_DEFAULT_FONT = 14
 
 @Composable
@@ -2178,30 +2211,115 @@ private fun GithubDialog(
 private fun PushDialog(
     message: String,
     onMessageChange: (String) -> Unit,
+    type: RexGitCommitType,
+    onTypeChange: (RexGitCommitType) -> Unit,
+    folder: String,
+    folders: List<String>,
+    onFolderChange: (String) -> Unit,
     bumpVersion: Boolean,
     onBumpChange: (Boolean) -> Unit,
     changeCount: Int,
     onDismiss: () -> Unit,
     onPush: () -> Unit
 ) {
+    var typeMenuOpen by remember { mutableStateOf(false) }
+    var folderMenuOpen by remember { mutableStateOf(false) }
+
+    val canCommit = changeCount == 0 || (
+        message.isNotBlank() &&
+            folder.isNotBlank() &&
+            folders.contains(folder)
+        )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Commit & push") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    if (changeCount == 0) "No local changes. Existing commits will be pushed."
-                    else "$changeCount changed file(s) will be committed and pushed to origin.",
+                    if (changeCount == 0) {
+                        "No local changes. Existing commits will be pushed."
+                    } else {
+                        "$changeCount changed file(s) will be committed and pushed to origin."
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
 
                 if (changeCount > 0) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(Modifier.weight(0.9f)) {
+                            OutlinedButton(
+                                onClick = { typeMenuOpen = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Text(type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            DropdownMenu(
+                                expanded = typeMenuOpen,
+                                onDismissRequest = { typeMenuOpen = false }
+                            ) {
+                                RexGitCommitType.values().forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.label) },
+                                        onClick = {
+                                            onTypeChange(option)
+                                            typeMenuOpen = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Box(Modifier.weight(1.1f)) {
+                            OutlinedButton(
+                                onClick = { folderMenuOpen = true },
+                                enabled = folders.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Text(
+                                    folder.ifBlank { "Folder" },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = folderMenuOpen,
+                                onDismissRequest = { folderMenuOpen = false }
+                            ) {
+                                folders.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            onFolderChange(option)
+                                            folderMenuOpen = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (folders.isEmpty()) {
+                        Text(
+                            "No folder found under com/rexaps.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
                     OutlinedTextField(
                         value = message,
                         onValueChange = onMessageChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Commit message") },
-                        maxLines = 4
+                        label = { Text("Description") },
+                        placeholder = { Text("RexGit Screen Error") },
+                        maxLines = 3,
+                        singleLine = false
                     )
 
                     Row(
@@ -2218,14 +2336,13 @@ private fun PushDialog(
                         Column(Modifier.weight(1f)) {
                             Text("Bump version", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Updates versionName and versionCode in build.gradle",
+                                "Commit prefix uses the new version, e.g. [26.57] Fix: rexgit: ...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
                         Spacer(Modifier.width(12.dp))
-
                         Switch(checked = bumpVersion, onCheckedChange = null)
                     }
                 }
@@ -2234,14 +2351,13 @@ private fun PushDialog(
         confirmButton = {
             Button(
                 onClick = onPush,
-                enabled = changeCount == 0 || message.isNotBlank()
+                enabled = canCommit
             ) {
                 Icon(
                     Icons.Default.CloudUpload,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
-
                 Spacer(Modifier.width(8.dp))
                 Text("Push")
             }

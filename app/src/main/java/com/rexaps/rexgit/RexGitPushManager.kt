@@ -11,10 +11,11 @@ class RexGitPushManager {
         repository: RexGitRepository,
         commitMessage: String,
         bumpVersion: Boolean = true,
+        commitType: RexGitCommitType = RexGitCommitType.FIX,
+        commitFolder: String = "",
         username: String? = null,
         token: String? = null
     ): RexGitPushResult {
-
         val dir = File(repository.path)
 
         if (!dir.exists()) {
@@ -36,8 +37,18 @@ class RexGitPushManager {
 
         val hadChanges = status.hasChanges
 
-        if (hadChanges && commitMessage.isBlank()) {
-            return RexGitPushResult(false, "Commit message is empty")
+        if (hadChanges) {
+            if (commitMessage.isBlank()) {
+                return RexGitPushResult(false, "Commit description is empty")
+            }
+
+            val detectedFolders = RexGitCommitMeta.detectFolders(repository, status.changes)
+            if (commitFolder.isBlank() || commitFolder !in detectedFolders) {
+                return RexGitPushResult(
+                    false,
+                    "Invalid commit folder. Choose a folder detected under com/rexaps."
+                )
+            }
         }
 
         var newVersion: RexGitVersion? = null
@@ -51,12 +62,12 @@ class RexGitPushManager {
                 }
             }
 
-            val finalMessage =
-                if (newVersion != null) {
-                    "[${newVersion.versionName}] $commitMessage"
-                } else {
-                    commitMessage
-                }
+            val finalMessage = RexGitCommitMeta.buildMessage(
+                version = newVersion,
+                type = commitType,
+                folder = commitFolder,
+                description = commitMessage
+            )
 
             val add = native.addAll(repository)
 
@@ -81,19 +92,10 @@ class RexGitPushManager {
 
         val push = native.push(repository, username, token)
 
-        if (!push.success) {
-            return RexGitPushResult(
-                false,
-                "Push failed:\n${push.message}",
-                newVersion
-            )
+        return if (push.success) {
+            RexGitPushResult(true, push.message, newVersion)
+        } else {
+            RexGitPushResult(false, push.message, newVersion)
         }
-
-        return RexGitPushResult(
-            true,
-            if (hadChanges) "Committed and pushed"
-            else "Nothing to commit. Existing commits were pushed.",
-            newVersion
-        )
     }
 }
