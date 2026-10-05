@@ -78,11 +78,22 @@ class RexWarpAccountStore(context: Context) {
     }
 }
 
-/** Mendaftarkan akun WARP gratis (endpoint tidak resmi; sama seperti tool wgcf). Blocking: panggil dari IO. */
+// GANTI object RexWarpRegistration di tunnel/RexWarpWarpAccount.kt dengan ini.
+// Perbaikan: (1) device diaktifkan (PATCH warp_enabled) seperti wgcf, (2) endpoint pakai IP langsung
+// sehingga tidak bergantung DNS saat handshake, (3) pesan error HTTP jelas.
 object RexWarpRegistration {
-    private const val URL_REG = "https://api.cloudflareclient.com/v0a1922/reg"
-    private const val ENDPOINT_HOST = "engage.cloudflareclient.com"
-    private const val ENDPOINT_PORT = 2408
+    private const val BASE = "https://api.cloudflareclient.com/v0a1922/reg"
+    const val ENDPOINT_HOST = "162.159.192.1"   // engage.cloudflareclient.com, tanpa lookup DNS
+    const val ENDPOINT_PORT = 2408
+
+    private fun open(url: String, method: String): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 10_000; readTimeout = 15_000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("User-Agent", "okhttp/3.12.1")
+            setRequestProperty("CF-Client-Version", "a-6.3-1922")
+        }
 
     fun register(): RexWarpAccount {
         val pair = KeyPair()
@@ -92,35 +103,40 @@ object RexWarpRegistration {
             .put("tos", Instant.now().toString())
             .put("type", "Android").put("model", "PC").put("locale", "en_US")
 
-        val conn = (URL(URL_REG).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 15_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("User-Agent", "okhttp/3.12.1")
-            setRequestProperty("CF-Client-Version", "a-6.3-1922")
-        }
+        val conn = open(BASE, "POST").apply { doOutput = true }
+        val root: JSONObject
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = conn.responseCode
             if (code !in 200..299) throw IOException("WARP registration failed: HTTP $code")
-            val root = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-            val config = root.getJSONObject("config")
-            val peer = config.getJSONArray("peers").getJSONObject(0)
-            val addresses = config.getJSONObject("interface").getJSONObject("addresses")
-            return RexWarpAccount(
-                id = root.getString("id"),
-                token = root.optString("token"),
-                privateKey = pair.privateKey.toBase64(),
-                peerPublicKey = peer.getString("public_key"),
-                endpointHost = ENDPOINT_HOST,
-                endpointPort = ENDPOINT_PORT,
-                ipv4 = addresses.getString("v4"),
-                ipv6 = addresses.optString("v6").ifBlank { null }
-            )
-        } finally {
-            conn.disconnect()
+            root = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally { conn.disconnect() }
+
+        val id = root.getString("id")
+        val token = root.optString("token")
+        val config = root.getJSONObject("config")
+        val peer = config.getJSONArray("peers").getJSONObject(0)
+        val addresses = config.getJSONObject("interface").getJSONObject("addresses")
+
+        // Aktifkan device (best effort; gagal tidak membatalkan registrasi).
+        runCatching {
+            val c = open("$BASE/$id", "PATCH").apply {
+                doOutput = true
+                setRequestProperty("Authorization", "Bearer $token")
+            }
+            try {
+                c.outputStream.use { it.write("""{"warp_enabled":true}""".toByteArray()) }
+                c.responseCode
+            } finally { c.disconnect() }
         }
+
+        return RexWarpAccount(
+            id = id, token = token,
+            privateKey = pair.privateKey.toBase64(),
+            peerPublicKey = peer.getString("public_key"),
+            endpointHost = ENDPOINT_HOST, endpointPort = ENDPOINT_PORT,
+            ipv4 = addresses.getString("v4"),
+            ipv6 = addresses.optString("v6").ifBlank { null }
+        )
     }
 }
