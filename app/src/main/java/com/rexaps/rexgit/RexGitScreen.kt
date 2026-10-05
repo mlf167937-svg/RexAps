@@ -2559,12 +2559,14 @@ private fun RexPushLoader(active: Boolean) {
         label = "pulse"
     )
 
+    val scheme = MaterialTheme.colorScheme
+
     Canvas(Modifier.size(104.dp)) {
         val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension * 0.34f
 
         drawCircle(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            color = scheme.outlineVariant.copy(alpha = 0.45f),
             radius = radius,
             center = center,
             style = androidx.compose.ui.graphics.drawscope.Stroke(
@@ -2580,7 +2582,7 @@ private fun RexPushLoader(active: Boolean) {
             val y = center.y + sin(angle).toFloat() * radius
             val emphasis = if (index == 0) 1f else 0.28f
             drawCircle(
-                color = MaterialTheme.colorScheme.primary.copy(
+                color = scheme.primary.copy(
                     alpha = if (active) emphasis * pulse else 0.25f
                 ),
                 radius = if (index == 0) 5.dp.toPx() else 3.dp.toPx(),
@@ -2617,13 +2619,15 @@ private fun RexPushSuccessAnimation() {
         label = "successIcon"
     )
 
+    val scheme = MaterialTheme.colorScheme
+
     Box(
         modifier = Modifier.size(112.dp),
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.fillMaxSize()) {
             drawCircle(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                color = scheme.primary.copy(alpha = alpha),
                 radius = size.minDimension * 0.38f * ring,
                 center = androidx.compose.ui.geometry.Offset(
                     size.width / 2f,
@@ -2641,7 +2645,7 @@ private fun RexPushSuccessAnimation() {
             listOf(0f, 60f, 120f, 180f, 240f, 300f).forEach { deg ->
                 val a = Math.toRadians(deg.toDouble())
                 drawCircle(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                    color = scheme.primary.copy(alpha = 0.28f),
                     radius = 2.5.dp.toPx(),
                     center = androidx.compose.ui.geometry.Offset(
                         cx + cos(a).toFloat() * r,
@@ -2654,7 +2658,7 @@ private fun RexPushSuccessAnimation() {
         Icon(
             Icons.Default.CheckCircle,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = scheme.primary,
             modifier = Modifier
                 .size(62.dp)
                 .scale(iconScale)
