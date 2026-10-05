@@ -1,4 +1,4 @@
-#THE SRONGER APS ALL IN ONE
+#THE SRONGER APS
 
 # RexAps
 The Apks all in one
