@@ -59,6 +59,8 @@ class RexWarpUsageRepository(
         withContext(Dispatchers.IO) { backup.append(date, "$time,$dl,$ul,$w") }
     }
 
+    suspend fun isEmpty(): Boolean = dao.getAll().isEmpty()
+
     suspend fun pruneMinutesOlderThan(days: Long) {
         val before = Instant.now().minus(days, ChronoUnit.DAYS).epochSecond / 60
         dao.deleteMinutesBefore(before)

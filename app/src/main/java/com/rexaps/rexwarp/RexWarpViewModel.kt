@@ -37,7 +37,13 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
     private val _backup = MutableStateFlow(RexWarpBackupUi(null, store.recording))
     val backup: StateFlow<RexWarpBackupUi> = _backup.asStateFlow()
 
-    init { refreshBackup() }
+    init {
+        refreshBackup()
+        // Auto-restore dari folder data bila database kosong (mis. setelah install ulang)
+        viewModelScope.launch(Dispatchers.IO) {
+            if (store.hasAccess() && repo.usage.isEmpty()) repo.usage.restoreFromFolder()
+        }
+    }
 
     /** null = masih loading. */
     val allUsage: StateFlow<List<RexWarpDailyUsage>?> =
@@ -102,17 +108,9 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
     // ---- settings ----
     fun saveSettings(s: RexWarpSettings) { viewModelScope.launch { repo.preferences.save(s) } }
 
-    // ---- pencatatan & backup folder ----
+    // ---- pencatatan & backup (folder otomatis) ----
     fun refreshBackup() {
         viewModelScope.launch(Dispatchers.IO) { _backup.value = RexWarpBackupUi(store.folderName(), store.recording) }
-    }
-
-    fun setBackupFolder(uri: Uri) {
-        viewModelScope.launch {
-            val ok = runCatching { withContext(Dispatchers.IO) { store.setTree(uri) } }.isSuccess
-            refreshBackup()
-            _messages.emit(if (ok) "Backup folder saved." else "Could not use that folder. Choose another one.")
-        }
     }
 
     fun setRecording(on: Boolean) {
@@ -168,3 +166,4 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object { const val MAX_IMPORT_BYTES = 5 * 1024 * 1024 }
 }
+
