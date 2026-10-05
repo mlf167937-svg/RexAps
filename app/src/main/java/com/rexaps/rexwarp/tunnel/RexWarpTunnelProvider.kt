@@ -1,5 +1,7 @@
 package com.rexaps.rexwarp.tunnel
 
+import android.content.Context
+
 data class RexWarpTunnelCapabilities(
     val supportsIpv6: Boolean = false,
     val supportsMtu: Boolean = false,
@@ -13,15 +15,21 @@ interface RexWarpTunnelProvider {
     fun create(host: RexWarpTunnelHost): RexWarpTunnel
 }
 
-/** Default: tidak ada engine. Tidak pernah menghasilkan koneksi palsu. */
+/** Fallback: tidak ada engine. Tidak pernah menghasilkan koneksi palsu. */
 object NoEngineTunnelProvider : RexWarpTunnelProvider {
     override val capabilities = RexWarpTunnelCapabilities()
     override val unavailableReason = "No WARP tunnel engine is installed in this build."
-    override fun create(host: RexWarpTunnelHost): RexWarpTunnel =
-        error("No tunnel engine available")
+    override fun create(host: RexWarpTunnelHost): RexWarpTunnel = error("No tunnel engine available")
 }
 
 object RexWarpTunnelRegistry {
-    /** Set dari Application.onCreate() bila engine sudah diintegrasikan. */
     @Volatile var provider: RexWarpTunnelProvider = NoEngineTunnelProvider
+
+    /** Memasang engine WireGuard bila belum ada provider lain. Dipanggil otomatis oleh RexWarpRepository. */
+    @Synchronized
+    fun installDefault(context: Context) {
+        if (provider === NoEngineTunnelProvider) {
+            provider = RexWarpWireGuardProvider(context.applicationContext)
+        }
+    }
 }

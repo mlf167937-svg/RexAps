@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.update
 
 /** Sumber kebenaran tunggal antara service dan UI (satu proses). */
 class RexWarpRepository private constructor(context: Context) {
+
+    init { RexWarpTunnelRegistry.installDefault(context) } // harus sebelum state dibuat
+
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val preferences = RexWarpPreferences(context)
     val usage = RexWarpUsageRepository(RexWarpDatabase.get(context).usageDao())

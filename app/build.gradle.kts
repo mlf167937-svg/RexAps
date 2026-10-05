@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2638
-        versionName = "26.38"
+        versionCode = 2639
+        versionName = "26.39"
     }
 
     buildFeatures {
@@ -86,6 +86,9 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Tunnel CloudFlare
+    implementation("com.wireguard.android:tunnel:1.0.20230706")
 
     // Room
     val room = "2.6.1"
