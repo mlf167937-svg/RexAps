@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Calendar
 
-// ───────────────────────── Shared row helper ─────────────────────────
+//  Shared row helper 
 
 @Composable
 private fun TrackRowFor(
@@ -76,7 +78,7 @@ private fun artistPool(state: RexMusicUiState, limit: Int): List<String> =
         .distinct()
         .take(limit)
 
-// ───────────────────────── HOME ─────────────────────────
+//  HOME 
 
 @Composable
 fun HomeTab(
@@ -287,7 +289,7 @@ private fun MixHeroCard(
     }
 }
 
-// ───────────────────────── SEARCH ─────────────────────────
+//  SEARCH 
 
 @Composable
 fun SearchTab(
@@ -425,7 +427,7 @@ private fun LazyListScope.resultsSection(state: RexMusicUiState, actions: RexAct
     }
 }
 
-// ───────────────────────── LIBRARY ─────────────────────────
+//  LIBRARY 
 
 @Composable
 fun LibraryTab(
@@ -437,6 +439,8 @@ fun LibraryTab(
     modifier: Modifier = Modifier
 ) {
     val offlineMode = state.offline.enabled
+    var showCreate by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
     LazyColumn(
         modifier.fillMaxSize(),
         state = listState,
@@ -451,15 +455,43 @@ fun LibraryTab(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 LibraryChip("Unduhan", state.offline.entries.size, libTab == 0) { onLibTab(0) }
-                LibraryChip("Antrian", state.userQueue.size, libTab == 1) { onLibTab(1) }
-                LibraryChip("Riwayat", 0, libTab == 2) { onLibTab(2) }
+                LibraryChip("Playlist", state.playlists.size, libTab == 1) { onLibTab(1) }
+                LibraryChip("Antrian", state.userQueue.size, libTab == 2) { onLibTab(2) }
+                LibraryChip("Riwayat", 0, libTab == 3) { onLibTab(3) }
             }
         }
         when (libTab) {
             0 -> offlineSection(state, actions, query = "", full = true)
-            1 -> queueSection(state, actions, showNow = false)
+            1 -> playlistSection(state, actions, onCreate = { showCreate = true })
+            2 -> queueSection(state, actions, showNow = false)
             else -> historySection(state, actions)
         }
+    }
+
+    if (showCreate) {
+        AlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = { Text("Buat playlist") },
+            text = {
+                OutlinedTextField(
+                    value = playlistName,
+                    onValueChange = { playlistName = it },
+                    singleLine = true,
+                    label = { Text("Nama playlist") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = playlistName.trim().isNotEmpty(),
+                    onClick = {
+                        actions.createPlaylist(playlistName.trim())
+                        playlistName = ""
+                        showCreate = false
+                    }
+                ) { Text("Buat") }
+            },
+            dismissButton = { TextButton(onClick = { showCreate = false }) { Text("Batal") } }
+        )
     }
 }
 
@@ -479,6 +511,58 @@ private fun LibraryChip(label: String, count: Int, selected: Boolean, onClick: (
             color = if (selected) scheme.onPrimary else scheme.onSurface,
             maxLines = 1
         )
+    }
+}
+
+private fun LazyListScope.playlistSection(
+    state: RexMusicUiState,
+    actions: RexActions,
+    onCreate: () -> Unit
+) {
+    item(key = "playlist-head") {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Playlist kamu", style = MaterialTheme.typography.titleLarge)
+                Text("Tersimpan sebagai JSON · ${RexPlaylistStore.DISPLAY_PATH}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            FilledTonalButton(onClick = onCreate) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Buat")
+            }
+        }
+    }
+    if (state.playlists.isEmpty()) {
+        item(key = "playlist-empty") {
+            EmptyState(Icons.Default.QueueMusic, "Belum ada playlist", "Buat playlist lalu tambahkan lagu dari menu ⋮ pada lagu.")
+        }
+    } else {
+        items(state.playlists, key = { "pl-${it.name}" }) { playlist ->
+            ElevatedCard(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { actions.playPlaylist(playlist.name) }.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(RexHeroBrush), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${playlist.tracks.size} lagu", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { actions.deletePlaylist(playlist.name) }) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -503,7 +587,7 @@ private fun LazyListScope.historySection(state: RexMusicUiState, actions: RexAct
     }
 }
 
-// ───────────────────────── OFFLINE (dipakai Home offline, Cari offline, Koleksi) ─────────────────────────
+//  OFFLINE (dipakai Home offline, Cari offline, Koleksi) 
 
 fun LazyListScope.offlineSection(
     state: RexMusicUiState,
@@ -543,17 +627,17 @@ fun LazyListScope.offlineSection(
                 Icons.Default.CloudOff,
                 if (q.isNotEmpty()) "Tidak ada lagu yang cocok" else "Belum ada lagu offline",
                 if (q.isNotEmpty()) "Coba kata kunci lain."
-                else "Pindah ke mode Online, lalu buka menu ⋮ pada lagu dan pilih Unduh."
+                else "Pindah ke mode Online, lalu buka menu  pada lagu dan pilih Unduh."
             )
         }
     } else {
         item(key = "off-title") {
-            SectionTitle(if (full) "Lagu offline · ${shown.size}" else "Hasil offline · ${shown.size}")
+            SectionTitle(if (full) "Lagu offline  ${shown.size}" else "Hasil offline  ${shown.size}")
         }
         items(shown, key = { "o-${it.key}" }) { entry ->
             TrackRowFor(
                 entry.track, state, actions,
-                subtitle = "${entry.track.artist} · ${formatBytes(entry.sizeBytes)}"
+                subtitle = "${entry.track.artist}  ${formatBytes(entry.sizeBytes)}"
             ) { actions.playOffline(entry.track) }
         }
         if (full) {
@@ -576,7 +660,7 @@ fun LazyListScope.downloadsSection(
     onCancel: (RexTrack) -> Unit
 ) {
     if (downloads.isEmpty()) return
-    item(key = "dl-title") { SectionTitle("Sedang diunduh · ${downloads.size}") }
+    item(key = "dl-title") { SectionTitle("Sedang diunduh  ${downloads.size}") }
     items(downloads.entries.toList(), key = { "dl-${it.key}" }) { entry ->
         DownloadRow(entry.value) { onCancel(entry.value.track) }
     }
@@ -618,7 +702,7 @@ private fun OfflineHeroCard(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "${formatBytes(bytes)} · ${RexOfflineManager.DISPLAY_PATH}",
+                "${formatBytes(bytes)}  ${RexOfflineManager.DISPLAY_PATH}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.88f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis

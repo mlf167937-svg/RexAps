@@ -20,9 +20,9 @@ val LoadPhase.isPlayerBusy: Boolean
         this == LoadPhase.Preparing ||
         this == LoadPhase.Buffering
 
-// ───────────────────────── Offline / download ─────────────────────────
+//  Offline / download 
 
-enum class DownloadStage { Queued, Resolving, Downloading }
+enum class DownloadStage { Queued, Resolving, Downloading, FetchingLyrics, Finalizing }
 
 /** Status satu unduhan yang sedang berjalan. percent = -1 kalau ukuran file belum diketahui. */
 data class DownloadStatus(
@@ -72,6 +72,8 @@ data class RexMusicUiState(
     val popularCount: Int = 0,
     /** Data offline: daftar unduhan, progres unduhan, mode offline. */
     val offline: OfflineState = OfflineState(),
+    /** Playlist pengguna, disimpan sebagai file JSON di Download/RexAps/RexMusic. */
+    val playlists: List<RexPlaylist> = emptyList(),
     /** True kalau lagu yang sedang diputar dibuka dari file offline. */
     val nowPlayingOffline: Boolean = false,
     /** Pesan singkat satu kali (snackbar). */
@@ -119,7 +121,7 @@ data class SpotifyDownloadResult(
     val artist: String? = null
 )
 
-// ───────────────────────── Lyrics ─────────────────────────
+//  Lyrics 
 
 data class LyricLine(
     val timeMs: Long,

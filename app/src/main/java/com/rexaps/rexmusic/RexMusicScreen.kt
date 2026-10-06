@@ -84,6 +84,8 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     var pendingDownload by remember { mutableStateOf<RexTrack?>(null) }
     var deleteTarget by remember { mutableStateOf<RexTrack?>(null) }
     var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
+    var playlistTarget by remember { mutableStateOf<RexTrack?>(null) }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
 
     val liked = remember { mutableStateMapOf<String, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
@@ -176,6 +178,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     }
 
     val downloadTrack: (RexTrack) -> Unit = { track ->
+        requestNotifications()
         if (RexOfflineManager.hasAccess(context)) {
             vm.download(track)
         } else {
@@ -301,6 +304,24 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
         openMenu = {
             menuTarget = it
+        },
+
+        openPlaylistPicker = {
+            playlistTarget = it
+        },
+
+        playPlaylist = {
+            requestNotifications()
+            vm.playPlaylist(it)
+            showPlayer = true
+        },
+
+        createPlaylist = { name ->
+            vm.createPlaylist(name)
+        },
+
+        deletePlaylist = {
+            vm.deletePlaylist(it)
         },
 
         dismissError = {
@@ -613,6 +634,51 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
         ) {
             menuTarget = null
         }
+    }
+
+    playlistTarget?.let { target ->
+        PlaylistPickerSheet(
+            track = target,
+            playlists = state.playlists,
+            onPick = { name ->
+                vm.addToPlaylist(name, target)
+                playlistTarget = null
+            },
+            onCreate = {
+                playlistTarget = target
+                showCreatePlaylist = true
+            },
+            onDismiss = { playlistTarget = null }
+        )
+    }
+
+    if (showCreatePlaylist) {
+        var name by rememberSaveable { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreatePlaylist = false },
+            title = { Text("Buat playlist") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text("Nama playlist") },
+                    placeholder = { Text("Favorit, Santai, Workout...") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.trim().isNotEmpty(),
+                    onClick = {
+                        vm.createPlaylist(name)
+                        playlistTarget?.let { vm.addToPlaylist(name.trim(), it) }
+                        playlistTarget = null
+                        showCreatePlaylist = false
+                    }
+                ) { Text("Buat & simpan") }
+            },
+            dismissButton = { TextButton(onClick = { showCreatePlaylist = false }) { Text("Batal") } }
+        )
     }
 
     if (showStorageDialog) {

@@ -42,7 +42,7 @@ object RexMusicApi {
             ) = size > MAX_LYRICS_CACHE
         }
 
-    // ───────────────────────── Search ─────────────────────────
+    //  Search 
 
     suspend fun search(query: String): Result<List<RexTrack>> {
         val key = query.trim().lowercase()
@@ -63,7 +63,7 @@ object RexMusicApi {
         }
     }
 
-    // ───────────────────────── Audio ─────────────────────────
+    //  Audio 
 
     suspend fun resolveAudio(track: RexTrack): Result<RexTrack> {
         if (track.spotifyUrl.isBlank()) return Result.failure(Exception("spotify url kosong"))
@@ -92,7 +92,7 @@ object RexMusicApi {
         return resolveAudio(first)
     }
 
-    // ───────────────────────── Lyrics ─────────────────────────
+    //  Lyrics 
 
     suspend fun fetchLyrics(query: String): Result<Lyrics> {
         val key = query.trim().lowercase()
@@ -137,7 +137,7 @@ object RexMusicApi {
         return out
     }
 
-    // ───────────────────────── Cache ─────────────────────────
+    //  Cache 
 
     /** Dipanggil kalau player error (kemungkinan link audio sudah expire). */
     fun invalidateAudio(track: RexTrack) {
@@ -150,7 +150,7 @@ object RexMusicApi {
         synchronized(lyricsCache) { lyricsCache.clear() }
     }
 
-    // ───────────────────────── Helpers ─────────────────────────
+    //  Helpers 
 
     private fun SpotifySearchItem.toTrack(fallbackId: String): RexTrack? {
         if (title.isNullOrBlank() && url.isNullOrBlank()) return null

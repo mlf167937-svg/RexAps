@@ -115,7 +115,7 @@ class RexMusicService : Service() {
         super.onDestroy()
     }
 
-    // ───────────────────────── State → notification ─────────────────────────
+    //  State  notification 
 
     private data class NotifKey(
         val id: String?,
@@ -296,7 +296,7 @@ class RexMusicService : Service() {
         nm.createNotificationChannel(channel)
     }
 
-    // ───────────────────────── Foreground helpers ─────────────────────────
+    //  Foreground helpers 
 
     private fun startForegroundCompat(n: Notification) {
         if (Build.VERSION.SDK_INT >= 29) {

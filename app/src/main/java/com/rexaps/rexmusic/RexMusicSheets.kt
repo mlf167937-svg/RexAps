@@ -23,7 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-// ───────────────────────── Queue (dipakai sheet & tab Koleksi) ─────────────────────────
+//  Queue (dipakai sheet & tab Koleksi) 
 
 fun LazyListScope.queueSection(
     state: RexMusicUiState,
@@ -64,7 +64,7 @@ fun LazyListScope.queueSection(
 
     item(key = "q-title") {
         SectionTitle(
-            if (state.userQueue.isEmpty()) "Berikutnya" else "Berikutnya · ${state.userQueue.size}",
+            if (state.userQueue.isEmpty()) "Berikutnya" else "Berikutnya  ${state.userQueue.size}",
             trailing = {
                 if (state.userQueue.isNotEmpty()) {
                     TextButton(onClick = actions.clearQueue) { Text("Kosongkan") }
@@ -75,7 +75,7 @@ fun LazyListScope.queueSection(
     if (state.userQueue.isEmpty()) {
         item(key = "q-empty") {
             Text(
-                "Antrian kosong. Tambahkan lagu lewat menu ⋮ di daftar lagu." +
+                "Antrian kosong. Tambahkan lagu lewat menu  di daftar lagu." +
                     if (state.autoplay) " Setelah itu lagu dipilih otomatis oleh Autoplay pintar." else "",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -118,7 +118,7 @@ fun QueueSheet(state: RexMusicUiState, actions: RexActions, onDismiss: () -> Uni
     }
 }
 
-// ───────────────────────── Repeat ─────────────────────────
+//  Repeat 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -154,7 +154,7 @@ fun RepeatSheet(
                 StepButton(Icons.Default.Remove, "Kurangi", total > 0) { onSet(total - 1) }
                 Column(Modifier.width(132.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        if (total == 0) "Mati" else "$total×",
+                        if (total == 0) "Mati" else "$total",
                         style = MaterialTheme.typography.displaySmall,
                         color = if (total == 0) scheme.onSurface else scheme.primary
                     )
@@ -176,7 +176,7 @@ fun RepeatSheet(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(0, 2, 5, 10, 25, 50).forEach { n ->
                     PresetPill(
-                        if (n == 0) "Mati" else "$n×", total == n, Modifier.weight(1f)
+                        if (n == 0) "Mati" else "$n", total == n, Modifier.weight(1f)
                     ) { onSet(n) }
                 }
             }
@@ -216,7 +216,46 @@ private fun PresetPill(label: String, selected: Boolean, modifier: Modifier, onC
     }
 }
 
-// ───────────────────────── Track menu ─────────────────────────
+//  Track menu 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlaylistPickerSheet(
+    track: RexTrack,
+    playlists: List<RexPlaylist>,
+    onPick: (String) -> Unit,
+    onCreate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 20.dp)
+        ) {
+            Text("Simpan ke playlist", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            Text(
+                track.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            MenuItem(Icons.Default.Add, "Buat playlist baru") { onCreate() }
+            if (playlists.isEmpty()) {
+                EmptyState(Icons.Default.QueueMusic, "Belum ada playlist", "Buat playlist untuk menyimpan lagu favoritmu.")
+            } else {
+                playlists.forEach { playlist ->
+                    MenuItem(
+                        Icons.Default.QueueMusic,
+                        "${playlist.name} · ${playlist.tracks.size} lagu"
+                    ) { onPick(playlist.name) }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -268,6 +307,11 @@ fun TrackMenuSheet(
                 if (queued) "Sudah di antrian" else "Tambah ke antrian",
                 enabled = !queued
             ) { actions.addQueue(track); onDismiss() }
+
+            MenuItem(Icons.Default.PlaylistAdd, "Simpan ke playlist") {
+                actions.openPlaylistPicker(track)
+                onDismiss()
+            }
 
             when {
                 downloaded -> MenuItem(

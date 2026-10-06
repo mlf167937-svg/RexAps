@@ -93,7 +93,7 @@ fun RexLyricsOverlay(
     }
 }
 
-// ───────────────────────── Background ─────────────────────────
+//  Background 
 
 @Composable
 private fun LyricsBackdrop(cover: String, accent: Color) {
@@ -121,7 +121,7 @@ private fun LyricsBackdrop(cover: String, accent: Color) {
     }
 }
 
-// ───────────────────────── Header ─────────────────────────
+//  Header 
 
 @Composable
 private fun LyricsHeader(onClose: () -> Unit) {
@@ -145,7 +145,7 @@ private fun LyricsHeader(onClose: () -> Unit) {
     }
 }
 
-// ───────────────────────── Vinyl ─────────────────────────
+//  Vinyl 
 
 @Composable
 private fun NowSpinning(track: RexTrack, isPlaying: Boolean, accent: Color) {
@@ -255,7 +255,7 @@ private fun VinylDisc(cover: String, spinning: Boolean, accent: Color, size: Dp)
     }
 }
 
-// ───────────────────────── States ─────────────────────────
+//  States 
 
 @Composable
 private fun LyricsLoading() {
@@ -287,7 +287,7 @@ private fun LyricsMessage(message: String, showIcon: Boolean = false) {
     }
 }
 
-// ───────────────────────── Lyrics ─────────────────────────
+//  Lyrics 
 
 /** Fade halus di tepi atas & bawah daftar lirik. */
 private fun Modifier.fadeEdges(height: Dp = 56.dp): Modifier = this
@@ -388,7 +388,7 @@ private fun SyncedLyrics(
                 if (active) 1f else 0.88f, tween(280), label = "lyricScale"
             )
             Text(
-                text = line.text.ifBlank { "♪" },
+                text = line.text.ifBlank { "" },
                 style = TextStyle(
                     fontSize = 26.sp,
                     lineHeight = 34.sp,
@@ -420,7 +420,7 @@ private fun SyncedLyrics(
     }
 }
 
-// ───────────────────────── Footer ─────────────────────────
+//  Footer 
 
 @Composable
 private fun LyricsFooter(

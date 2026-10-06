@@ -22,6 +22,13 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
     fun consumeNotice() = RexPlayerController.consumeNotice()
     fun clearHistory() = RexPlayerController.clearHistory()
 
+    fun refreshPlaylists() = RexPlayerController.refreshPlaylists()
+    fun createPlaylist(name: String) = RexPlayerController.createPlaylist(name)
+    fun addToPlaylist(name: String, track: RexTrack) = RexPlayerController.addToPlaylist(name, track)
+    fun removeFromPlaylist(name: String, track: RexTrack) = RexPlayerController.removeFromPlaylist(name, track)
+    fun deletePlaylist(name: String) = RexPlayerController.deletePlaylist(name)
+    fun playPlaylist(name: String) = RexPlayerController.playPlaylist(name)
+
     fun playFromMain(index: Int) = RexPlayerController.playFromMain(index)
     fun playFromSearch(index: Int) = RexPlayerController.playFromSearch(index)
     fun playFromHistory(index: Int) = RexPlayerController.playFromHistory(index)

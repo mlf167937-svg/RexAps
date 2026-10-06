@@ -83,7 +83,7 @@ class PlayerActions(
     val onDelete: () -> Unit
 )
 
-// ───────────────────────── Full-screen player ─────────────────────────
+//  Full-screen player 
 
 @Composable
 fun MusicPlayerCard(
@@ -234,7 +234,7 @@ private fun PlayerTopBar(
     }
 }
 
-// ───────────────────────── Background ─────────────────────────
+//  Background 
 
 @Composable
 fun Modifier.playerBackground(accent: Color?): Modifier {
@@ -254,7 +254,7 @@ fun Modifier.playerBackground(accent: Color?): Modifier {
     }
 }
 
-// ───────────────────────── Equalizer ─────────────────────────
+//  Equalizer 
 
 @Composable
 fun EqualizerBars(
@@ -287,7 +287,7 @@ fun EqualizerBars(
     }
 }
 
-// ───────────────────────── Cover ─────────────────────────
+//  Cover 
 
 @Composable
 private fun PlayerCover(
@@ -359,7 +359,7 @@ private fun PlayerCover(
     }
 }
 
-// ───────────────────────── Title & like ─────────────────────────
+//  Title & like 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -400,7 +400,7 @@ private fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
     )
 }
 
-// ───────────────────────── Seek ─────────────────────────
+//  Seek 
 
 @Composable
 private fun SeekSection(
@@ -473,7 +473,7 @@ private fun SeekBar(progress: Float, buffered: Float, onSeek: (Float) -> Unit) {
     }
 }
 
-// ───────────────────────── Controls ─────────────────────────
+//  Controls 
 
 @Composable
 private fun PlayerControls(state: RexMusicUiState, busy: Boolean, actions: PlayerActions) {
@@ -649,7 +649,7 @@ private fun ActionPill(
     }
 }
 
-// ───────────────────────── Error & neighbors ─────────────────────────
+//  Error & neighbors 
 
 @Composable
 private fun PlayerError(error: String?, onRetry: () -> Unit) {

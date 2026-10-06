@@ -35,6 +35,7 @@ object RexPlayerController {
     private lateinit var store: RexHistoryStore
     private lateinit var queueStore: RexQueueStore
     private lateinit var taste: RexTasteStore
+    private lateinit var playlistStore: RexPlaylistStore
     private var initialized = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -92,10 +93,11 @@ object RexPlayerController {
         store = RexHistoryStore(appContext)
         queueStore = RexQueueStore(appContext)
         taste = RexTasteStore(appContext)
+        playlistStore = RexPlaylistStore(appContext)
         history.addAll(store.load())
         userQueue.addAll(queueStore.load())
         autoplay = taste.autoplay
-        _state.update { it.copy(popularCount = RexPopularSongs.tracks.size) }
+        _state.update { it.copy(popularCount = RexPopularSongs.tracks.size, playlists = playlistStore.list()) }
 
         RexOfflineManager.init(appContext)
         scope.launch { RexOfflineManager.state.collect { onOfflineChanged(it) } }
@@ -113,12 +115,61 @@ object RexPlayerController {
         if (modeChanged) publishQueueInfo()
     }
 
-    // ───────────────────────── Offline mode ─────────────────────────
+    //  Offline mode 
 
     fun setOfflineMode(on: Boolean) {
         RexOfflineManager.setOfflineMode(on)
         clearSearch()
         postNotice(if (on) "Mode offline aktif. Hanya lagu unduhan yang diputar" else "Kembali online")
+    }
+
+    // ---------------- Playlist JSON ----------------
+
+    fun refreshPlaylists() {
+        if (!initialized) return
+        _state.update { it.copy(playlists = playlistStore.list()) }
+    }
+
+    fun createPlaylist(name: String) {
+        if (playlistStore.create(name) == null) {
+            postNotice("Nama playlist tidak valid atau sudah ada")
+            return
+        }
+        refreshPlaylists()
+        postNotice("Playlist dibuat: ${name.trim()}")
+    }
+
+    fun addToPlaylist(name: String, track: RexTrack) {
+        if (playlistStore.addTrack(name, track)) {
+            refreshPlaylists()
+            postNotice("Ditambahkan ke $name")
+        } else {
+            postNotice("Playlist tidak bisa diperbarui")
+        }
+    }
+
+    fun removeFromPlaylist(name: String, track: RexTrack) {
+        if (playlistStore.removeTrack(name, track.id)) {
+            refreshPlaylists()
+            postNotice("Dihapus dari $name")
+        }
+    }
+
+    fun deletePlaylist(name: String) {
+        if (playlistStore.delete(name)) {
+            refreshPlaylists()
+            postNotice("Playlist dihapus: $name")
+        }
+    }
+
+    fun playPlaylist(name: String) {
+        val playlist = playlistStore.load(name) ?: return
+        val tracks = if (offlineMode()) playlist.tracks.filter { RexOfflineManager.isDownloaded(it) } else playlist.tracks
+        if (tracks.isEmpty()) {
+            postNotice(if (offlineMode()) "Playlist ini belum punya lagu offline" else "Playlist masih kosong")
+            return
+        }
+        startQueue(tracks, 0, follow = true)
     }
 
     /** Putar lagu dari perpustakaan offline; Next mengikuti urutan perpustakaan. */
@@ -139,7 +190,7 @@ object RexPlayerController {
         startQueue(if (shuffle) list.shuffled() else list, 0, follow = true)
     }
 
-    // ───────────────────────── Search ─────────────────────────
+    //  Search 
 
     /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
     fun search(query: String) {
@@ -187,7 +238,7 @@ object RexPlayerController {
         publishQueueInfo()
     }
 
-    // ───────────────────────── Play from list ─────────────────────────
+    //  Play from list 
 
     fun playFromMain(index: Int) {
         val list = _state.value.tracks
@@ -223,7 +274,7 @@ object RexPlayerController {
         playSmart()
     }
 
-    // ───────────────────────── User queue ─────────────────────────
+    //  User queue 
 
     fun addToQueue(track: RexTrack) {
         val entry = track.copy(audioUrl = "")
@@ -273,7 +324,7 @@ object RexPlayerController {
 
     private fun persistQueue() = queueStore.save(userQueue.toList())
 
-    // ───────────────────────── Repeat & autoplay ─────────────────────────
+    //  Repeat & autoplay 
 
     /** Ulangi lagu yang sedang diputar sebanyak [times] kali lagi (0 = mati, maks 50). */
     fun setRepeat(times: Int) {
@@ -288,7 +339,7 @@ object RexPlayerController {
         postNotice(if (on) "Autoplay pintar aktif" else "Mengikuti urutan daftar")
     }
 
-    // ───────────────────────── Next / previous ─────────────────────────
+    //  Next / previous 
 
     /** Tombol next dari pengguna. */
     fun next() {
@@ -380,7 +431,7 @@ object RexPlayerController {
         playJob = null
     }
 
-    // ───────────────────────── Begin / resolve ─────────────────────────
+    //  Begin / resolve 
 
     private fun beginTrack(track: RexTrack) {
         stopPlayer()
@@ -445,12 +496,21 @@ object RexPlayerController {
         return true
     }
 
-    // ───────────────────────── Lyrics ─────────────────────────
+    //  Lyrics 
 
     private var lyricsJob: Job? = null
 
     private fun loadLyrics(track: RexTrack) {
         lyricsJob?.cancel()
+        val offline = RexOfflineManager.readOfflineLyrics(track)
+        if (offline != null && !offline.isEmpty) {
+            _state.update { it.copy(lyrics = offline, lyricsLoading = false, lyricsError = null) }
+            return
+        }
+        if (offlineMode()) {
+            _state.update { it.copy(lyrics = Lyrics(), lyricsLoading = false, lyricsError = "Lirik offline belum tersedia untuk lagu ini") }
+            return
+        }
         _state.update {
             it.copy(lyrics = Lyrics(), lyricsLoading = true, lyricsError = null)
         }
@@ -458,7 +518,7 @@ object RexPlayerController {
         lyricsJob = scope.launch {
             RexMusicApi.fetchLyrics(q)
                 .onSuccess { lyr ->
-                    _state.update { it.copy(lyrics = lyr, lyricsLoading = false) }
+                    _state.update { it.copy(lyrics = lyr, lyricsLoading = false, lyricsError = null) }
                 }
                 .onFailure { e ->
                     _state.update {
@@ -484,7 +544,7 @@ object RexPlayerController {
         }
     }
 
-    // ───────────────────────── Smart autoplay ─────────────────────────
+    //  Smart autoplay 
 
     /** Pilih lagu berikutnya sendiri; coba sampai [SMART_RETRIES] kali kalau audio gagal dimuat. */
     private fun playSmart() {
@@ -595,7 +655,7 @@ object RexPlayerController {
         _state.update { it.copy(favoriteArtists = taste.favorites(3)) }
     }
 
-    // ───────────────────────── History ─────────────────────────
+    //  History 
 
     private fun sameSong(a: RexTrack, b: RexTrack): Boolean =
         a.id == b.id ||
@@ -640,7 +700,7 @@ object RexPlayerController {
         }
     }
 
-    // ───────────────────────── Player ─────────────────────────
+    //  Player 
 
     /** [source] = URL audio (online) atau path file (local = true). */
     private fun startPlayer(source: String, local: Boolean = false) {
@@ -844,7 +904,7 @@ object RexPlayerController {
         publishLoading()
     }
 
-    // ───────────────────────── Audio focus ─────────────────────────
+    //  Audio focus 
 
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
@@ -894,7 +954,7 @@ object RexPlayerController {
         }
     }
 
-    // ───────────────────────── Misc ─────────────────────────
+    //  Misc 
 
     /**
      * loading = search / resolve / prepare.

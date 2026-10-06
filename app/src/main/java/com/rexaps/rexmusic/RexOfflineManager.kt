@@ -61,6 +61,7 @@ object RexOfflineManager {
 
     private const val AUDIO_NAME = "music.mp3"
     private const val META_NAME = "meta.json"
+    private const val LYRICS_NAME = "lyrics.json"
     private const val PREFS = "rex_music_offline"
     private const val KEY_OFFLINE = "offline_mode"
     private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 13) RexMusic"
@@ -95,6 +96,7 @@ object RexOfflineManager {
         initialized = true
         appContext = context.applicationContext
         prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        RexDownloadNotification.init(appContext)
         _state.update {
             it.copy(
                 enabled = prefs.getBoolean(KEY_OFFLINE, false),
@@ -104,7 +106,7 @@ object RexOfflineManager {
         refresh()
     }
 
-    // ───────────────────────── Access & mode ─────────────────────────
+    //  Access & mode 
 
     /** Android 11+: "Akses semua file". Android 10-: izin tulis penyimpanan biasa. */
     fun hasAccess(context: Context): Boolean =
@@ -121,7 +123,7 @@ object RexOfflineManager {
         _state.update { it.copy(enabled = on) }
     }
 
-    // ───────────────────────── Library ─────────────────────────
+    //  Library 
 
     fun refresh() {
         scope.launch { refreshNow() }
@@ -149,7 +151,26 @@ object RexOfflineManager {
         return file.takeIf { it.isFile && it.length() > 0L }
     }
 
-    // ───────────────────────── Download ─────────────────────────
+    /** Lirik offline yang sudah disimpan bersama lagu. */
+    fun lyricsFile(track: RexTrack): File? {
+        val key = _state.value.keyFor(track) ?: return null
+        val file = File(root, "$key/$LYRICS_NAME")
+        return file.takeIf { it.isFile && it.length() > 0L }
+    }
+
+    fun readOfflineLyrics(track: RexTrack): Lyrics? = runCatching {
+        val file = lyricsFile(track) ?: return null
+        val o = JSONObject(file.readText())
+        val plain = o.optString("plainLyrics")
+        val arr = o.optJSONArray("syncedLyrics") ?: org.json.JSONArray()
+        val synced = (0 until arr.length()).mapNotNull { i ->
+            val line = arr.optJSONObject(i) ?: return@mapNotNull null
+            LyricLine(line.optLong("timeMs"), line.optString("text"))
+        }
+        Lyrics(plain = plain, synced = synced)
+    }.getOrNull()
+
+    //  Download 
 
     fun download(track: RexTrack) {
         if (!hasAccess(appContext)) {
@@ -168,12 +189,15 @@ object RexOfflineManager {
             try {
                 gate.withPermit { doDownload(track, key) }
                 refreshNow()
+                RexDownloadNotification.showCompleted(appContext, key, track)
                 _messages.tryEmit("Tersimpan offline: ${track.title}")
             } catch (e: CancellationException) {
                 cleanup(key)
+                RexDownloadNotification.showCancelled(appContext, key, track)
                 throw e
             } catch (e: Exception) {
                 cleanup(key)
+                RexDownloadNotification.showFailed(appContext, key, track, e.message ?: "kesalahan jaringan")
                 _messages.tryEmit("Gagal mengunduh ${track.title}: ${e.message ?: "kesalahan jaringan"}")
             } finally {
                 clearStatus(key)
@@ -228,6 +252,12 @@ object RexOfflineManager {
             ensureActive()
             downloadThumbnail(fresh.cover.ifBlank { track.cover }, dir)
             writeMeta(dir, fresh)
+
+            setStatus(key, DownloadStatus(track, DownloadStage.FetchingLyrics, 100))
+            val lyrics = RexMusicApi.fetchLyrics("${fresh.artist} ${fresh.title}".trim()).getOrNull()
+            writeLyrics(dir, lyrics, lyrics == null)
+
+            setStatus(key, DownloadStatus(track, DownloadStage.Finalizing, 100))
         }
     }
 
@@ -318,6 +348,23 @@ object RexOfflineManager {
         }
     }
 
+
+    private fun writeLyrics(dir: File, lyrics: Lyrics?, unavailable: Boolean) {
+        runCatching {
+            val synced = org.json.JSONArray().apply { lyrics?.synced.orEmpty().forEach { put(org.json.JSONObject().put("timeMs", it.timeMs).put("text", it.text)) } }
+            File(dir, LYRICS_NAME).writeText(
+                JSONObject()
+                    .put("version", 1)
+                    .put("available", lyrics != null && !lyrics.isEmpty)
+                    .put("offlineOnly", true)
+                    .put("unavailable", unavailable)
+                    .put("plainLyrics", lyrics?.plain.orEmpty())
+                    .put("syncedLyrics", synced)
+                    .toString()
+            )
+        }
+    }
+
     private fun readMeta(dir: File): JSONObject? = runCatching {
         JSONObject(File(dir, META_NAME).readText())
     }.getOrNull()
@@ -351,7 +398,7 @@ object RexOfflineManager {
         if (!File(dir, AUDIO_NAME).exists()) dir.deleteRecursively()
     }
 
-    // ───────────────────────── Scan ─────────────────────────
+    //  Scan 
 
     private fun scan(): List<OfflineEntry> {
         val dirs = root.listFiles { f -> f.isDirectory } ?: return emptyList()
@@ -372,7 +419,7 @@ object RexOfflineManager {
             OfflineEntry(
                 key = dir.name,
                 track = track,
-                sizeBytes = mp3.length() + (thumb?.length() ?: 0L),
+                sizeBytes = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() },
                 savedAt = mp3.lastModified()
             )
         }.sortedByDescending { it.savedAt }
@@ -383,10 +430,12 @@ object RexOfflineManager {
             .map { File(dir, it) }
             .firstOrNull { it.isFile && it.length() > 0L }
 
-    // ───────────────────────── Status helpers ─────────────────────────
+    //  Status helpers 
 
-    private fun setStatus(key: String, status: DownloadStatus) =
+    private fun setStatus(key: String, status: DownloadStatus) {
         _state.update { it.copy(downloads = it.downloads + (key to status)) }
+        if (::appContext.isInitialized) RexDownloadNotification.showProgress(appContext, key, status)
+    }
 
     private fun clearStatus(key: String) =
         _state.update { it.copy(downloads = it.downloads - key) }

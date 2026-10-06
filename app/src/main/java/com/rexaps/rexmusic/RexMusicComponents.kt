@@ -51,7 +51,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.rexaps.rexmusic.player.EqualizerBars
 
-// ───────────────────────── Models & actions ─────────────────────────
+//  Models & actions 
 
 /** Target menu opsi lagu. onPlay = null berarti menu "Putar" disembunyikan. */
 class MenuTarget(val track: RexTrack, val onPlay: (() -> Unit)?)
@@ -87,6 +87,10 @@ class RexActions(
     val searchArtist: (String) -> Unit,
     val goLibrary: () -> Unit,
     val openMenu: (MenuTarget) -> Unit,
+    val openPlaylistPicker: (RexTrack) -> Unit,
+    val playPlaylist: (String) -> Unit,
+    val createPlaylist: (String) -> Unit,
+    val deletePlaylist: (String) -> Unit,
     val dismissError: () -> Unit
 )
 
@@ -98,7 +102,7 @@ fun overlayFor(active: Boolean, playing: Boolean, loading: Boolean): CoverOverla
     else -> CoverOverlay.None
 }
 
-// ───────────────────────── Helpers ─────────────────────────
+//  Helpers 
 
 /** Rata-rata warna dari bitmap 16x16 (murah, tanpa Palette). */
 fun Drawable.averageColor(): Color? = runCatching {
@@ -148,7 +152,7 @@ fun rememberPressScale(source: MutableInteractionSource, pressed: Float = 0.96f)
     )
 }
 
-// ───────────────────────── Basic building blocks ─────────────────────────
+//  Basic building blocks 
 
 /** Tombol ikon bulat dengan ukuran pasti (tidak pernah melebar / bertabrakan). */
 @Composable
@@ -392,7 +396,7 @@ fun ErrorCard(error: String?, onDismiss: () -> Unit, modifier: Modifier = Modifi
     }
 }
 
-// ───────────────────────── Skeleton ─────────────────────────
+//  Skeleton 
 
 @Composable
 fun SkeletonList(modifier: Modifier = Modifier) {
@@ -420,7 +424,7 @@ fun SkeletonList(modifier: Modifier = Modifier) {
     }
 }
 
-// ───────────────────────── Track row (list) ─────────────────────────
+//  Track row (list) 
 
 @Composable
 fun TrackRow(
@@ -482,7 +486,7 @@ fun TrackRow(
     }
 }
 
-// ───────────────────────── Quick grid (Home) ─────────────────────────
+//  Quick grid (Home) 
 
 @Composable
 fun QuickGrid(tiles: List<QuickTile>, nowId: String?, playing: Boolean, modifier: Modifier = Modifier) {
@@ -536,7 +540,7 @@ private fun QuickTileCard(tile: QuickTile, active: Boolean, playing: Boolean, mo
     }
 }
 
-// ───────────────────────── Shelf cards ─────────────────────────
+//  Shelf cards 
 
 @Composable
 fun ShelfCard(
@@ -608,7 +612,7 @@ fun ArtistCard(name: String, onClick: () -> Unit, modifier: Modifier = Modifier)
     }
 }
 
-// ───────────────────────── Downloads & queue rows ─────────────────────────
+//  Downloads & queue rows 
 
 @Composable
 fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
@@ -618,6 +622,8 @@ fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
         DownloadStage.Resolving -> "Menyiapkan..."
         DownloadStage.Downloading ->
             if (status.percent >= 0) "Mengunduh ${status.percent}%" else "Mengunduh..."
+        DownloadStage.FetchingLyrics -> "Mengunduh lirik..."
+        DownloadStage.Finalizing -> "Menyimpan..."
     }
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
