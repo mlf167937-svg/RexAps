@@ -4,11 +4,17 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +34,7 @@ import com.rexaps.rexmonitor.ui.RexTheme
 @Composable
 fun RexMonitorScreen(
     modifier: Modifier = Modifier,
+    onExit: (() -> Unit)? = null,
     viewModel: RexMonitorViewModel = viewModel()
 ) {
     RexMonitorTheme {
@@ -55,16 +62,29 @@ fun RexMonitorScreen(
             }
         }
 
-        Box(
+        BackHandler(enabled = onExit != null) { onExit?.invoke() }
+
+        Column(
             modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(p.bgTop, p.bgBottom)))
+                .statusBarsPadding()
         ) {
+            if (onExit != null) {
+                IconButton(onClick = onExit) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Kembali",
+                        tint = p.textPrimary
+                    )
+                }
+            }
             RexMonitorHome(
                 state = state,
                 onToggleMonitoring = viewModel::onMonitoringToggle,
                 onOptimize = viewModel::optimize,
-                onRequestRoot = viewModel::requestRoot
+                onRequestRoot = viewModel::requestRoot,
+                modifier = Modifier.weight(1f)
             )
         }
 
