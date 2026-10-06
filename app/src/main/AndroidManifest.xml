@@ -2,16 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network -->
+    <!-- ============================== NETWORK ============================== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
-    <!-- Camera / Audio -->
+    <!-- ============================ CAMERA / AUDIO ========================= -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- Storage -->
+    <!-- =============================== STORAGE ============================= -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -25,10 +26,10 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
-    <!-- Media -->
+    <!-- ================================ MEDIA ============================== -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
-    <!-- Foreground Service -->
+    <!-- ========================== FOREGROUND SERVICE ======================= -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -36,21 +37,23 @@
     <!-- Hanya diperlukan jika RexWarp benar-benar memenuhi syarat systemExempted -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
-    <!-- Notification -->
+    <!-- ============================= NOTIFICATION ========================== -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Wake Lock -->
+    <!-- ============================== WAKE LOCK ============================= -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Boot -->
+    <!-- ================================= BOOT ============================== -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- ============================== QUERIES ============================== -->
     <!-- RexChat: deteksi aplikasi WhatsApp -->
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
     </queries>
 
+    <!-- ============================= APPLICATION =========================== -->
     <application
         android:theme="@style/AppTheme"
         android:label="RexAps"
@@ -60,6 +63,8 @@
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
         android:largeHeap="true">
+
+        <!-- =========================== FILE PROVIDER ====================== -->
 
         <!-- Existing FileProvider -->
         <provider
@@ -87,11 +92,14 @@
 
         </provider>
 
-        <!-- RexMusic Service -->
+        <!-- =========================== REX MUSIC =========================== -->
+
         <service
             android:name="com.rexaps.rexmusic.RexMusicService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- ============================ REX WARP ============================ -->
 
         <!-- RexWarp VPN Service -->
         <service
@@ -133,7 +141,21 @@
 
         </receiver>
 
-        <!-- Main Activity -->
+        <!-- =========================== REX MONITOR ========================= -->
+
+        <service
+            android:name="com.rexaps.rexmonitor.monitoring.RexMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="device_monitoring_notification" />
+
+        </service>
+
+        <!-- =========================== MAIN ACTIVITY ======================= -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -144,6 +166,8 @@
             </intent-filter>
 
         </activity>
+
+        <!-- ============================ REX CHAT =========================== -->
 
         <!-- RexChat: mode normal -->
         <activity

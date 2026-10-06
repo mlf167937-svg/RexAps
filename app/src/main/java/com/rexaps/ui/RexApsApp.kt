@@ -219,12 +219,19 @@ fun RexApsApp(activity: Activity) {
                         RexRoute.REXGIT ->
                             RexGit()
 
+                        RexRoute.REXMONITOR ->
+                            com.rexaps.rexmonitor.RexMonitorScreen(
+                                onExit = {
+                                    route = RexRoute.NONE
+                                }
+                        )
+
                         RexRoute.REXWARP ->
                             com.rexaps.rexwarp.RexWarpScreen(
                                 onExit = {
                                     route = RexRoute.NONE
                                 }
-                            )
+                        )
 
                         RexRoute.NONE -> Unit
                     }

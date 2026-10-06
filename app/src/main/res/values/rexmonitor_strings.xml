@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rexmonitor_channel_name">RexMonitor</string>
+    <string name="rexmonitor_channel_desc">Menampilkan status perangkat secara berkala</string>
+    <string name="rexmonitor_notif_title">RexMonitor</string>
+    <string name="rexmonitor_action_open">Open RexMonitor</string>
+    <string name="rexmonitor_action_stop">Stop Monitoring</string>
+    <string name="rexmonitor_starting">Starting monitoring…</string>
+    <string name="rexmonitor_unavailable">Unavailable</string>
+</resources>
