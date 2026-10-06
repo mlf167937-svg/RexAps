@@ -14,7 +14,7 @@ object RexAppRegistry {
         RexModule("rextools",   "RexTools",   "Kumpulan tools harian",                 true),
         RexModule("rexmusic",   "RexMusic",   "Streaming & playlist",                  true),
         RexModule("rexgit",     "RexGit",     "Git manager & repo",                    true),
-        RexModule("rexmonitir", "RexMonitor", "Monitoring Device",                  true),
+        RexModule("rexmonitor", "RexMonitor", "Monitoring Device",                   true),
         RexModule("rexmanager", "RexManager", "File manager lengkap",                  true),
         RexModule("rexpanel",   "RexPanel",   "Monitoring dan kontrol SSH",            true),
         RexModule("rexchat",    "RexChat",    "WA Client - Pairing only",              true),
