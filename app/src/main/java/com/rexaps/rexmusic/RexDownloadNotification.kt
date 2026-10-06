@@ -58,23 +58,23 @@ object RexDownloadNotification {
             DownloadStage.FetchingLyrics -> "Mengunduh lirik..."
             DownloadStage.Finalizing -> "Menyimpan metadata..."
         }
-        val views = RemoteViews(context.packageName, R.layout.rexmusic_download_notification).apply {
-            setImageViewResource(R.id.download_notification_icon, android.R.drawable.stat_sys_download)
-            setTextViewText(R.id.download_notification_title, status.track.title)
-            setTextViewText(R.id.download_notification_status, stage)
-            setProgressBar(R.id.download_notification_progress, 100, percent, status.percent < 0)
-            setTextViewText(R.id.download_notification_percent, if (status.percent >= 0) "$percent%" else "…")
+        val views = RemoteViews(context.packageName, resId(context, "layout", "rexmusic_download_notification")).apply {
+            setImageViewResource(resId(context, "id", "download_notification_icon"), android.R.drawable.stat_sys_download)
+            setTextViewText(resId(context, "id", "download_notification_title"), status.track.title)
+            setTextViewText(resId(context, "id", "download_notification_status"), stage)
+            setProgressBar(resId(context, "id", "download_notification_progress"), 100, percent, status.percent < 0)
+            setTextViewText(resId(context, "id", "download_notification_percent"), if (status.percent >= 0) "$percent%" else "…")
         }
         notify(context, key, views, ongoing = !terminal)
     }
 
     private fun postTerminal(context: Context, key: String, track: RexTrack, message: String, icon: Int) {
-        val views = RemoteViews(context.packageName, R.layout.rexmusic_download_notification).apply {
-            setImageViewResource(R.id.download_notification_icon, icon)
-            setTextViewText(R.id.download_notification_title, track.title)
-            setTextViewText(R.id.download_notification_status, message)
-            setProgressBar(R.id.download_notification_progress, 100, 100, false)
-            setTextViewText(R.id.download_notification_percent, "✓")
+        val views = RemoteViews(context.packageName, resId(context, "layout", "rexmusic_download_notification")).apply {
+            setImageViewResource(resId(context, "id", "download_notification_icon"), icon)
+            setTextViewText(resId(context, "id", "download_notification_title"), track.title)
+            setTextViewText(resId(context, "id", "download_notification_status"), message)
+            setProgressBar(resId(context, "id", "download_notification_progress"), 100, 100, false)
+            setTextViewText(resId(context, "id", "download_notification_percent"), "✓")
         }
         notify(context, key, views, ongoing = false)
     }
@@ -105,6 +105,9 @@ object RexDownloadNotification {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }
+
+    private fun resId(context: Context, type: String, name: String): Int =
+        context.resources.getIdentifier(name, type, context.packageName)
 
     private fun idFor(key: String): Int = BASE_ID + (key.hashCode() and 0x3FFF)
 }
