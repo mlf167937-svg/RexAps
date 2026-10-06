@@ -224,14 +224,14 @@ fun RexApsApp(activity: Activity) {
                                 onExit = {
                                     route = RexRoute.NONE
                                 }
-                        )
+                            )
 
                         RexRoute.REXWARP ->
                             com.rexaps.rexwarp.RexWarpScreen(
                                 onExit = {
                                     route = RexRoute.NONE
                                 }
-                        )
+                            )
 
                         RexRoute.NONE -> Unit
                     }
