@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="rexmusic_download_blue">#2F80FF</color>
+    <color name="rexmusic_download_blue_soft">#162F80FF</color>
+    <color name="rexmusic_download_surface">#14171D</color>
+    <color name="rexmusic_download_text">#F7F8FA</color>
+    <color name="rexmusic_download_muted">#A8B0BD</color>
+</resources>

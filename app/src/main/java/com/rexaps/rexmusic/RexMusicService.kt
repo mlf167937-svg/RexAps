@@ -125,8 +125,10 @@ class RexMusicService : Service() {
         val playing: Boolean,
         val busy: Boolean,
         val duration: Long,
+        val positionSecond: Long,
         val seekVersion: Int,
-        val loadingText: String
+        val loadingText: String,
+        val currentLyric: String?
     )
 
     private fun observeState() {
@@ -141,8 +143,10 @@ class RexMusicService : Service() {
                         playing = it.isPlaying,
                         busy = it.phase.isPlayerBusy,
                         duration = it.durationMs,
+                        positionSecond = it.positionMs / 1000L,
                         seekVersion = it.seekVersion,
-                        loadingText = it.loadingText
+                        loadingText = it.loadingText,
+                        currentLyric = currentSyncedLyric(it.lyrics, it.positionMs)
                     )
                 }
                 .distinctUntilChanged()
@@ -223,6 +227,7 @@ class RexMusicService : Service() {
         val track = s.nowPlaying
         val busy = s.phase.isPlayerBusy
         val active = s.isPlaying || busy
+        val currentLyric = currentSyncedLyric(s.lyrics, s.positionMs)
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
@@ -237,6 +242,8 @@ class RexMusicService : Service() {
             .setContentText(
                 when {
                     busy -> s.loadingText.ifBlank { "Memuat..." }
+                    !currentLyric.isNullOrBlank() ->
+                        "♪ $currentLyric"
                     else -> track?.artist ?: "Siap memutar"
                 }
             )
@@ -262,10 +269,29 @@ class RexMusicService : Service() {
                     .setShowActionsInCompactView(0, 1, 2)
             )
 
-        track?.album?.let { builder.setSubText(it) }
+        track?.artist?.let { builder.setSubText(it) }
         coverBitmap?.let { builder.setLargeIcon(it) }
         contentIntent()?.let { builder.setContentIntent(it) }
         return builder.build()
+    }
+
+
+    private fun currentSyncedLyric(lyrics: Lyrics, positionMs: Long): String? {
+        val list = lyrics.synced
+        if (list.isEmpty()) return null
+        var low = 0
+        var high = list.lastIndex
+        var active = -1
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            if (list[mid].timeMs <= positionMs) {
+                active = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return active.takeIf { it >= 0 }?.let { list[it].text.trim() }?.takeIf { it.isNotBlank() }
     }
 
     @Suppress("DEPRECATION")

@@ -28,7 +28,13 @@ enum class DownloadStage { Queued, Resolving, Downloading, FetchingLyrics, Final
 data class DownloadStatus(
     val track: RexTrack,
     val stage: DownloadStage = DownloadStage.Queued,
-    val percent: Int = -1
+    val percent: Int = -1,
+    /** Byte yang sudah diterima dari network untuk file audio. */
+    val downloadedBytes: Long = 0L,
+    /** Ukuran total dari response server, 0L kalau server tidak mengirim Content-Length. */
+    val totalBytes: Long = 0L,
+    /** Kecepatan download terbaru dalam byte/detik. */
+    val speedBytesPerSecond: Long = 0L
 )
 
 /** Satu lagu yang sudah tersimpan di Download/RexAps/Music. key = nama folder. */

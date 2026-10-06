@@ -165,8 +165,10 @@ object RexOfflineManager {
         val arr = o.optJSONArray("syncedLyrics") ?: org.json.JSONArray()
         val synced = (0 until arr.length()).mapNotNull { i ->
             val line = arr.optJSONObject(i) ?: return@mapNotNull null
-            LyricLine(line.optLong("timeMs"), line.optString("text"))
-        }
+            val text = line.optString("text").trim()
+            if (text.isBlank()) return@mapNotNull null
+            LyricLine(line.optLong("timeMs").coerceAtLeast(0L), text)
+        }.sortedBy { it.timeMs }
         Lyrics(plain = plain, synced = synced)
     }.getOrNull()
 
@@ -189,7 +191,9 @@ object RexOfflineManager {
             try {
                 gate.withPermit { doDownload(track, key) }
                 refreshNow()
-                RexDownloadNotification.showCompleted(appContext, key, track)
+                val finalStatus = _state.value.downloads[key]
+                    ?: DownloadStatus(track, DownloadStage.Finalizing, 100)
+                RexDownloadNotification.showCompleted(appContext, key, finalStatus)
                 _messages.tryEmit("Tersimpan offline: ${track.title}")
             } catch (e: CancellationException) {
                 cleanup(key)
@@ -242,8 +246,18 @@ object RexOfflineManager {
                 throw IOException("tidak bisa membuat folder $DISPLAY_PATH/$key")
             }
             val part = File(dir, "$AUDIO_NAME.part")
-            downloadFile(fresh.audioUrl, part) { pct ->
-                setStatus(key, DownloadStatus(track, DownloadStage.Downloading, pct))
+            downloadFile(fresh.audioUrl, part) { progress ->
+                setStatus(
+                    key,
+                    DownloadStatus(
+                        track = track,
+                        stage = DownloadStage.Downloading,
+                        percent = progress.percent,
+                        downloadedBytes = progress.downloadedBytes,
+                        totalBytes = progress.totalBytes,
+                        speedBytesPerSecond = progress.speedBytesPerSecond
+                    )
+                )
             }
             val target = File(dir, AUDIO_NAME)
             if (target.exists()) target.delete()
@@ -253,15 +267,43 @@ object RexOfflineManager {
             downloadThumbnail(fresh.cover.ifBlank { track.cover }, dir)
             writeMeta(dir, fresh)
 
-            setStatus(key, DownloadStatus(track, DownloadStage.FetchingLyrics, 100))
+            val audioStatus = _state.value.downloads[key]
+                ?: DownloadStatus(track = track, stage = DownloadStage.Downloading, percent = 100, downloadedBytes = target.length(), totalBytes = target.length())
+            setStatus(
+                key,
+                audioStatus.copy(
+                    track = track,
+                    stage = DownloadStage.FetchingLyrics,
+                    percent = 100,
+                    speedBytesPerSecond = 0L
+                )
+            )
             val lyrics = RexMusicApi.fetchLyrics("${fresh.artist} ${fresh.title}".trim()).getOrNull()
             writeLyrics(dir, lyrics, lyrics == null)
 
-            setStatus(key, DownloadStatus(track, DownloadStage.Finalizing, 100))
+            setStatus(
+                key,
+                _state.value.downloads[key]?.copy(
+                    stage = DownloadStage.Finalizing,
+                    percent = 100,
+                    speedBytesPerSecond = 0L
+                ) ?: audioStatus.copy(stage = DownloadStage.Finalizing, percent = 100, speedBytesPerSecond = 0L)
+            )
         }
     }
 
-    private suspend fun downloadFile(url: String, dest: File, onProgress: (Int) -> Unit) {
+    private data class DownloadProgress(
+        val percent: Int,
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val speedBytesPerSecond: Long
+    )
+
+    private suspend fun downloadFile(
+        url: String,
+        dest: File,
+        onProgress: (DownloadProgress) -> Unit
+    ) {
         val conn = openConnection(url)
         try {
             val code = conn.responseCode
@@ -270,32 +312,57 @@ object RexOfflineManager {
             if (type.startsWith("text/") || type.contains("json")) {
                 throw IOException("server tidak mengirim file audio")
             }
-            val total = conn.contentLengthLong
-            onProgress(if (total > 0) 0 else -1)
+            val total = conn.contentLengthLong.coerceAtLeast(0L)
+            onProgress(DownloadProgress(
+                percent = if (total > 0L) 0 else -1,
+                downloadedBytes = 0L,
+                totalBytes = total,
+                speedBytesPerSecond = 0L
+            ))
 
+            val startAt = System.currentTimeMillis()
             conn.inputStream.use { input ->
                 dest.outputStream().use { out ->
                     val buffer = ByteArray(32 * 1024)
                     var done = 0L
-                    var lastPct = -2
                     var lastTick = 0L
+                    var lastBytes = 0L
+                    var speed = 0L
                     while (true) {
                         currentCoroutineContext().ensureActive()
                         val n = input.read(buffer)
                         if (n < 0) break
                         out.write(buffer, 0, n)
                         done += n
-                        if (total > 0) {
-                            val pct = (done * 100 / total).toInt().coerceIn(0, 100)
-                            val now = System.currentTimeMillis()
-                            if (pct != lastPct && (pct == 100 || now - lastTick >= 200)) {
-                                lastPct = pct
-                                lastTick = now
-                                onProgress(pct)
+
+                        val now = System.currentTimeMillis()
+                        if (done == n.toLong() || now - lastTick >= 250L || (total > 0L && done >= total)) {
+                            val dt = now - lastTick
+                            if (lastTick > 0L && dt > 0L) {
+                                val instant = ((done - lastBytes) * 1000L / dt).coerceAtLeast(0L)
+                                speed = if (speed == 0L) instant else ((speed * 0.72f) + (instant * 0.28f)).toLong()
                             }
+                            lastTick = now
+                            lastBytes = done
+                            val pct = if (total > 0L) {
+                                (done * 100L / total).toInt().coerceIn(0, 100)
+                            } else {
+                                -1
+                            }
+                            onProgress(DownloadProgress(pct, done, total, speed))
                         }
                     }
-                    if (total > 0 && done < total) throw IOException("unduhan terputus")
+                    if (total > 0L && done < total) throw IOException("unduhan terputus")
+                    if (done > 0L) {
+                        val elapsed = (System.currentTimeMillis() - startAt).coerceAtLeast(1L)
+                        val finalSpeed = if (speed > 0L) speed else (done * 1000L / elapsed)
+                        onProgress(DownloadProgress(
+                            percent = if (total > 0L) 100 else -1,
+                            downloadedBytes = done,
+                            totalBytes = total,
+                            speedBytesPerSecond = finalSpeed
+                        ))
+                    }
                 }
             }
             if (dest.length() <= 0L) throw IOException("file kosong")

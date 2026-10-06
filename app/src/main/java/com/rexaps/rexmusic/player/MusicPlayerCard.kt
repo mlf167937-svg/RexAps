@@ -122,7 +122,15 @@ fun MusicPlayerCard(
                 }
                 Spacer(Modifier.height(28.dp))
                 Column(Modifier.padding(horizontal = 24.dp)) {
-                    TrackInfo(track.title, track.artist, isLiked, actions.onToggleLike)
+                    TrackInfo(
+                        title = track.title,
+                        artist = track.artist,
+                        isLiked = isLiked,
+                        onToggleLike = actions.onToggleLike,
+                        lyrics = state.lyrics,
+                        positionMs = positionState.value,
+                        onLyrics = actions.onLyrics
+                    )
                     Spacer(Modifier.height(12.dp))
                     SeekSection(positionState, state.durationMs, state.bufferedPercent, busy, actions.onSeek)
                     Spacer(Modifier.height(8.dp))
@@ -363,8 +371,16 @@ private fun PlayerCover(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TrackInfo(title: String, artist: String, isLiked: Boolean, onToggleLike: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+private fun TrackInfo(
+    title: String,
+    artist: String,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
+    lyrics: Lyrics,
+    positionMs: Long,
+    onLyrics: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(
                 title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
@@ -375,10 +391,84 @@ private fun TrackInfo(title: String, artist: String, isLiked: Boolean, onToggleL
                 artist, style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
             )
+
+            val activeLyric = activeLyricText(lyrics, positionMs)
+            if (activeLyric != null || !lyrics.isEmpty) {
+                Spacer(Modifier.height(9.dp))
+                AnimatedVisibility(visible = activeLyric != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+                            .clickable(onClick = onLyrics)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.FormatQuote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Crossfade(targetState = activeLyric, label = "currentLyric") { line ->
+                            Text(
+                                text = line.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White.copy(alpha = 0.9f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                AnimatedVisibility(visible = activeLyric == null && !lyrics.isEmpty) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onLyrics)
+                            .padding(horizontal = 2.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Subtitles,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Lihat lirik",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
         }
         Spacer(Modifier.width(8.dp))
         LikeButton(isLiked, onToggleLike)
     }
+}
+
+private fun activeLyricText(lyrics: Lyrics, positionMs: Long): String? {
+    val list = lyrics.synced
+    if (list.isEmpty()) return null
+    var low = 0
+    var high = list.lastIndex
+    var active = -1
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        if (list[mid].timeMs <= positionMs) {
+            active = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return active.takeIf { it >= 0 }?.let { list[it].text.trim() }?.takeIf { it.isNotBlank() }
 }
 
 @Composable

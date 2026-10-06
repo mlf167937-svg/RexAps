@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/download_notification_root"
+    android:id="@+id/download_notification_root_compact"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="72dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingStart="14dp"
-    android:paddingTop="10dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="10dp">
+    android:paddingStart="12dp"
+    android:paddingTop="7dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="7dp">
 
     <FrameLayout
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:background="@drawable/rexmusic_download_chip">
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:background="@drawable/rexmusic_download_chip"
+        android:foregroundGravity="center">
 
         <ImageView
             android:id="@+id/download_notification_icon"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:layout_gravity="center"
             android:contentDescription="@string/rexmusic_download_icon_desc"
             android:src="@drawable/ic_rexmusic_download" />
@@ -27,7 +29,7 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="10dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -38,7 +40,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/rexmusic_download_text"
-            android:textSize="15sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
@@ -48,33 +50,12 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/rexmusic_download_muted"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/download_notification_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/rexmusic_download_muted"
-            android:textSize="11sp" />
-
-        <ProgressBar
-            android:id="@+id/download_notification_progress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="5dp"
-            android:layout_marginTop="7dp"
-            android:max="100"
-            android:progress="0"
-            android:progressBackgroundTint="#33404C5A"
-            android:progressTint="@color/rexmusic_download_blue" />
+            android:textSize="10sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="3dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -85,37 +66,40 @@
                 android:background="@drawable/rexmusic_download_chip"
                 android:singleLine="true"
                 android:textColor="@color/rexmusic_download_blue"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/download_notification_speed"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="5dp"
                 android:background="@drawable/rexmusic_download_chip"
                 android:singleLine="true"
                 android:textColor="@color/rexmusic_download_blue"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/download_notification_percent"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/rexmusic_download_chip"
-                android:paddingStart="8dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="8dp"
-                android:paddingBottom="3dp"
-                android:textColor="@color/rexmusic_download_blue"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:textStyle="bold" />
         </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/download_notification_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="5dp"
+            android:max="100"
+            android:progress="0"
+            android:progressBackgroundTint="#33404C5A"
+            android:progressTint="@color/rexmusic_download_blue" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/download_notification_percent"
+        android:layout_width="38dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:gravity="center"
+        android:textColor="@color/rexmusic_download_blue"
+        android:textSize="11sp"
+        android:textStyle="bold" />
 </LinearLayout>
