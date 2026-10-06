@@ -2,4 +2,6 @@
 <resources>
     <color name="rex_cyan">#18E0FF</color>
     <color name="rex_purple">#8A4DFF</color>
+    <color name="rex_text">#F2F6FF</color>
+    <color name="rex_text_dim">#A9B6D8</color>
 </resources>
