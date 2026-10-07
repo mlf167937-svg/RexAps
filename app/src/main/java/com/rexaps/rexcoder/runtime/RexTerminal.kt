@@ -38,7 +38,7 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
         if (args.isEmpty()) return REX_HELP
         return when (args[0]) {
             "install" -> { requireArgs("rex install", args.drop(1), 1); RexPackageManager.install(args[1], args.getOrNull(2)).getOrElse { throw it } }
-            "list" -> RexPackageManager.listInstalled().ifEmpty { "No runtimes installed" }.joinToString("\n")
+            "list" -> RexPackageManager.listInstalled().let { installed -> if (installed.isEmpty()) "No runtimes installed" else installed.joinToString("\n") }
             "registry" -> when (args.getOrNull(1)) {
                 "set" -> { val url = args.getOrNull(2) ?: error("Usage: rex registry set <url>"); RexPackageManager.setRegistryUrl(url); "Registry URL updated" }
                 "show", null -> "Registry: ${RexPackageManager.registryUrl().ifBlank { "local (.rex/registry.json)" }}"
