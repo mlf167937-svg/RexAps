@@ -20,7 +20,7 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
             "rmdir" -> { requireArgs(cmd, args, 1); args.forEach { val f = resolve(it); requireInside(f); require(!f.exists() || f.delete()) { "rmdir failed: ${f.name}" } }; "" }
             "cp" -> copy(args)
             "mv" -> move(args)
-            "cat" -> { requireArgs(cmd, args, 1); args.map { resolve(it).readText() }.joinToString("\n") }
+            "cat" -> { requireArgs(cmd, args, 1); readFiles(args) }
             "echo" -> args.joinToString(" ")
             "clear" -> "\u000C"
             "whoami" -> "rexcoder"
@@ -68,7 +68,26 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
         return external(command)
     }
 
-    private fun list(args: List<String>): String { val dir = args.firstOrNull()?.let(::resolve) ?: cwd; requireInside(dir); return dir.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))?.joinToString("\n") { if (it.isDirectory) "${it.name}/" else it.name } ?: "" }
+    private fun list(args: List<String>): String {
+        val dir = args.firstOrNull()?.let(::resolve) ?: cwd
+        requireInside(dir)
+        val files = dir.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() })) ?: emptyList()
+        val out = StringBuilder()
+        for (file in files) {
+            if (out.isNotEmpty()) out.append('\n')
+            out.append(if (file.isDirectory) file.name + "/" else file.name)
+        }
+        return out.toString()
+    }
+    private fun readFiles(args: List<String>): String {
+        val out = StringBuilder()
+        for (path in args) {
+            if (out.isNotEmpty()) out.append('\n')
+            out.append(resolve(path).readText())
+        }
+        return out.toString()
+    }
+
     private fun copy(args: List<String>): String { requireArgs("cp", args, 2); val src = resolve(args[0]); val dst = resolve(args[1]); requireInside(src); requireInside(dst); if (src.isDirectory) src.copyRecursively(dst, true) else src.copyTo(if (dst.isDirectory) File(dst, src.name) else dst, true); return "" }
     private fun move(args: List<String>): String { requireArgs("mv", args, 2); val src = resolve(args[0]); val dst = resolve(args[1]); requireInside(src); requireInside(dst); require(src.renameTo(if (dst.isDirectory) File(dst, src.name) else dst)) { "move failed" }; return "" }
     private fun external(parts: List<String>): String { val p = ProcessBuilder(parts).directory(cwd).redirectErrorStream(true).apply { environment()["REXCODER_WORKSPACE"] = workspace.absolutePath }.start(); val out = p.inputStream.bufferedReader().use { it.readText() }; val code = p.waitFor(); return if (out.isBlank()) "Process finished with exit code $code" else out.trimEnd() + "\n\nProcess finished with exit code $code" }

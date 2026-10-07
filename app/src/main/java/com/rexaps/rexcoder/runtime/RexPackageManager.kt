@@ -28,12 +28,20 @@ object RexPackageManager {
     }
 
     fun ensureLayout() {
-        val root = File(WorkspaceManager.root, ".rex").apply { mkdirs() }
-        File(root, "packages").mkdirs()
+        val root = File(WorkspaceManager.root, ".rex")
+        require(root.exists() || root.mkdirs()) { "Tidak bisa membuat folder .rex" }
+        val packages = File(root, "packages")
+        require(packages.exists() || packages.mkdirs()) { "Tidak bisa membuat folder .rex/packages" }
         val config = File(root, CONFIG_NAME)
-        if (!config.exists()) config.writeText(DEFAULT_CONFIG)
+        if (!config.exists()) {
+            config.parentFile?.mkdirs()
+            config.writeText(DEFAULT_CONFIG)
+        }
         val registry = File(root, REGISTRY_NAME)
-        if (!registry.exists()) registry.writeText(DEFAULT_REGISTRY)
+        if (!registry.exists()) {
+            registry.parentFile?.mkdirs()
+            registry.writeText(DEFAULT_REGISTRY)
+        }
     }
 
     fun install(id: String, requestedVersion: String? = null): Result<String> = runCatching {
@@ -111,7 +119,14 @@ object RexPackageManager {
     private fun verifySha256(file: File, expected: String) {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input -> val buf = ByteArray(64 * 1024); while (true) { val n = input.read(buf); if (n < 0) break; digest.update(buf, 0, n) } }
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        val bytes = digest.digest()
+        val hex = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            val v = b.toInt() and 0xff
+            if (v < 16) hex.append('0')
+            hex.append(v.toString(16))
+        }
+        val actual = hex.toString()
         require(actual.equals(expected, ignoreCase = true)) { "SHA-256 mismatch untuk ${file.name}" }
     }
 
