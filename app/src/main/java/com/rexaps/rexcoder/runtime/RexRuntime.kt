@@ -13,7 +13,7 @@ object RexRuntime {
         RuntimeSpec("python", "python", setOf("py")),
         RuntimeSpec("node", "node", setOf("js", "mjs", "cjs", "ts", "tsx", "jsx"))
     )
-    fun init(context: Context) { this.context = context.applicationContext; initialized = true; ensureLayout(); RexPackageManager.init(context) }
+    fun init(context: Context) { this.context = context.applicationContext; initialized = true; ensureLayout() }
     fun ensureLayout() {
         val root = File(WorkspaceManager.root, ".language"); root.mkdirs()
         File(root, "python").mkdirs(); File(root, "node").mkdirs()
@@ -38,7 +38,7 @@ object RexRuntime {
     }
     fun runtimeHint(file: File): String {
         val spec = specFor(file) ?: return "No runtime registered for .${file.extension.ifBlank { "?" }}"
-        return if (commandFor(file) != null) "${spec.id} runtime ready" else "${spec.id} belum terpasang. Jalankan: rex install ${spec.id}"
+        return if (commandFor(file) != null) "${spec.id} runtime ready" else "${spec.id} belum terpasang. Tempatkan runtime di .language/${spec.id}"
     }
     fun run(file: File, cwd: File, timeoutMs: Long = 120_000L): Result<String> = runCatching {
         val command = commandFor(file) ?: error(runtimeHint(file))

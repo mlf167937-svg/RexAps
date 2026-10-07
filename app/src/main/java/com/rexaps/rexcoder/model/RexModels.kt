@@ -9,6 +9,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.rexaps.rexcoder.storage.WorkspaceManager
 import com.rexaps.rexcoder.runtime.RexRuntime
 import com.rexaps.rexcoder.runtime.RexTerminal
+import com.rexaps.rexcoder.runtime.SshSession
+import com.rexaps.rexcoder.runtime.SshTarget
+import com.rexaps.rexcoder.runtime.parseSshCommand
 import kotlinx.coroutines.*
 import java.io.File
 
@@ -27,7 +30,6 @@ enum class SideView(val title: String, val icon: ImageVector) {
     Explorer("Explorer", Icons.Outlined.Folder),
     Search("Search", Icons.Outlined.Search),
     Git("Source Control", Icons.Outlined.AccountTree),
-    Run("Run", Icons.Outlined.PlayArrow),
     Extensions("Extensions", Icons.Outlined.Extension)
 }
 
@@ -65,9 +67,24 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     var panelVisible by mutableStateOf(false)
     var paletteVisible by mutableStateOf(false)
     var statusMessage by mutableStateOf("Ready")
+    var sshLoginVisible by mutableStateOf(false)
+    var sshCommand by mutableStateOf("")
+    var sshPassword by mutableStateOf("")
+    var sshConnected by mutableStateOf(false)
+    var sshTarget by mutableStateOf<SshTarget?>(null)
+    private var sshSession: SshSession? = null
     private var nextGroupId = 1
 
-    init { RexRuntime.ensureLayout() }
+    init {
+        RexRuntime.ensureLayout()
+        terminalLines.clear()
+        terminalLines.add("RexCoder Terminal")
+        terminalLines.add("$ termux-setup-storage")
+        terminalLines.add("[RexCoder] storage workspace ready")
+        terminalLines.add("$ cd ${WorkspaceManager.DISPLAY_PATH}")
+        terminalLines.add(WorkspaceManager.DISPLAY_PATH)
+        terminalLines.add("Type \"help\" for commands. Type \"ssh ...\" to open SSH login.")
+    }
 
     val focusedGroup: EditorGroup get() = groups.firstOrNull { it.id == focusedGroupId } ?: groups.first()
     val focusedDoc: DocState? get() = focusedGroup.active?.let { docs[it] }
@@ -154,9 +171,29 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     }
 
     fun submitTerminal() {
-        val line = terminalInput.trim(); if (line.isBlank()) return
+        val line = terminalInput.trim()
+        if (line.isBlank()) return
         terminalInput = ""
-        terminalLines.add("$ ${line}")
+        terminalLines.add(if (sshConnected) "remote$ $line" else "$ $line")
+        if (sshConnected) {
+            if (line == "exit" || line == "logout") {
+                disconnectSsh()
+            } else {
+                sshSession?.send((line + "\n").toByteArray(Charsets.UTF_8))
+            }
+            return
+        }
+        if (line == "ssh" || line.startsWith("ssh ")) {
+            val target = parseSshCommand(line)
+            if (target == null) {
+                terminalLines.add("error: Format SSH salah. Contoh: ssh -p 8022 user@192.168.0.101")
+            } else {
+                sshCommand = line
+                sshPassword = ""
+                sshLoginVisible = true
+            }
+            return
+        }
         scope.launch {
             val result = withContext(Dispatchers.IO) { terminal.execute(line) }
             result.fold(
@@ -168,17 +205,49 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         }
     }
 
-    fun runActive() {
-        val doc = focusedDoc ?: run { terminalLines.add("No active file") ; panelVisible = true; return }
-        saveDoc(doc)
-        val file = File(doc.path)
-        terminalLines.add("$ run ${doc.name}")
-        terminalLines.add("${RexRuntime.runtimeHint(file)}")
-        panelVisible = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { RexRuntime.run(file, file.parentFile ?: WorkspaceManager.root) }
-            result.fold({ out -> terminalLines.addAll(out.lines()) }, { e -> terminalLines.add("error: ${e.message ?: "run failed"}") })
+    fun connectSsh(command: String, password: String) {
+        val target = parseSshCommand(command) ?: run {
+            terminalLines.add("error: Format SSH salah")
+            return
         }
+        if (sshConnected) disconnectSsh()
+        sshLoginVisible = false
+        terminalLines.add("Connecting to ${target.user}@${target.host}:${target.port} ...")
+        val session = SshSession()
+        sshSession = session
+        scope.launch {
+            try {
+                session.connect(target, password, 120, 36,
+                    onText = { text ->
+                        scope.launch(Dispatchers.Main.immediate) { terminalLines.addAll(text.replace("\r", "").split('\n')) }
+                    },
+                    onClosed = {
+                        scope.launch(Dispatchers.Main.immediate) { if (sshSession === session) { sshConnected = false; sshTarget = null; sshSession = null; terminalLines.add("[SSH] Connection closed") } }
+                    }
+                )
+                sshTarget = target
+                sshConnected = true
+                terminalLines.add("[SSH] Connected to ${target.user}@${target.host}:${target.port}")
+            } catch (e: Exception) {
+                session.close()
+                if (sshSession === session) sshSession = null
+                terminalLines.add("error: SSH ${e.message ?: "connection failed"}")
+            }
+        }
+    }
+
+    fun openSshLogin() {
+        sshCommand = if (sshCommand.isBlank()) "ssh -p 22 user@host" else sshCommand
+        sshPassword = ""
+        sshLoginVisible = true
+    }
+
+    fun disconnectSsh() {
+        sshSession?.close()
+        sshSession = null
+        sshConnected = false
+        sshTarget = null
+        terminalLines.add("[SSH] Disconnected")
     }
 
     fun search(q: String): List<SearchHit> {

@@ -47,6 +47,11 @@ fun BottomPanel(s: RexCoderState, modifier: Modifier = Modifier) {
                     modifier = Modifier.clickable { tab = i }.drawBehind { if (i == tab) drawRect(Rex.Accent, Offset(8.dp.toPx(), size.height - 1.dp.toPx()), Size(size.width - 16.dp.toPx(), 1.dp.toPx())) }.padding(horizontal = 8.dp, vertical = 10.dp))
             }
             Spacer(Modifier.weight(1f))
+            if (s.sshConnected) {
+                SmallIconButton(Icons.Outlined.LinkOff, "Disconnect SSH", 32.dp, Rex.Error) { s.disconnectSsh() }
+            } else {
+                SmallIconButton(Icons.Outlined.Link, "SSH login", 32.dp, Rex.Accent) { s.openSshLogin() }
+            }
             SmallIconButton(Icons.Outlined.DeleteSweep, "Clear terminal", 32.dp) { s.terminalLines.clear() }
             SmallIconButton(Icons.Outlined.Close, "Close panel") { s.panelVisible = false }
         }
@@ -64,6 +69,49 @@ fun BottomPanel(s: RexCoderState, modifier: Modifier = Modifier) {
             else -> TerminalView(s)
         }
     }
+    if (s.sshLoginVisible) {
+        SshLoginDialog(s)
+    }
+}
+
+@Composable
+private fun SshLoginDialog(s: RexCoderState) {
+    var showPassword by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { s.sshLoginVisible = false },
+        title = { Text("RexCoder SSH") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Login SSH seperti RexPanel, tetapi terminal tetap berada di dalam RexCoder.", fontSize = 12.sp, color = Rex.TextDim)
+                androidx.compose.material3.OutlinedTextField(
+                    value = s.sshCommand,
+                    onValueChange = { s.sshCommand = it },
+                    singleLine = true,
+                    label = { Text("SSH command") },
+                    placeholder = { Text("ssh -p 8022 user@192.168.0.101") }
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = s.sshPassword,
+                    onValueChange = { s.sshPassword = it },
+                    singleLine = true,
+                    label = { Text("Password") },
+                    visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
+                        }
+                    }
+                )
+                Text("Format: ssh -p PORT user@host", fontSize = 11.sp, color = Rex.TextDim)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { s.connectSsh(s.sshCommand, s.sshPassword) }) { Text("Connect") }
+        },
+        dismissButton = {
+            TextButton(onClick = { s.sshLoginVisible = false }) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

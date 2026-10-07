@@ -84,13 +84,13 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
     ) {
         Icon(Icons.Outlined.Code, null, tint = Rex.Accent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        listOf("File", "Edit", "View", "Run", "Terminal").forEach { m ->
+        listOf("File", "Edit", "View", "Terminal").forEach { m ->
             Text(
                 m, fontSize = 12.sp, color = Rex.Text,
                 modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable {
                     when (m) {
                         "View" -> s.sidebarVisible = !s.sidebarVisible
-                        "Terminal", "Run" -> s.panelVisible = !s.panelVisible
+                        "Terminal" -> s.panelVisible = !s.panelVisible
                         "File" -> s.save()
                         else -> s.paletteVisible = true
                     }
@@ -111,7 +111,6 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
         Spacer(Modifier.width(8.dp))
         SmallIconButton(Icons.Outlined.Save, "Save", 32.dp) { s.save() }
         SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 32.dp) { onToggleTheme() }
-        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 32.dp, Rex.Success) { s.runActive() }
     }
 }
 
@@ -163,7 +162,6 @@ private fun CompactTopBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: (
         LayoutMenu(s, tint = Rex.Text, size = 40.dp)
         SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 40.dp, Rex.Text) { onToggleTheme() }
         SmallIconButton(Icons.Outlined.Save, "Save", 40.dp, Rex.Text) { s.save() }
-        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 40.dp, Rex.Success) { s.runActive() }
     }
 }
 

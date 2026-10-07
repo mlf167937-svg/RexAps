@@ -75,12 +75,6 @@ fun Sidebar(
             SideView.Explorer -> ExplorerView(s, rowHeight, onFileOpened)
             SideView.Search -> SearchView(s, onFileOpened)
             SideView.Git -> GitView(s)
-            SideView.Run -> InfoList(
-                listOf(
-                    Triple("Run RexCoder (debug)", "Android App", "Run"),
-                    Triple("Run web preview", "index.html", "Run")
-                )
-            ) { s.panelVisible = true }
             SideView.Extensions -> InfoList(
                 listOf(
                     Triple("Kotlin", "JetBrains", "Install"),
