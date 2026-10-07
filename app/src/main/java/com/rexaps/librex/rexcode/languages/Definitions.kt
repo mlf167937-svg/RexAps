@@ -11,8 +11,7 @@ private abstract class Base(
     override val blockComments: List<Pair<String,String>> = emptyList(),
     override val operators: Set<String> = emptySet(),
     override val fileNames: Set<String> = emptySet()
-) : RexLanguageDefinition {
-}
+) : RexLanguageDefinition
 
 private val C_LIKE = setOf("=", "+", "-", "*", "/", "%", "==", "!=", "===", "!==", "<", ">", "<=", ">=", "&&", "||", "!", "++", "--", "=>", "->", "?", "?:", "+=", "-=", "*=", "/=", "&", "|", "^", "~")
 private val C_TYPES = setOf("int", "long", "short", "byte", "float", "double", "char", "string", "bool", "boolean", "void", "object", "var", "dynamic", "decimal", "uint", "ulong", "usize", "isize")
