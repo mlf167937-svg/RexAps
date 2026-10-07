@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rexaps.rexcoder.model.RexCoderState
+import com.rexaps.rexcoder.runtime.RexRuntime
 import com.rexaps.rexcoder.model.SideView
 import com.rexaps.rexcoder.model.flatFiles
 import com.rexaps.rexcoder.model.rememberRexCoderState
@@ -43,6 +45,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRexCoderState()) {
+    RexRuntime.init(LocalContext.current)
     var darkTheme by rememberSaveable { mutableStateOf(true) }
     RexTheme(darkTheme = darkTheme) {
         BoxWithConstraints(modifier.fillMaxSize().background(Rex.EditorBg)) {
@@ -108,7 +111,7 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
         Spacer(Modifier.width(8.dp))
         SmallIconButton(Icons.Outlined.Save, "Save", 32.dp) { s.save() }
         SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 32.dp) { onToggleTheme() }
-        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 32.dp, Rex.Success) { s.panelVisible = true }
+        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 32.dp, Rex.Success) { s.runActive() }
     }
 }
 
@@ -160,7 +163,7 @@ private fun CompactTopBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: (
         LayoutMenu(s, tint = Rex.Text, size = 40.dp)
         SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 40.dp, Rex.Text) { onToggleTheme() }
         SmallIconButton(Icons.Outlined.Save, "Save", 40.dp, Rex.Text) { s.save() }
-        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 40.dp, Rex.Success) { s.panelVisible = true }
+        SmallIconButton(Icons.Outlined.PlayArrow, "Run", 40.dp, Rex.Success) { s.runActive() }
     }
 }
 

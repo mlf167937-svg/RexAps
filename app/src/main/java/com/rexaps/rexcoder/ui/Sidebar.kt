@@ -104,9 +104,28 @@ private fun visibleRows(
 
 @Composable
 private fun ExplorerView(s: RexCoderState, rowHeight: Dp, onOpened: () -> Unit) {
+    var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var name by rememberSaveable { mutableStateOf("") }
     val rows = visibleRows(s.root, 0, s.expanded)
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(rows, key = { it.first.path }) { (node, depth) -> TreeRow(s, node, depth, rowHeight, onOpened) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("WORKSPACE", fontSize = 10.sp, color = Rex.TextDim, modifier = Modifier.weight(1f))
+            SmallIconButton(Icons.Outlined.NoteAdd, "New file", 32.dp) { name = ""; dialog = "file" }
+            SmallIconButton(Icons.Outlined.CreateNewFolder, "New folder", 32.dp) { name = ""; dialog = "folder" }
+            SmallIconButton(Icons.Outlined.Refresh, "Refresh", 32.dp) { s.refreshWorkspace() }
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(rows, key = { it.first.path }) { (node, depth) -> TreeRow(s, node, depth, rowHeight, onOpened) }
+        }
+    }
+    dialog?.let { kind ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text(if (kind == "file") "Create file" else "Create folder") },
+            text = { BasicTextField(name, { name = it }, singleLine = true, textStyle = TextStyle(color = Rex.Text, fontSize = 14.sp), cursorBrush = SolidColor(Rex.Text), modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2E35), RoundedCornerShape(6.dp)).padding(12.dp)) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { if (name.isNotBlank()) { if (kind == "file") s.createFile(name.trim()) else s.createFolder(name.trim()); dialog = null } }) { Text("Create") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { dialog = null }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -132,7 +151,8 @@ private fun TreeRow(s: RexCoderState, node: FileNode, depth: Int, rowH: Dp, onOp
             tint = Rex.TextDim, modifier = Modifier.size(16.dp)
         ) else Spacer(Modifier.width(16.dp))
         Spacer(Modifier.width(4.dp))
-        Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+        if (node.isDir) Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+        else RexLanguageIcon(node.name, Modifier.width(24.dp))
         Spacer(Modifier.width(6.dp))
         Text(
             node.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,

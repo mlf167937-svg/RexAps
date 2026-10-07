@@ -7,6 +7,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.rexaps.rexcoder.storage.WorkspaceManager
+import com.rexaps.rexcoder.runtime.RexRuntime
+import com.rexaps.rexcoder.runtime.RexTerminal
+import kotlinx.coroutines.*
 import java.io.File
 
 // Real filesystem tree. path is the absolute filesystem path.
@@ -47,6 +50,11 @@ data class SearchHit(val path: String, val name: String, val line: Int, val text
 
 @Stable
 class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
+    private val terminal = RexTerminal()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val terminalLines = mutableStateListOf<String>("RexCoder Terminal", "Workspace: ${WorkspaceManager.DISPLAY_PATH}", "Type \"help\" for commands.")
+    var terminalInput by mutableStateOf("")
+    var terminalCwd by mutableStateOf(WorkspaceManager.DISPLAY_PATH)
     var root by mutableStateOf(initialRoot)
     val docs = mutableStateMapOf<String, DocState>()
     val groups = mutableStateListOf(EditorGroup(0))
@@ -59,10 +67,13 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     var statusMessage by mutableStateOf("Ready")
     private var nextGroupId = 1
 
+    init { RexRuntime.ensureLayout() }
+
     val focusedGroup: EditorGroup get() = groups.firstOrNull { it.id == focusedGroupId } ?: groups.first()
     val focusedDoc: DocState? get() = focusedGroup.active?.let { docs[it] }
 
     fun refreshWorkspace() {
+        RexRuntime.ensureLayout()
         val oldOpen = docs.keys.toSet()
         root = WorkspaceManager.readTree()
         expanded.clear()
@@ -132,14 +143,42 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         d.value = TextFieldValue(v.text.replaceRange(sel.min, sel.max, t), TextRange(sel.min + t.length))
     }
 
-    fun createFile(relativePath: String) { WorkspaceManager.createFile(relativePath); refreshWorkspace() }
-    fun createFolder(relativePath: String) { WorkspaceManager.createDirectory(relativePath); refreshWorkspace() }
+    fun createFile(relativePath: String) { WorkspaceManager.createFile(relativePath); refreshWorkspace(); statusMessage = "Created $relativePath" }
+    fun createFolder(relativePath: String) { WorkspaceManager.createDirectory(relativePath); refreshWorkspace(); statusMessage = "Created $relativePath" }
     fun deleteNode(node: FileNode) { runCatching { File(node.path).deleteRecursively() }; docs.remove(node.path); refreshWorkspace() }
     fun renameNode(node: FileNode, newName: String) {
         if (newName.isBlank()) return
         val target = File(node.path).parentFile?.resolve(newName) ?: return
         runCatching { File(node.path).renameTo(target) }
         refreshWorkspace()
+    }
+
+    fun submitTerminal() {
+        val line = terminalInput.trim(); if (line.isBlank()) return
+        terminalInput = ""
+        terminalLines.add("$ ${line}")
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { terminal.execute(line) }
+            result.fold(
+                { out -> if (out == "\u000C") terminalLines.clear() else if (out.isNotBlank()) terminalLines.addAll(out.lines()) },
+                { e -> terminalLines.add("error: ${e.message ?: "command failed"}") }
+            )
+            terminalCwd = terminal.cwd.absolutePath
+            refreshWorkspace()
+        }
+    }
+
+    fun runActive() {
+        val doc = focusedDoc ?: run { terminalLines.add("No active file") ; panelVisible = true; return }
+        saveDoc(doc)
+        val file = File(doc.path)
+        terminalLines.add("$ run ${doc.name}")
+        terminalLines.add("${RexRuntime.runtimeHint(file)}")
+        panelVisible = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { RexRuntime.run(file, file.parentFile ?: WorkspaceManager.root) }
+            result.fold({ out -> terminalLines.addAll(out.lines()) }, { e -> terminalLines.add("error: ${e.message ?: "run failed"}") })
+        }
     }
 
     fun search(q: String): List<SearchHit> {

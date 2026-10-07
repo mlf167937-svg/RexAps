@@ -36,44 +36,56 @@ private val outputLines = listOf(
 
 @Composable
 fun BottomPanel(s: RexCoderState, modifier: Modifier = Modifier) {
-    var tab by remember { mutableIntStateOf(2) }
+    var tab by rememberSaveable { mutableIntStateOf(2) }
     Column(modifier.background(Rex.EditorBg)) {
         Row(Modifier.fillMaxWidth().height(34.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             listOf("PROBLEMS", "OUTPUT", "TERMINAL").forEachIndexed { i, t ->
-                Text(
-                    t, fontSize = 11.sp, color = if (i == tab) Rex.TextBright else Rex.TextDim,
-                    modifier = Modifier
-                        .clickable { tab = i }
-                        .drawBehind {
-                            if (i == tab) drawRect(
-                                Rex.Accent, Offset(8.dp.toPx(), size.height - 1.dp.toPx()),
-                                Size(size.width - 16.dp.toPx(), 1.dp.toPx())
-                            )
-                        }
-                        .padding(horizontal = 8.dp, vertical = 10.dp)
-                )
+                Text(t, fontSize = 11.sp, color = if (i == tab) Rex.TextBright else Rex.TextDim,
+                    modifier = Modifier.clickable { tab = i }.drawBehind { if (i == tab) drawRect(Rex.Accent, Offset(8.dp.toPx(), size.height - 1.dp.toPx()), Size(size.width - 16.dp.toPx(), 1.dp.toPx())) }.padding(horizontal = 8.dp, vertical = 10.dp))
             }
             Spacer(Modifier.weight(1f))
+            SmallIconButton(Icons.Outlined.DeleteSweep, "Clear terminal", 32.dp) { s.terminalLines.clear() }
             SmallIconButton(Icons.Outlined.Close, "Close panel") { s.panelVisible = false }
         }
         HDivider()
-        val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp, color = Rex.Text)
         when (tab) {
             0 -> Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.CheckCircle, null, tint = Rex.Success, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("No problems have been detected in the workspace.", fontSize = 12.sp, color = Rex.TextDim)
+                Spacer(Modifier.width(8.dp)); Text("No problems have been detected in the workspace.", fontSize = 12.sp, color = Rex.TextDim)
             }
             1 -> LazyColumn(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                items(outputLines) { Text(it, style = mono) }
+                item { Text("[RexCoder] Runtime manager ready", style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Rex.Text)) }
+                item { Text("[RexCoder] Workspace: ${com.rexaps.rexcoder.storage.WorkspaceManager.DISPLAY_PATH}", style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Rex.Text)) }
+                item { Text("[RexCoder] .language runtimes are discovered automatically", style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Rex.Text)) }
             }
-            else -> LazyColumn(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                item { Text("❯ ./gradlew assembleDebug", style = mono.copy(color = Rex.SynFunction)) }
-                item { Text("> Task :app:compileDebugKotlin", style = mono) }
-                item { Text("> Task :app:assembleDebug", style = mono) }
-                item { Text("BUILD SUCCESSFUL in 12s", style = mono.copy(color = Rex.Success)) }
-                item { Text("❯ ▌", style = mono.copy(color = Rex.SynFunction)) }
+            else -> TerminalView(s)
+        }
+    }
+}
+
+@Composable
+private fun TerminalView(s: RexCoderState) {
+    val scroll = rememberScrollState()
+    LaunchedEffect(s.terminalLines.size) { scroll.animateScrollTo(scroll.maxValue) }
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 8.dp)) {
+            s.terminalLines.forEach { line ->
+                Text(line, style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp, color = if (line.startsWith("error:")) Color(0xFFFF7A7A) else Rex.Text))
             }
+        }
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("$", color = Rex.SynFunction, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = s.terminalInput,
+                onValueChange = { s.terminalInput = it },
+                singleLine = true,
+                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Rex.Text),
+                cursorBrush = SolidColor(Rex.Text),
+                modifier = Modifier.weight(1f).background(Color(0xFF20242B), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 9.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            SmallIconButton(Icons.Outlined.Send, "Run command", 40.dp, Rex.Accent) { s.submitTerminal() }
         }
     }
 }
