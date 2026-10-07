@@ -22,6 +22,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rexaps.librex.rexcode.RexCode
 import com.rexaps.rexcoder.model.RexCoderState
 import com.rexaps.rexcoder.theme.Rex
 
@@ -101,7 +102,7 @@ fun StatusBar(s: RexCoderState, compact: Boolean) {
             val col = before.length - (before.lastIndexOf('\n') + 1) + 1
             Text("Ln $ln, Col $col", style = t)
             if (!compact) Text("   Spaces: 4   UTF-8   ", style = t) else Spacer(Modifier.width(10.dp))
-            Text(doc.lang.label, style = t)
+            Text(RexCode.language(doc.name).displayName, style = t)
         }
         Spacer(Modifier.width(8.dp))
         Icon(

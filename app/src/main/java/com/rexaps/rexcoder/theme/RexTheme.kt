@@ -59,24 +59,24 @@ object Rex {
     val SynFunction = Color(0xFFDCDCAA)
     val SynVariable = Color(0xFF9CDCFE)
 
-    lateinit var EditorBg: Color
-    lateinit var SideBar: Color
-    lateinit var ActivityBar: Color
-    lateinit var TitleBar: Color
-    lateinit var TabBar: Color
-    lateinit var TabInactive: Color
-    lateinit var Border: Color
-    lateinit var Selection: Color
-    lateinit var SelectionEditor: Color
-    lateinit var LineHighlight: Color
-    lateinit var Accent: Color
-    lateinit var Text: Color
-    lateinit var TextDim: Color
-    lateinit var TextBright: Color
-    lateinit var Error: Color
-    lateinit var Warning: Color
-    lateinit var Modified: Color
-    lateinit var Success: Color
+    var EditorBg: Color = Color.Unspecified
+    var SideBar: Color = Color.Unspecified
+    var ActivityBar: Color = Color.Unspecified
+    var TitleBar: Color = Color.Unspecified
+    var TabBar: Color = Color.Unspecified
+    var TabInactive: Color = Color.Unspecified
+    var Border: Color = Color.Unspecified
+    var Selection: Color = Color.Unspecified
+    var SelectionEditor: Color = Color.Unspecified
+    var LineHighlight: Color = Color.Unspecified
+    var Accent: Color = Color.Unspecified
+    var Text: Color = Color.Unspecified
+    var TextDim: Color = Color.Unspecified
+    var TextBright: Color = Color.Unspecified
+    var Error: Color = Color.Unspecified
+    var Warning: Color = Color.Unspecified
+    var Modified: Color = Color.Unspecified
+    var Success: Color = Color.Unspecified
 
     fun apply(dark: Boolean) {
         EditorBg = if (dark) DarkEditorBg else LightEditorBg
