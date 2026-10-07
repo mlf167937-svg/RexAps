@@ -105,13 +105,19 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
         val dir = resolve(args.firstOrNull() ?: ".")
         requireInside(dir)
         require(dir.isDirectory) { "Not a directory: ${dir.name}" }
-        val files = dir.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() })) ?: emptyList()
+
+        val files = dir.listFiles()
+            ?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
+            ?: emptyList()
+
         val out = StringBuilder()
+
         files.forEachIndexed { i, f ->
             if (i > 0) out.append('\n')
             out.append(if (f.isDirectory) "<DIR> " else "      ").append(f.name)
         }
-        out.toString()
+
+        return out.toString()
     }
 
     private fun external(parts: List<String>): String {
