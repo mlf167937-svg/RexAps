@@ -1,0 +1,155 @@
+package com.rexaps.rexcoder.model
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import com.rexaps.rexcoder.storage.WorkspaceManager
+import java.io.File
+
+// Real filesystem tree. path is the absolute filesystem path.
+data class FileNode(
+    val path: String,
+    val name: String,
+    val isDir: Boolean,
+    val children: List<FileNode> = emptyList(),
+    val content: String = ""
+)
+
+fun FileNode.flatFiles(): List<FileNode> = if (!isDir) listOf(this) else children.flatMap { it.flatFiles() }
+
+enum class SideView(val title: String, val icon: ImageVector) {
+    Explorer("Explorer", Icons.Outlined.Folder),
+    Search("Search", Icons.Outlined.Search),
+    Git("Source Control", Icons.Outlined.AccountTree),
+    Run("Run", Icons.Outlined.PlayArrow),
+    Extensions("Extensions", Icons.Outlined.Extension)
+}
+
+@Stable
+class DocState(val path: String, val name: String, text: String) {
+    var value by mutableStateOf(TextFieldValue(text))
+    private var saved by mutableStateOf(text)
+    val modified: Boolean get() = value.text != saved
+    fun markSaved() { saved = value.text }
+    fun reload(text: String) { value = TextFieldValue(text); saved = text }
+}
+
+@Stable
+class EditorGroup(val id: Int) {
+    val tabs = mutableStateListOf<String>()
+    var active by mutableStateOf<String?>(null)
+}
+
+data class SearchHit(val path: String, val name: String, val line: Int, val text: String)
+
+@Stable
+class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
+    var root by mutableStateOf(initialRoot)
+    val docs = mutableStateMapOf<String, DocState>()
+    val groups = mutableStateListOf(EditorGroup(0))
+    val expanded = mutableStateListOf<String>()
+    var focusedGroupId by mutableIntStateOf(0)
+    var view by mutableStateOf(SideView.Explorer)
+    var sidebarVisible by mutableStateOf(true)
+    var panelVisible by mutableStateOf(false)
+    var paletteVisible by mutableStateOf(false)
+    var statusMessage by mutableStateOf("Ready")
+    private var nextGroupId = 1
+
+    val focusedGroup: EditorGroup get() = groups.firstOrNull { it.id == focusedGroupId } ?: groups.first()
+    val focusedDoc: DocState? get() = focusedGroup.active?.let { docs[it] }
+
+    fun refreshWorkspace() {
+        val oldOpen = docs.keys.toSet()
+        root = WorkspaceManager.readTree()
+        expanded.clear()
+        expanded.add(root.path)
+        oldOpen.forEach { p -> if (!File(p).exists()) docs.remove(p) }
+        statusMessage = "Workspace refreshed"
+    }
+
+    fun toggle(path: String) { if (!expanded.remove(path)) expanded.add(path) }
+
+    fun openFile(node: FileNode, groupId: Int = focusedGroupId) {
+        if (node.isDir) { toggle(node.path); return }
+        val fresh = runCatching { File(node.path).readText(Charsets.UTF_8) }.getOrDefault(node.content)
+        docs[node.path]?.let { if (!it.modified) it.reload(fresh) }
+        docs.getOrPut(node.path) { DocState(node.path, node.name, fresh) }
+        val g = groups.firstOrNull { it.id == groupId } ?: groups.first()
+        if (node.path !in g.tabs) g.tabs.add(node.path)
+        g.active = node.path
+        focusedGroupId = g.id
+        statusMessage = "Opened ${node.name}"
+    }
+
+    fun openToSide(node: FileNode) {
+        val g = if (groups.size < 3) addGroup() else groups.last()
+        openFile(node, g.id)
+    }
+
+    fun openAt(path: String, line: Int) {
+        val node = root.flatFiles().firstOrNull { it.path == path } ?: return
+        openFile(node)
+        val d = docs[path] ?: return
+        var offset = 0
+        repeat((line - 1).coerceAtLeast(0)) {
+            val i = d.value.text.indexOf('\n', offset)
+            if (i < 0) return@repeat
+            offset = i + 1
+        }
+        d.value = d.value.copy(selection = TextRange(offset.coerceIn(0, d.value.text.length)))
+    }
+
+    fun addGroup(): EditorGroup = EditorGroup(nextGroupId++).also { groups.add(it); focusedGroupId = it.id }
+    fun splitEditor() { if (groups.size < 3) { val src = focusedGroup.active; val g = addGroup(); if (src != null) { g.tabs.add(src); g.active = src } } }
+    fun removeGroup(id: Int) { if (groups.size > 1) { groups.removeAll { it.id == id }; if (focusedGroupId == id) focusedGroupId = groups.first().id } }
+    fun setLayout(n: Int) { while (groups.size < n) splitEditor(); while (groups.size > n) removeGroup(groups.last().id) }
+
+    fun closeTab(g: EditorGroup, path: String) {
+        val i = g.tabs.indexOf(path); if (i < 0) return
+        g.tabs.removeAt(i)
+        if (g.active == path) g.active = g.tabs.getOrNull(minOf(i, g.tabs.lastIndex))
+        if (g.tabs.isEmpty() && groups.size > 1) removeGroup(g.id)
+    }
+    fun closeAll() { setLayout(1); groups.first().apply { tabs.clear(); active = null } }
+
+    fun save() {
+        focusedDoc?.let { saveDoc(it) }
+    }
+    fun saveAll() { docs.values.filter { it.modified }.forEach(::saveDoc) }
+    private fun saveDoc(doc: DocState) {
+        runCatching { WorkspaceManager.write(File(doc.path), doc.value.text); doc.markSaved(); statusMessage = "Saved ${doc.name}" }
+            .onFailure { statusMessage = "Save failed: ${it.message ?: "unknown error"}" }
+    }
+    fun modifiedDocs(): List<DocState> = docs.values.filter { it.modified }
+
+    fun insertAtCursor(t: String) {
+        val d = focusedDoc ?: return
+        val v = d.value; val sel = v.selection
+        d.value = TextFieldValue(v.text.replaceRange(sel.min, sel.max, t), TextRange(sel.min + t.length))
+    }
+
+    fun createFile(relativePath: String) { WorkspaceManager.createFile(relativePath); refreshWorkspace() }
+    fun createFolder(relativePath: String) { WorkspaceManager.createDirectory(relativePath); refreshWorkspace() }
+    fun deleteNode(node: FileNode) { runCatching { File(node.path).deleteRecursively() }; docs.remove(node.path); refreshWorkspace() }
+    fun renameNode(node: FileNode, newName: String) {
+        if (newName.isBlank()) return
+        val target = File(node.path).parentFile?.resolve(newName) ?: return
+        runCatching { File(node.path).renameTo(target) }
+        refreshWorkspace()
+    }
+
+    fun search(q: String): List<SearchHit> {
+        if (q.length < 2) return emptyList()
+        return root.flatFiles().asSequence().flatMap { f ->
+            val text = docs[f.path]?.value?.text ?: f.content
+            text.lineSequence().mapIndexedNotNull { i, l -> if (l.contains(q, true)) SearchHit(f.path, f.name, i + 1, l.trim()) else null }
+        }.take(200).toList()
+    }
+}
+
+@Composable
+fun rememberRexCoderState(): RexCoderState = remember { RexCoderState().also { it.expanded.add(it.root.path) } }

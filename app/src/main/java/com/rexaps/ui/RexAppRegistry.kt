@@ -10,23 +10,123 @@ data class RexModule(
 object RexAppRegistry {
 
     val modules = listOf(
-        RexModule("rexfox",     "RexFox",     "Browser cepat & ringan",                true),
-        RexModule("rextools",   "RexTools",   "Kumpulan tools harian",                 true),
-        RexModule("rexmusic",   "RexMusic",   "Streaming & playlist",                  true),
-        RexModule("rexgit",     "RexGit",     "Git manager & repo",                    true),
-        RexModule("rexmonitor", "RexMonitor", "Monitoring Device",                   true),
-        RexModule("rexmanager", "RexManager", "File manager lengkap",                  true),
-        RexModule("rexpanel",   "RexPanel",   "Monitoring dan kontrol SSH",            true),
-        RexModule("rexchat",    "RexChat",    "WA Client - Pairing only",              true),
-        RexModule("rexnux",     "RexNux",     "Terminal & Linux",                      true),
-        RexModule("rexwarp",    "RexWARP",    "Cloudflare WARP & network monitoring",  true),
-        RexModule("rexcalc",    "RexCalc",    "Kalkulator Pintar",                     false),
-        RexModule("rexalbum",   "RexAlbum",   "Smart Galery",                          false),
-        RexModule("rextube",    "RexTube",    "Video & subscriptions",                 false),
-        RexModule("rextok",     "RexTok",     "Short video & feed",                    false),
-        RexModule("rexai",      "RexAI",      "AI tools & generator",                  false)
+
+        RexModule(
+            id = "rexfox",
+            name = "RexFox",
+            description = "Browser cepat & ringan",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexcoder",
+            name = "RexCoder",
+            description = "VS Code Version RexAps",
+            available = true
+        ),
+
+        RexModule(
+            id = "rextools",
+            name = "RexTools",
+            description = "Kumpulan tools harian",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexmusic",
+            name = "RexMusic",
+            description = "Streaming & playlist",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexgit",
+            name = "RexGit",
+            description = "Git manager & repo",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexmonitor",
+            name = "RexMonitor",
+            description = "Monitoring Device",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexmanager",
+            name = "RexManager",
+            description = "File manager lengkap",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexpanel",
+            name = "RexPanel",
+            description = "Monitoring dan kontrol SSH",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexchat",
+            name = "RexChat",
+            description = "WA Client - Pairing only",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexnux",
+            name = "RexNux",
+            description = "Terminal & Linux",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexwarp",
+            name = "RexWARP",
+            description = "Cloudflare WARP & network monitoring",
+            available = true
+        ),
+
+        RexModule(
+            id = "rexcalc",
+            name = "RexCalc",
+            description = "Kalkulator Pintar",
+            available = false
+        ),
+
+        RexModule(
+            id = "rexalbum",
+            name = "RexAlbum",
+            description = "Smart Galery",
+            available = false
+        ),
+
+        RexModule(
+            id = "rextube",
+            name = "RexTube",
+            description = "Video & subscriptions",
+            available = false
+        ),
+
+        RexModule(
+            id = "rextok",
+            name = "RexTok",
+            description = "Short video & feed",
+            available = false
+        ),
+
+        RexModule(
+            id = "rexai",
+            name = "RexAI",
+            description = "AI tools & generator",
+            available = false
+        )
     )
 
-    fun getModule(id: String): RexModule? =
-        modules.firstOrNull { it.id == id }
+    fun getModule(id: String): RexModule? {
+        return modules.firstOrNull {
+            it.id.equals(id, ignoreCase = true)
+        }
+    }
 }
