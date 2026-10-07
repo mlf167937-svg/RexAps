@@ -83,7 +83,6 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
             "node" -> runtimeTool("node", args)
             "npm" -> runtimeTool("node", listOf("npm") + args, nodeNpm = true)
             "npx" -> runtimeTool("node", listOf("npx") + args, nodeNpm = true)
-            "run" -> { requireArgs(cmd, args, 1); external(args) }
             "help" -> HELP
             else -> external(parts)
         }
@@ -152,6 +151,6 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
     }
 
     companion object {
-        const val HELP = "Commands: cd pwd ls mkdir touch rm rmdir cp mv cat echo clear whoami termux-setup-storage ssh python pip node npm run help\n\nPython: python file.py | pip install <package>\nNode.js: node file.js | npm install <package>\nSSH: ssh -p 22 user@host"
+        const val HELP = "Commands: cd pwd ls mkdir touch rm rmdir cp mv cat echo clear whoami termux-setup-storage ssh python pip node npm npx help\n\nPython: python file.py | pip install <package>\nNode.js: node file.js | npm install <package>\nSSH: ssh -p 22 user@host"
     }
 }
