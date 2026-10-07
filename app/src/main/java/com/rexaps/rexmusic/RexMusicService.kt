@@ -17,7 +17,6 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
-import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
@@ -33,11 +32,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * RexMusic media notification.
- *
- * Important: RexMusic stays inside the RexAps APK, so Android will still show the
- * application header as "RexAps". What this service controls is the actual music
- * notification card: artwork, title, artist, lyric and transport controls.
+ * Foreground service: notifikasi media (prev / play-pause / next / tutup) + MediaSession.
+ * Sengaja tidak memakai R.layout/R.id agar tidak bergantung pada resource custom.
  */
 class RexMusicService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -116,17 +112,9 @@ class RexMusicService : Service() {
     }
 
     private data class NotifKey(
-        val id: String?,
-        val title: String?,
-        val artist: String?,
-        val album: String?,
-        val cover: String?,
-        val playing: Boolean,
-        val busy: Boolean,
-        val duration: Long,
-        val position: Long,
-        val seekVersion: Int,
-        val loadingText: String
+        val id: String?, val title: String?, val artist: String?, val cover: String?,
+        val playing: Boolean, val busy: Boolean, val duration: Long,
+        val seekVersion: Int, val loadingText: String
     )
 
     private fun observeState() {
@@ -134,17 +122,9 @@ class RexMusicService : Service() {
             RexPlayerController.state
                 .map {
                     NotifKey(
-                        id = it.nowPlaying?.id,
-                        title = it.nowPlaying?.title,
-                        artist = it.nowPlaying?.artist,
-                        album = it.nowPlaying?.album,
-                        cover = it.nowPlaying?.cover,
-                        playing = it.isPlaying,
-                        busy = it.phase.isPlayerBusy,
-                        duration = it.durationMs,
-                        position = it.positionMs,
-                        seekVersion = it.seekVersion,
-                        loadingText = it.loadingText
+                        it.nowPlaying?.id, it.nowPlaying?.title, it.nowPlaying?.artist,
+                        it.nowPlaying?.cover, it.isPlaying, it.phase.isPlayerBusy,
+                        it.durationMs, it.seekVersion, it.loadingText
                     )
                 }
                 .distinctUntilChanged()
@@ -166,13 +146,9 @@ class RexMusicService : Service() {
         coverBitmap = null
         artJob?.cancel()
         if (url.isBlank()) return
-
         artJob = scope.launch {
             val request = ImageRequest.Builder(applicationContext)
-                .data(url)
-                .size(512)
-                .allowHardware(false)
-                .build()
+                .data(url).size(512).allowHardware(false).build()
             val drawable = (applicationContext.imageLoader.execute(request) as? SuccessResult)?.drawable
             val bmp = runCatching { drawable?.toBitmap() }.getOrNull()
             if (bmp != null && coverUrl == url && !closed) {
@@ -215,11 +191,8 @@ class RexMusicService : Service() {
         val active = s.isPlaying || s.phase.isPlayerBusy
         if (active) {
             if (!foreground) {
-                runCatching { startForegroundCompat(n) }
-                    .onFailure { nm.notify(NOTIF_ID, n) }
-            } else {
-                nm.notify(NOTIF_ID, n)
-            }
+                runCatching { startForegroundCompat(n) }.onFailure { nm.notify(NOTIF_ID, n) }
+            } else nm.notify(NOTIF_ID, n)
         } else {
             if (foreground) detachForeground()
             nm.notify(NOTIF_ID, n)
@@ -230,36 +203,6 @@ class RexMusicService : Service() {
         val track = s.nowPlaying
         val busy = s.phase.isPlayerBusy
         val active = s.isPlaying || busy
-        val views = RemoteViews(packageName, R.layout.notification_rexmusic_player).apply {
-            setImageViewResource(R.id.rexmusic_notif_icon, android.R.drawable.ic_media_play)
-            setTextViewText(R.id.rexmusic_notif_title, track?.title ?: "RexMusic")
-            setTextViewText(
-                R.id.rexmusic_notif_artist,
-                when {
-                    busy -> s.loadingText.ifBlank { "Memuat..." }
-                    else -> track?.artist ?: "Siap memutar"
-                }
-            )
-            setTextViewText(R.id.rexmusic_notif_lyric, currentLyricText(s))
-
-            val duration = s.durationMs.coerceAtLeast(0L)
-            val position = s.positionMs.coerceIn(0L, duration.coerceAtLeast(1L))
-            val progress = if (duration > 0) ((position * 1000L) / duration).toInt() else 0
-            setProgressBar(R.id.rexmusic_notif_progress, 1000, progress, false)
-            setTextViewText(R.id.rexmusic_notif_time, formatTime(position))
-            setTextViewText(R.id.rexmusic_notif_duration, formatTime(duration))
-            setImageViewResource(
-                R.id.rexmusic_notif_play,
-                if (s.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-            )
-
-            coverBitmap?.let { setImageViewBitmap(R.id.rexmusic_notif_cover, it) }
-            setOnClickPendingIntent(R.id.rexmusic_notif_prev, servicePending(ACTION_PREV))
-            setOnClickPendingIntent(R.id.rexmusic_notif_play, servicePending(ACTION_TOGGLE))
-            setOnClickPendingIntent(R.id.rexmusic_notif_next, servicePending(ACTION_NEXT))
-            setOnClickPendingIntent(R.id.rexmusic_notif_close, servicePending(ACTION_CLOSE))
-        }
-
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -269,59 +212,37 @@ class RexMusicService : Service() {
 
         builder
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setCustomContentView(views)
-            .setCustomBigContentView(views)
-            .setStyle(Notification.DecoratedCustomViewStyle())
+            .setContentTitle(track?.title ?: "RexMusic")
+            .setContentText(if (busy) s.loadingText.ifBlank { "Memuat..." } else track?.artist ?: "Siap memutar")
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setOngoing(active)
             .setCategory(Notification.CATEGORY_TRANSPORT)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setDeleteIntent(servicePending(ACTION_CLOSE))
-            .setContentTitle(track?.title ?: "RexMusic")
-            .setContentText(track?.artist ?: "")
+            .addAction(action(android.R.drawable.ic_media_previous, "Sebelumnya", ACTION_PREV))
+            .addAction(if (s.isPlaying) action(android.R.drawable.ic_media_pause, "Jeda", ACTION_TOGGLE)
+                       else action(android.R.drawable.ic_media_play, "Putar", ACTION_TOGGLE))
+            .addAction(action(android.R.drawable.ic_media_next, "Berikutnya", ACTION_NEXT))
+            .addAction(action(android.R.drawable.ic_menu_close_clear_cancel, "Tutup", ACTION_CLOSE))
+            .setStyle(
+                Notification.MediaStyle()
+                    .setMediaSession(session.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
 
+        track?.album?.let { builder.setSubText(it) }
+        coverBitmap?.let { builder.setLargeIcon(it) }
         contentIntent()?.let { builder.setContentIntent(it) }
         return builder.build()
     }
 
-    /**
-     * Uses the already parsed API/offline LyricLine timing. No timing is invented here.
-     * The exact lyrics provider/model is owned by the player layer; this notification only
-     * displays the current line when that information is available.
-     */
-    private fun currentLyricText(s: RexMusicUiState): String {
-        val lines = s.lyrics.synced
-        if (lines.isEmpty()) {
-            return if (s.lyricsLoading) "♪ Memuat lirik..." else "♪ Lirik tidak tersedia"
-        }
-
-        // Same source of truth as the lyrics screen: the API/offline LyricLine timeMs.
-        var lo = 0
-        var hi = lines.lastIndex
-        var active = -1
-        while (lo <= hi) {
-            val mid = (lo + hi) ushr 1
-            if (lines[mid].timeMs <= s.positionMs) {
-                active = mid
-                lo = mid + 1
-            } else {
-                hi = mid - 1
-            }
-        }
-        return active.takeIf { it >= 0 }?.let { "♪ ${lines[it].text}" } ?: "♪ ${lines.first().text}"
-    }
-
-    private fun formatTime(ms: Long): String {
-        if (ms <= 0L) return "0:00"
-        val total = ms / 1000L
-        return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
-    }
+    @Suppress("DEPRECATION")
+    private fun action(icon: Int, title: String, action: String): Notification.Action =
+        Notification.Action.Builder(icon, title, servicePending(action)).build()
 
     private fun servicePending(action: String): PendingIntent = PendingIntent.getService(
-        this,
-        action.hashCode(),
-        Intent(this, RexMusicService::class.java).setAction(action),
+        this, action.hashCode(), Intent(this, RexMusicService::class.java).setAction(action),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
@@ -329,40 +250,29 @@ class RexMusicService : Service() {
         val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return null
         launch.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         return PendingIntent.getActivity(
-            this,
-            0,
-            launch,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            this, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "RexMusic",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "Pemutar musik RexMusic"
-            setShowBadge(false)
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-        }
+        val channel = NotificationChannel(CHANNEL_ID, "Pemutar musik", NotificationManager.IMPORTANCE_LOW)
+        channel.description = "Kontrol pemutar RexMusic"
+        channel.setShowBadge(false)
+        channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         nm.createNotificationChannel(channel)
     }
 
     private fun startForegroundCompat(n: Notification) {
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIF_ID, n)
-        }
+        } else startForeground(NOTIF_ID, n)
         foreground = true
     }
 
     private fun detachForeground() {
-        if (Build.VERSION.SDK_INT >= 24) {
-            stopForeground(STOP_FOREGROUND_DETACH)
-        } else {
+        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_DETACH)
+        else {
             @Suppress("DEPRECATION")
             stopForeground(false)
         }
@@ -372,9 +282,8 @@ class RexMusicService : Service() {
     private fun shutdown() {
         closed = true
         RexPlayerController.stop()
-        if (Build.VERSION.SDK_INT >= 24) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
+        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+        else {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
@@ -384,9 +293,8 @@ class RexMusicService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "rexmusic_playback_v2"
+        private const val CHANNEL_ID = "rexmusic_playback"
         private const val NOTIF_ID = 4711
-
         const val ACTION_START = "com.rexaps.rexmusic.action.START"
         const val ACTION_TOGGLE = "com.rexaps.rexmusic.action.TOGGLE"
         const val ACTION_NEXT = "com.rexaps.rexmusic.action.NEXT"
@@ -396,8 +304,7 @@ class RexMusicService : Service() {
         fun start(context: Context) {
             runCatching {
                 ContextCompat.startForegroundService(
-                    context,
-                    Intent(context, RexMusicService::class.java).setAction(ACTION_START)
+                    context, Intent(context, RexMusicService::class.java).setAction(ACTION_START)
                 )
             }
         }
