@@ -3,12 +3,18 @@ package com.rexaps.rexmusic
 import com.rexaps.rextools.utils.ApiClient
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.URL
+import java.net.URLEncoder
 import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 object RexMusicApi {
 
+    private const val LYRICS_ENDPOINT = "https://api.nexray.eu.cc/search/lyrics"
     private const val SEARCH_TTL_MS = 5 * 60_000L
     private const val AUDIO_TTL_MS = 15 * 60_000L
     private const val LYRICS_TTL_MS = 24 * 60 * 60_000L
@@ -95,48 +101,95 @@ object RexMusicApi {
     //  Lyrics 
 
     suspend fun fetchLyrics(query: String): Result<Lyrics> {
-        val key = query.trim().lowercase()
+        val cleanQuery = query.trim()
+        val key = cleanQuery.lowercase()
         if (key.isBlank()) return Result.failure(Exception("query kosong"))
 
         synchronized(lyricsCache) { lyricsCache[key] }
             ?.takeIf { it.fresh() }
             ?.let { return Result.success(it.value) }
 
-        return runApi {
-            val res = withRetry { ApiClient.rexMusic.searchLyrics(query) }
-            val data = res.result?.lyrics
-            val plain = data?.plainLyrics.orEmpty()
-            val synced = parseSyncedLyrics(data?.syncedLyrics.orEmpty())
-            val lyrics = Lyrics(plain = plain, synced = synced)
+        return try {
+            val lyrics = fetchNexrayLyrics(cleanQuery)
             if (lyrics.isEmpty) error("lirik tidak tersedia")
             synchronized(lyricsCache) { lyricsCache[key] = CachedLyrics(lyrics) }
-            lyrics
+            Result.success(lyrics)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyMessage(e), e))
         }
     }
 
-    private val SYNCED_REGEX = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?]\s*(.*)""")
+    /**
+     * Sumber synced lyrics RexMusic: GET https://api.nexray.eu.cc/search/lyrics?q=...
+     * Timing diambil langsung dari field result.lyrics.synced_lyrics.
+     */
+    private suspend fun fetchNexrayLyrics(query: String): Lyrics = withContext(Dispatchers.IO) {
+        val encoded = URLEncoder.encode(query, Charsets.UTF_8.name())
+        val url = URL("$LYRICS_ENDPOINT?q=$encoded")
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 12_000
+            readTimeout = 15_000
+            useCaches = true
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "RexMusic/1.0")
+        }
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) throw IOException("server lyrics membalas kode $code")
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            parseNexrayLyrics(body)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun parseNexrayLyrics(body: String): Lyrics {
+        val root = JSONObject(body)
+        if (!root.optBoolean("status", false)) error("API lyrics gagal")
+        val result = root.optJSONObject("result") ?: error("respons lyrics tidak valid")
+        val data = result.optJSONObject("lyrics") ?: error("data lyrics tidak tersedia")
+        val plain = data.optString("plain_lyrics", "")
+        val syncedRaw = data.optString("synced_lyrics", "")
+        val duration = data.optInt("duration", 0).coerceAtLeast(0)
+        val synced = parseSyncedLyrics(syncedRaw)
+        return Lyrics(
+            plain = plain,
+            synced = synced,
+            durationSeconds = duration
+        )
+    }
+
+    private val SYNCED_LINE_REGEX = Regex("""^\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]\s*(.*?)\s*$""")
 
     private fun parseSyncedLyrics(raw: String): List<LyricLine> {
         if (raw.isBlank()) return emptyList()
         val out = ArrayList<LyricLine>(128)
         raw.lineSequence().forEach { line ->
-            val m = SYNCED_REGEX.find(line) ?: return@forEach
-            val min = m.groupValues[1].toLongOrNull() ?: return@forEach
-            val sec = m.groupValues[2].toLongOrNull() ?: return@forEach
-            val fracRaw = m.groupValues[3]
-            val frac = fracRaw.toLongOrNull() ?: 0L
-            val fracMs = when (fracRaw.length) {
-                3 -> frac
-                2 -> frac * 10
+            val match = SYNCED_LINE_REGEX.matchEntire(line) ?: return@forEach
+            val minute = match.groupValues[1].toLongOrNull() ?: return@forEach
+            val second = match.groupValues[2].toLongOrNull() ?: return@forEach
+            val fractionRaw = match.groupValues.getOrNull(3).orEmpty()
+            val fraction = fractionRaw.toLongOrNull() ?: 0L
+            val fractionMs = when (fractionRaw.length) {
+                3 -> fraction
+                2 -> fraction * 10L
+                1 -> fraction * 100L
                 else -> 0L
             }
-            val text = m.groupValues[4].trim()
-            if (text.isEmpty()) return@forEach
-            out += LyricLine(min * 60_000 + sec * 1000 + fracMs, text)
+            val text = match.groupValues[4].trim()
+            if (text.isBlank()) return@forEach
+            val timeMs = minute * 60_000L + second * 1_000L + fractionMs
+            out += LyricLine(
+                timeMs = timeMs,
+                text = text,
+                sourceTimestamp = match.groupValues[0].trim().substringBefore("]").removePrefix("[")
+            )
         }
-        return out
+        return out.sortedWith(compareBy<LyricLine> { it.timeMs }.thenBy { it.text })
     }
-
     //  Cache 
 
     /** Dipanggil kalau player error (kemungkinan link audio sudah expire). */

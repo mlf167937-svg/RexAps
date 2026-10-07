@@ -18,9 +18,15 @@ class LyricsDataAdapter : JsonDeserializer<LyricsData?> {
             json.isJsonObject -> {
                 val obj = json.asJsonObject
                 LyricsData(
+                    id = obj.get("id")?.asLongOrNull(),
+                    name = obj.get("name")?.asStringOrNull(),
+                    trackName = obj.get("track_name")?.asStringOrNull(),
+                    artistName = obj.get("artist_name")?.asStringOrNull(),
+                    albumName = obj.get("album_name")?.asStringOrNull(),
+                    duration = obj.get("duration")?.asIntOrNull(),
+                    instrumental = obj.get("instrumental")?.asStringOrNull(),
                     plainLyrics = obj.get("plain_lyrics")?.asStringOrNull(),
-                    syncedLyrics = obj.get("synced_lyrics")?.asStringOrNull(),
-                    duration = obj.get("duration")?.asIntOrNull()
+                    syncedLyrics = obj.get("synced_lyrics")?.asStringOrNull()
                 )
             }
 
@@ -45,3 +51,6 @@ private fun JsonElement.asStringOrNull(): String? =
 
 private fun JsonElement.asIntOrNull(): Int? =
     if (isJsonNull) null else runCatching { asInt }.getOrNull()
+
+private fun JsonElement.asLongOrNull(): Long? =
+    if (isJsonNull) null else runCatching { asLong }.getOrNull()

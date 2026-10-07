@@ -86,6 +86,7 @@ class RexActions(
     val toggleAutoplay: () -> Unit,
     val searchArtist: (String) -> Unit,
     val goLibrary: () -> Unit,
+    val goPlaylists: () -> Unit,
     val openMenu: (MenuTarget) -> Unit,
     val openPlaylistPicker: (RexTrack) -> Unit,
     val playPlaylist: (String) -> Unit,

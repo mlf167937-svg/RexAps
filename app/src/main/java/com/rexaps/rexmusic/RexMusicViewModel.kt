@@ -57,6 +57,7 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
     fun prev(force: Boolean = false) = RexPlayerController.prev(force)
     fun togglePlay() = RexPlayerController.togglePlay()
     fun seekTo(ratio: Float) = RexPlayerController.seekTo(ratio)
+    fun seekToPosition(positionMs: Long) = RexPlayerController.seekToPosition(positionMs)
 
     fun currentTrack(): RexTrack? = RexPlayerController.currentTrack()
 

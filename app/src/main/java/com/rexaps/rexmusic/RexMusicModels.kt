@@ -130,13 +130,18 @@ data class SpotifyDownloadResult(
 //  Lyrics 
 
 data class LyricLine(
+    /** Waktu asli dari synced_lyrics dalam milidetik. Tidak digeser / dinormalisasi. */
     val timeMs: Long,
-    val text: String
+    val text: String,
+    /** Token timestamp LRC asli, mis. "00:12.63". Dipertahankan untuk offline JSON. */
+    val sourceTimestamp: String? = null
 )
 
 data class Lyrics(
     val plain: String = "",
-    val synced: List<LyricLine> = emptyList()
+    val synced: List<LyricLine> = emptyList(),
+    /** duration dari respons API dalam detik. Hanya metadata, bukan sumber offset. */
+    val durationSeconds: Int = 0
 ) {
     val hasSynced: Boolean get() = synced.isNotEmpty()
     val isEmpty: Boolean get() = plain.isBlank() && synced.isEmpty()
@@ -144,19 +149,34 @@ data class Lyrics(
 
 data class LyricsResponse(
     val status: Boolean? = null,
-    val result: LyricsResult? = null
+    val author: String? = null,
+    val result: LyricsResult? = null,
+    val timestamp: String? = null,
+    @com.google.gson.annotations.SerializedName("response_time")
+    val responseTime: String? = null
 )
 
 data class LyricsResult(
     val title: String? = null,
     val artist: String? = null,
+    val thumbnail: String? = null,
+    val url: String? = null,
     val lyrics: LyricsData? = null
 )
 
 data class LyricsData(
+    val id: Long? = null,
+    val name: String? = null,
+    @com.google.gson.annotations.SerializedName("track_name")
+    val trackName: String? = null,
+    @com.google.gson.annotations.SerializedName("artist_name")
+    val artistName: String? = null,
+    @com.google.gson.annotations.SerializedName("album_name")
+    val albumName: String? = null,
+    val duration: Int? = null,
+    val instrumental: String? = null,
     @com.google.gson.annotations.SerializedName("plain_lyrics")
     val plainLyrics: String? = null,
     @com.google.gson.annotations.SerializedName("synced_lyrics")
-    val syncedLyrics: String? = null,
-    val duration: Int? = null
+    val syncedLyrics: String? = null
 )

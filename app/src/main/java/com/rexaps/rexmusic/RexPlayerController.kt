@@ -875,17 +875,24 @@ object RexPlayerController {
 
     /** Posisi UI langsung update; seek asli didebounce supaya drag tidak membebani MediaPlayer. */
     fun seekTo(ratio: Float) {
+        val d = _state.value.durationMs
+        if (d <= 0L) return
+        seekToPosition((d * ratio.coerceIn(0f, 1f)).toLong())
+    }
+
+    /** Seek absolut, dipakai synced lyrics supaya baris yang diketuk tepat ke timestamp API. */
+    fun seekToPosition(positionMs: Long) {
         val mp = player ?: return
         val d = _state.value.durationMs
-        if (!prepared || d <= 0) return
-        val target = (d * ratio.coerceIn(0f, 1f)).toLong()
+        if (!prepared || d <= 0L) return
+        val target = positionMs.coerceIn(0L, d)
         seekPending = true
         _state.update { it.copy(positionMs = target, seekVersion = it.seekVersion + 1) }
         seekJob?.cancel()
         seekJob = scope.launch {
             delay(SEEK_DEBOUNCE_MS)
-            runCatching { mp.seekTo(target.toInt()) }
-            delay(300)
+            runCatching { mp.seekTo(target.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
+            delay(180)
             seekPending = false
         }
     }
@@ -985,9 +992,9 @@ object RexPlayerController {
 
     private const val SEARCH_DEBOUNCE_MS = 400L
     private const val SEEK_DEBOUNCE_MS = 80L
-    private const val PROGRESS_INTERVAL_MS = 500L
+    private const val PROGRESS_INTERVAL_MS = 100L
     private const val RESTART_THRESHOLD_MS = 3000L
-    private const val STALL_TICKS = 2
+    private const val STALL_TICKS = 6
     private const val MAX_HISTORY = 50
     private const val MAX_QUEUE = 100
     private const val MAX_REPEAT = 50

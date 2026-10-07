@@ -48,7 +48,8 @@ private const val NOTIF_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 
 private const val TAB_HOME = 0
 private const val TAB_SEARCH = 1
-private const val TAB_LIBRARY = 2
+private const val TAB_PLAYLIST = 2
+private const val TAB_LIBRARY = 3
 
 @Composable
 fun RexMusicScreen(
@@ -92,6 +93,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
     val homeList = rememberLazyListState()
     val searchList = rememberLazyListState()
+    val playlistList = rememberLazyListState()
     val libraryList = rememberLazyListState()
 
     LaunchedEffect(vm) {
@@ -302,6 +304,10 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             libTab = 0
         },
 
+        goPlaylists = {
+            tab = TAB_PLAYLIST
+        },
+
         openMenu = {
             menuTarget = it
         },
@@ -392,6 +398,22 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                         )
 
                         NavigationBarItem(
+                            selected = tab == TAB_PLAYLIST,
+                            onClick = {
+                                tab = TAB_PLAYLIST
+                            },
+                            icon = {
+                                Icon(
+                                    Icons.Default.QueueMusic,
+                                    contentDescription = null
+                                )
+                            },
+                            label = {
+                                Text("Playlist")
+                            }
+                        )
+
+                        NavigationBarItem(
                             selected = tab == TAB_LIBRARY,
                             onClick = {
                                 tab = TAB_LIBRARY
@@ -451,6 +473,14 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
                             actions = actions,
                             listState = searchList
+                        )
+                    }
+
+                    TAB_PLAYLIST -> {
+                        PlaylistTab(
+                            state = state,
+                            actions = actions,
+                            listState = playlistList
                         )
                     }
 
@@ -596,9 +626,11 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                 accent = null,
                 positionState = positionState,
                 durationMs = state.durationMs,
+                isPlaying = state.isPlaying,
                 onClose = {
                     vm.closeLyrics()
-                }
+                },
+                onSeekTo = { vm.seekToPosition(it) }
             )
         }
     }

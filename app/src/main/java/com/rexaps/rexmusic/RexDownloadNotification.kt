@@ -231,7 +231,7 @@ object RexDownloadNotification {
         DownloadStage.Queued -> "Menunggu antrean..."
         DownloadStage.Resolving -> "Menyiapkan audio..."
         DownloadStage.Downloading -> "Mengunduh audio..."
-        DownloadStage.FetchingLyrics -> "Mengunduh lyrics..."
+        DownloadStage.FetchingLyrics -> "Mengunduh lirik..."
         DownloadStage.Finalizing -> "Menyimpan offline..."
     }
 

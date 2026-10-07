@@ -176,6 +176,9 @@ private fun buildQuickTiles(state: RexMusicUiState, actions: RexActions): List<Q
     if (state.offline.entries.isNotEmpty()) {
         tiles += QuickTile("special-offline", "Lagu Offline", "", special = true) { actions.goLibrary() }
     }
+    if (state.playlists.isNotEmpty()) {
+        tiles += QuickTile("special-playlist", "Playlist", "", special = true) { actions.goPlaylists() }
+    }
     state.history.take(6).forEachIndexed { i, t ->
         tiles += QuickTile(t.id, t.title, t.cover) { actions.playHistory(i) }
     }
@@ -439,8 +442,6 @@ fun LibraryTab(
     modifier: Modifier = Modifier
 ) {
     val offlineMode = state.offline.enabled
-    var showCreate by remember { mutableStateOf(false) }
-    var playlistName by remember { mutableStateOf("") }
     LazyColumn(
         modifier.fillMaxSize(),
         state = listState,
@@ -455,29 +456,54 @@ fun LibraryTab(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 LibraryChip("Unduhan", state.offline.entries.size, libTab == 0) { onLibTab(0) }
-                LibraryChip("Playlist", state.playlists.size, libTab == 1) { onLibTab(1) }
-                LibraryChip("Antrian", state.userQueue.size, libTab == 2) { onLibTab(2) }
-                LibraryChip("Riwayat", 0, libTab == 3) { onLibTab(3) }
+                LibraryChip("Antrian", state.userQueue.size, libTab == 1) { onLibTab(1) }
+                LibraryChip("Riwayat", state.history.size, libTab == 2) { onLibTab(2) }
             }
         }
         when (libTab) {
             0 -> offlineSection(state, actions, query = "", full = true)
-            1 -> playlistSection(state, actions, onCreate = { showCreate = true })
-            2 -> queueSection(state, actions, showNow = false)
+            1 -> queueSection(state, actions, showNow = false)
             else -> historySection(state, actions)
         }
+    }
+}
+
+@Composable
+fun PlaylistTab(
+    state: RexMusicUiState,
+    actions: RexActions,
+    listState: LazyListState,
+    modifier: Modifier = Modifier
+) {
+    var showCreate by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
+    LazyColumn(
+        modifier.fillMaxSize(),
+        state = listState,
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        item(key = "playlist-hero") {
+            PlaylistHeroCard(
+                count = state.playlists.size,
+                onCreate = { showCreate = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            )
+        }
+        playlistSection(state, actions, onCreate = { showCreate = true })
     }
 
     if (showCreate) {
         AlertDialog(
             onDismissRequest = { showCreate = false },
+            icon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
             title = { Text("Buat playlist") },
             text = {
                 OutlinedTextField(
                     value = playlistName,
                     onValueChange = { playlistName = it },
                     singleLine = true,
-                    label = { Text("Nama playlist") }
+                    label = { Text("Nama playlist") },
+                    placeholder = { Text("Santai, Workout, Favorit...") }
                 )
             },
             confirmButton = {
@@ -488,10 +514,47 @@ fun LibraryTab(
                         playlistName = ""
                         showCreate = false
                     }
-                ) { Text("Buat") }
+                ) { Text("Buat playlist") }
             },
             dismissButton = { TextButton(onClick = { showCreate = false }) { Text("Batal") } }
         )
+    }
+}
+
+@Composable
+private fun PlaylistHeroCard(count: Int, onCreate: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(RexHeroBrush)
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Playlist", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+            Text(
+                if (count == 0) "Buat koleksi musikmu sendiri" else "$count playlist tersimpan di perangkat",
+                style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.84f),
+                maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
+        FilledTonalButton(
+            onClick = onCreate,
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = Color.White, contentColor = RexPlayerBase
+            )
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(5.dp))
+            Text("Buat")
+        }
     }
 }
 
@@ -521,16 +584,16 @@ private fun LazyListScope.playlistSection(
 ) {
     item(key = "playlist-head") {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Playlist kamu", style = MaterialTheme.typography.titleLarge)
-                Text("Tersimpan sebagai JSON · ${RexPlaylistStore.DISPLAY_PATH}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Playlist kamu", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("JSON · ${RexPlaylistStore.DISPLAY_PATH}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            FilledTonalButton(onClick = onCreate) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
+            TextButton(onClick = onCreate) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
                 Text("Buat")
             }
         }
@@ -556,6 +619,9 @@ private fun LazyListScope.playlistSection(
                     Column(Modifier.weight(1f)) {
                         Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${playlist.tracks.size} lagu", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { actions.playPlaylist(playlist.name) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Putar playlist")
                     }
                     IconButton(onClick = { actions.deletePlaylist(playlist.name) }) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist")
