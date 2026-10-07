@@ -20,7 +20,7 @@ class RexTerminal(private val workspace: File = WorkspaceManager.root) {
             "rmdir" -> { requireArgs(cmd, args, 1); args.forEach { val f = resolve(it); requireInside(f); require(!f.exists() || f.delete()) { "rmdir failed: ${f.name}" } }; "" }
             "cp" -> copy(args)
             "mv" -> move(args)
-            "cat" -> { requireArgs(cmd, args, 1); args.joinToString("\n") { resolve(it).readText() } }
+            "cat" -> { requireArgs(cmd, args, 1); args.map { resolve(it).readText() }.joinToString("\n") }
             "echo" -> args.joinToString(" ")
             "clear" -> "\u000C"
             "whoami" -> "rexcoder"
