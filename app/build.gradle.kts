@@ -11,10 +11,10 @@ android {
 
     defaultConfig {
         applicationId = "com.rexaps"
-        minSdk = 28
+        minSdk = 27
         targetSdk = 35
-        versionCode = 2680
-        versionName = "26.80"
+        versionCode = 2681
+        versionName = "26.81"
     }
 
     buildFeatures {
