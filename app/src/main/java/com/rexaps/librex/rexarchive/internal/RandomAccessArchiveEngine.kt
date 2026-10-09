@@ -99,7 +99,7 @@ internal object RandomAccessArchiveEngine {
                 if (size != null && size > options.limits.maxEntryBytes) throw ArchiveError.LimitExceeded("Entry too large: $path")
                 total += size ?: 0
                 if (total > options.limits.maxTotalBytes) throw ArchiveError.LimitExceeded("Archive exceeds total expanded size limit")
-                out += ArchiveEntry(i, name, path, h.isDirectory, size, h.unpackSize.takeIf { it >= 0 }, h.lastModifiedTime?.toMillis(), null, h.isEncrypted)
+                out += ArchiveEntry(i, name, path, h.isDirectory, size, h.fullPackSize.takeIf { it >= 0L }, h.mTime?.time, null, h.isEncrypted)
                 progress(ArchiveProgress(ArchiveOperation.LIST, name, (i + 1).toLong(), headers.size.toLong(), total, null, null))
             }
         }
@@ -128,7 +128,7 @@ internal object RandomAccessArchiveEngine {
                         FileOutputStream(actual).buffered(options.bufferSize).use { archive.extractFile(h, it) }
                         total += actual.length()
                         if (total > options.limits.maxTotalBytes) { actual.delete(); throw ArchiveError.LimitExceeded("Archive exceeds total expanded size limit") }
-                        h.lastModifiedTime?.let { actual.setLastModified(it.time) }
+                        h.mTime?.let { actual.setLastModified(it.time) }
                         out += actual
                     }
                 }

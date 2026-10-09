@@ -91,6 +91,7 @@ private fun RexManagerWelcomeScreen(
         )
     ) {
         val widthPx = constraints.maxWidth.toFloat()
+        val swipeAvailableWidth = maxWidth - 56.dp
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
@@ -122,7 +123,7 @@ private fun RexManagerWelcomeScreen(
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Text("Cepat  •  Modern  •  Terorganisir", color = Color(0xFFA7B5CA), fontSize = 12.sp, textAlign = TextAlign.Center)
-                SwipeToStart(onStart = onStart, availableWidth = maxWidth - 56.dp)
+                SwipeToStart(onStart = onStart, availableWidth = swipeAvailableWidth)
                 Text("Geser tombol ke kanan untuk mulai", color = Color(0xFF8798B2), fontSize = 12.sp)
             }
         }
