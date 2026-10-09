@@ -1,6 +1,5 @@
 package com.rexaps.rexfox
 
-import android.view.ViewGroup
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import org.mozilla.geckoview.GeckoView
 
 @Composable
 fun BrowserScreen(
@@ -177,16 +177,18 @@ fun BrowserScreen(
             }
         }
 
-        /* ------------------------------- WEBVIEW ----------------------------- */
+        /* ------------------------------- GECKOVIEW ----------------------------- */
         key(tab.id) {
             AndroidView(
-                factory = {
-                    // Cegah crash "child already has a parent" saat berpindah layar/tab.
-                    (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
-                    tab.webView
-                },
+                factory = { context -> GeckoView(context).apply { setSession(tab.session) } },
                 modifier = Modifier.weight(1f),
-                update = { }
+                update = { view ->
+                    // Each keyed tab owns one GeckoView instance; its session stays in the tab manager.
+                    if (view.session !== tab.session) {
+                        view.releaseSession()
+                        view.setSession(tab.session)
+                    }
+                }
             )
         }
 
@@ -200,10 +202,10 @@ fun BrowserScreen(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, enabled = tab.webView.canGoBack()) {
+            IconButton(onClick = onBack, enabled = tab.canGoBack) {
                 Icon(Icons.Default.ArrowBack, "Back")
             }
-            IconButton(onClick = onForward, enabled = tab.webView.canGoForward()) {
+            IconButton(onClick = onForward, enabled = tab.canGoForward) {
                 Icon(Icons.Default.ArrowForward, "Forward")
             }
 

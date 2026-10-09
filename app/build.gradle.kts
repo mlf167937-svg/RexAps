@@ -14,8 +14,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2691
-        versionName = "26.91"
+        versionCode = 2692
+        versionName = "26.92"
     }
 
     buildFeatures {
@@ -55,6 +55,9 @@ ksp {
 
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
+    // GeckoView (Mozilla Gecko engine)
+    implementation("org.mozilla.geckoview:geckoview-stable:159.0.20261008041355")
+
     // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
