@@ -112,9 +112,6 @@ dependencies {
     // PDF rendering uses Android's built-in PdfRenderer.
     // PDF text extraction needs a separate backend if required.
 
-    // Google Identity Services authorization for Google Drive OAuth
-    implementation("com.google.android.gms:play-services-auth:21.3.0")
-
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
