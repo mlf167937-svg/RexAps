@@ -2,7 +2,7 @@ package com.rexaps.librex.rexcode.languages
 
 import com.rexaps.librex.rexcode.*
 
-private class Base(
+class Base(
     override val language: RexLanguage,
     override val extensions: Set<String>,
     override val keywords: Set<String> = emptySet(),
