@@ -381,7 +381,7 @@ private fun ResultCard(
 
             // Video case
             if (result.isVideo && !result.videoUrl.isNullOrBlank()) {
-                val videoUrl = result.videoUrl
+                val videoUrl = result.videoUrl.orEmpty()
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
