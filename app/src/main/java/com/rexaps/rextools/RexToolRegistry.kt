@@ -5,6 +5,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Preview
 
 object RexToolRegistry {
 
@@ -34,6 +35,15 @@ object RexToolRegistry {
                 route = "tiktok_stalker",
                 category = ToolCategory.STALK,
                 icon = Icons.Outlined.Person,
+                isNew = true
+            ),
+            RexTool(
+                id = "media_preview",
+                name = "Media Preview",
+                description = "preview gambar & video dari URL / JSON",
+                route = "media_preview",
+                category = ToolCategory.UTILITY,
+                icon = Icons.Outlined.Preview,
                 isNew = true
             ),
             RexTool(

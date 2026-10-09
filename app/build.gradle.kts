@@ -124,6 +124,10 @@ dependencies {
     // JGit
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
 
+    // Media Exoplayer
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+
     // Test
     testImplementation("junit:junit:4.13.2")
 }

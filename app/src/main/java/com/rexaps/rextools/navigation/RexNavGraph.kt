@@ -11,6 +11,7 @@ import com.rexaps.rextools.search.PinterestScreen
 import com.rexaps.rextools.ssweb.SsWebScreen
 import com.rexaps.rextools.tiktok.TiktokStalkerScreen
 import com.rexaps.rextools.tiktok.TiktokDownloaderScreen
+import com.rexaps.rextools.preview.PreviewScreen
 
 @Composable
 fun RexNavGraph(
@@ -38,6 +39,9 @@ fun RexNavGraph(
                         onBack = { navController.popBackStack() }
                     )
                     "tiktok_stalker" -> TiktokStalkerScreen(
+                        onBack = { navController.popBackStack() }
+                    )
+                    "media_preview" -> PreviewScreen(
                         onBack = { navController.popBackStack() }
                     )
                     "tiktok_downloader" -> TiktokDownloaderScreen(

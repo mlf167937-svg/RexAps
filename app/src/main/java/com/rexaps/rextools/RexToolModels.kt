@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Preview
 
 enum class ToolCategory(val displayName: String) {
     SEARCH("Search"),
@@ -170,5 +171,25 @@ data class TiktokDownloadUiState(
     val loading: Boolean = false,
     val url: String = "",
     val result: TiktokDownloadResult? = null,
+    val error: String? = null
+)
+
+// ───────────────────────── Media Preview ─────────────────────────
+
+enum class PreviewMediaType { IMAGE, VIDEO, UNKNOWN }
+
+data class PreviewMediaItem(
+    val url: String,
+    val type: PreviewMediaType,
+    val id: String = url
+)
+
+enum class PreviewMode { INPUT, GRID, SINGLE }
+
+data class PreviewUiState(
+    val rawInput: String = "",
+    val items: List<PreviewMediaItem> = emptyList(),
+    val currentIndex: Int = 0,
+    val mode: PreviewMode = PreviewMode.INPUT,
     val error: String? = null
 )
