@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,8 +14,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2681
-        versionName = "26.81"
+        versionCode = 2682
+        versionName = "26.82"
     }
 
     buildFeatures {
@@ -57,6 +58,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // SSH
     implementation("com.github.mwiede:jsch:0.2.18")
@@ -68,12 +70,10 @@ dependencies {
     // Compose
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.navigation:navigation-compose:2.8.5")
-
     implementation("androidx.compose.runtime:runtime")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
-
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
@@ -87,9 +87,8 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // Tunnel CloudFlare
+    // Tunnel / VPN
     implementation("com.wireguard.android:tunnel:1.0.20230706")
-    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Room
     val room = "2.6.1"
@@ -100,9 +99,18 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Archive / 7z / XZ
+    // RexArchive: ZIP, TAR, GZIP, BZIP2, XZ, 7z backends
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("org.tukaani:xz:1.9")
+
+    // RexArchive: RAR listing/extraction only
+    implementation("com.github.junrar:junrar:7.5.5")
+
+    // SLF4J
+    implementation("org.slf4j:slf4j-nop:1.7.36")
+
+    // PDF rendering uses Android's built-in PdfRenderer.
+    // PDF text extraction needs a separate backend if required.
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
@@ -116,6 +124,6 @@ dependencies {
     // JGit
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
 
-    // SLF4J - disable logging backend warnings
-    implementation("org.slf4j:slf4j-nop:1.7.36")
+    // Test
+    testImplementation("junit:junit:4.13.2")
 }

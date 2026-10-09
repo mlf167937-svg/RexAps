@@ -1,688 +1,173 @@
 package com.rexaps.rexmanager
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.rexaps.rexmanager.settings.RexManagerSettingsScreen
-import com.rexaps.rexmanager.ui.RexManagerBottomBar
-import com.rexaps.rexmanager.ui.RexManagerBreadcrumb
-import com.rexaps.rexmanager.ui.RexManagerFileGrid
-import com.rexaps.rexmanager.ui.RexManagerFileList
-import com.rexaps.rexmanager.ui.RexManagerMessageState
-import com.rexaps.rexmanager.ui.RexManagerProgressDialog
-import com.rexaps.rexmanager.ui.RexManagerSearchBar
-import com.rexaps.rexmanager.ui.RexManagerSelectionBar
-import com.rexaps.rexmanager.ui.RexManagerStorageHeader
-import com.rexaps.rexmanager.ui.RexManagerTopBar
-import com.rexaps.rexmanager.ui.dialogs.CollisionDialog
-import com.rexaps.rexmanager.ui.dialogs.CompressDialog
-import com.rexaps.rexmanager.ui.dialogs.DeleteDialog
-import com.rexaps.rexmanager.ui.dialogs.ExtractDialog
-import com.rexaps.rexmanager.ui.dialogs.HideFileDialog
-import com.rexaps.rexmanager.ui.dialogs.NewFolderDialog
-import com.rexaps.rexmanager.ui.dialogs.PropertiesDialog
-import com.rexaps.rexmanager.ui.dialogs.RenameDialog
-import com.rexaps.rexmanager.utils.RexManagerIntents
-import kotlinx.coroutines.launch
-import java.io.File
+import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
-/**
- * Entry point. Drop this into the existing RexAps navigation graph / feature registry:
- *
- * RexManagerScreen(
- *     onExit = { navController.popBackStack() }
- * )
- */
+private val RexNight = Color(0xFF070B14)
+private val RexBlue = Color(0xFF2585FF)
+private val RexViolet = Color(0xFF7657FF)
+private val RexCyan = Color(0xFF36D7F2)
+
+/** Public feature entry point. The first visit opens a swipe-to-start welcome screen. */
 @Composable
 fun RexManagerScreen(
     onExit: () -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: RexManagerViewModel = viewModel(
-        factory = RexManagerViewModel.factory(LocalContext.current)
-    )
-) {
-    val context = LocalContext.current
-    val state by viewModel.state.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    /*
-     * ============================================================
-     * STORAGE PERMISSION
-     * ============================================================
-     *
-     * Android 11+:
-     *   MANAGE_EXTERNAL_STORAGE
-     *
-     * Android 10 and below:
-     *   READ_EXTERNAL_STORAGE
-     *   WRITE_EXTERNAL_STORAGE
-     */
-
-    fun hasAccess(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-
-    /*
-     * Runtime permission launcher for Android 10 and below.
-     */
-    val legacyLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        viewModel.onRefresh()
-    }
-
-    /*
-     * Open the correct permission screen.
-     */
-    fun requestAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        } else {
-            legacyLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-            )
-        }
-    }
-
-    /*
-     * Automatically refresh when returning from Android Settings.
-     *
-     * This is important because the user may enable
-     * "Allow access to manage all files" and then return
-     * to RexManager.
-     */
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.onRefresh()
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    /*
-     * Request storage access when the screen is first opened.
-     */
-    LaunchedEffect(Unit) {
-        if (!hasAccess()) {
-            requestAccess()
-        }
-    }
-
-    /*
-     * ViewModel events.
-     */
-    LaunchedEffect(viewModel) {
-        viewModel.events.collect { event ->
-            when (event) {
-                is RexManagerEvent.Message -> launch {
-                    snackbarHostState.currentSnackbarData?.dismiss()
-                    snackbarHostState.showSnackbar(event.text)
-                }
-
-                is RexManagerEvent.Share ->
-                    RexManagerIntents
-                        .share(context, event.paths)
-                        ?.let { error ->
-                            launch {
-                                snackbarHostState.showSnackbar(error)
-                            }
-                        }
-
-                is RexManagerEvent.OpenFile ->
-                    RexManagerIntents
-                        .open(
-                            context,
-                            event.path,
-                            event.mimeType
-                        )
-                        ?.let { error ->
-                            launch {
-                                snackbarHostState.showSnackbar(error)
-                            }
-                        }
-            }
-        }
-    }
-
-    RexManagerContent(
-        state = state,
-        actions = viewModel,
-        snackbarHostState = snackbarHostState,
-        onExit = onExit,
-
-        /*
-         * Request access button / retry button.
-         */
-        onRequestAccess = {
-            if (!hasAccess()) {
-                requestAccess()
-            } else {
-                viewModel.onRefresh()
-            }
-        },
-
-        modifier = modifier
-    )
-}
-
-/**
- * Stateless screen content:
- * state in, callbacks out.
- */
-@Composable
-fun RexManagerContent(
-    state: RexManagerState,
-    actions: RexManagerActions,
-    snackbarHostState: SnackbarHostState,
-    onExit: () -> Unit,
-    onRequestAccess: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler {
-        if (!actions.onBackPressed()) {
-            onExit()
-        }
-    }
-
-    /*
-     * Settings screen.
-     */
-    if (state.showSettings) {
-        RexManagerSettingsScreen(
-            settings = state.settings,
-            onChange = actions::onSettingsChange,
-            onBack = actions::onCloseSettings,
-            modifier = modifier
-        )
-        return
-    }
-
-    /*
-     * Selected files.
-     */
-    val selectedFiles = remember(
-        state.files,
-        state.selectedPaths
-    ) {
-        state.files.filter {
-            it.path in state.selectedPaths
-        }
-    }
-
-    /*
-     * Main screen.
-     */
-    Scaffold(
-        modifier = modifier,
-
-        /*
-         * Top bar.
-         */
-        topBar = {
-            if (state.isSelectionMode) {
-                RexManagerSelectionBar(
-                    selectedFiles = selectedFiles,
-                    totalCount = state.files.size,
-                    actions = actions
-                )
-            } else {
-                RexManagerTopBar(
-                    state = state,
-                    actions = actions
-                ) {
-                    if (!actions.onBackPressed()) {
-                        onExit()
-                    }
-                }
-            }
-        },
-
-        /*
-         * Clipboard bottom bar.
-         */
-        bottomBar = {
-            state.clipboard?.let { clip ->
-                RexManagerBottomBar(
-                    clipboard = clip,
-                    onPaste = actions::onPaste,
-                    onCancel = actions::onCancelClipboard
-                )
-            }
-        },
-
-        /*
-         * Snackbar.
-         */
-        snackbarHost = {
-            SnackbarHost(snackbarHostState)
-        }
-    ) { padding ->
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-
-            /*
-             * Storage header.
-             */
-            RexManagerStorageHeader(
-                root = state.currentRoot,
-                roots = state.roots,
-                currentPath = state.currentPath,
-                storageInfo = state.storageInfo,
-                onSelectRoot = actions::onSelectRoot
-            )
-
-            /*
-             * Breadcrumb navigation.
-             */
-            RexManagerBreadcrumb(
-                root = state.currentRoot,
-                currentPath = state.currentPath,
-                onSegmentClick = actions::onBreadcrumbClick
-            )
-
-            /*
-             * Search.
-             */
-            RexManagerSearchBar(
-                query = state.searchQuery,
-                isSearching = state.isSearchRunning,
-                onQueryChange = actions::onSearchQueryChange,
-                modifier = Modifier.padding(
-                    horizontal = 16.dp,
-                    vertical = 8.dp
-                )
-            )
-
-            /*
-             * Search truncation information.
-             */
-            if (
-                state.isSearchActive &&
-                state.searchTruncated
-            ) {
-                Text(
-                    text = "Showing the first results only. Refine your search to narrow it down.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(
-                        horizontal = 16.dp,
-                        vertical = 4.dp
-                    )
-                )
-            }
-
-            /*
-             * File content.
-             */
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-
-                when {
-
-                    /*
-                     * Initial loading.
-                     */
-                    state.isLoading &&
-                        state.files.isEmpty() -> {
-
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(
-                                Alignment.Center
-                            )
-                        )
-                    }
-
-                    /*
-                     * Error.
-                     */
-                    state.errorMessage != null -> {
-
-                        RexManagerMessageState(
-                            icon = Icons.Filled.ErrorOutline,
-                            title = "Can't open this folder",
-                            description = state.errorMessage,
-                            actionLabel = "Retry",
-                            onAction = onRequestAccess
-                        )
-                    }
-
-                    /*
-                     * Search with no results.
-                     */
-                    state.files.isEmpty() &&
-                        state.isSearchActive -> {
-
-                        if (!state.isSearchRunning) {
-                            RexManagerMessageState(
-                                icon = Icons.Filled.SearchOff,
-                                title = "No results",
-                                description =
-                                    "Nothing matches \"${state.searchQuery.trim()}\" in this folder."
-                            )
-                        }
-                    }
-
-                    /*
-                     * Empty folder.
-                     */
-                    state.files.isEmpty() -> {
-
-                        RexManagerMessageState(
-                            icon = Icons.Filled.FolderOpen,
-                            title = "This folder is empty",
-                            description =
-                                if (state.showHiddenFiles) {
-                                    null
-                                } else {
-                                    "Hidden files are not shown. You can turn them on in the menu."
-                                },
-                            actionLabel = "New folder",
-                            onAction = {
-                                actions.onRequestCreate(true)
-                            }
-                        )
-                    }
-
-                    /*
-                     * List view.
-                     */
-                    state.viewMode == ViewMode.LIST -> {
-
-                        RexManagerFileList(
-                            files = state.files,
-                            selectedPaths = state.selectedPaths,
-                            showExtensions =
-                                state.settings.showFileExtensions,
-                            onClick = actions::onFileClick,
-                            onLongClick = actions::onFileLongClick
-                        )
-                    }
-
-                    /*
-                     * Grid view.
-                     */
-                    else -> {
-
-                        RexManagerFileGrid(
-                            files = state.files,
-                            selectedPaths = state.selectedPaths,
-                            showExtensions =
-                                state.settings.showFileExtensions,
-                            onClick = actions::onFileClick,
-                            onLongClick = actions::onFileLongClick
-                        )
-                    }
-                }
-
-                /*
-                 * Loading indicator when files are already visible.
-                 */
-                if (
-                    state.isLoading &&
-                    state.files.isNotEmpty()
-                ) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.TopCenter)
-                    )
-                }
-            }
-        }
-    }
-
-    /*
-     * Dialog host.
-     */
-    RexManagerDialogHost(
-        state = state,
-        actions = actions
-    )
-
-    /*
-     * Operation progress.
-     */
-    state.operationProgress?.let { progress ->
-        RexManagerProgressDialog(
-            progress,
-            actions::onCancelOperation
-        )
+    var started by remember { mutableStateOf(false) }
+    if (started) {
+        RexManagerWorkspace(onExit = onExit, modifier = modifier)
+    } else {
+        RexManagerWelcomeScreen(onStart = { started = true }, modifier = modifier)
     }
 }
 
-/**
- * Dialog host.
- */
 @Composable
-private fun RexManagerDialogHost(
-    state: RexManagerState,
-    actions: RexManagerActions
+private fun RexManagerWelcomeScreen(
+    onStart: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    /*
-     * Existing sibling names.
-     *
-     * During search we don't use search results for collision
-     * checking because they may not represent all siblings.
-     */
-    val siblingNames = remember(
-        state.files,
-        state.isSearchActive
+    val infinite = rememberInfiniteTransition(label = "rex-welcome")
+    val glow by infinite.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.72f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "glow"
+    )
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize().background(
+            Brush.verticalGradient(listOf(Color(0xFF080D19), RexNight, Color(0xFF071323)))
+        )
     ) {
-        if (state.isSearchActive) {
-            emptySet<String>()
-        } else {
-            state.files.mapTo(HashSet()) {
-                it.name
+        val widthPx = constraints.maxWidth.toFloat()
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            drawCircle(Brush.radialGradient(listOf(RexBlue.copy(alpha = glow * .32f), Color.Transparent), center = Offset(w * .12f, h * .18f), radius = w * .72f), radius = w * .72f, center = Offset(w * .12f, h * .18f))
+            drawCircle(Brush.radialGradient(listOf(RexViolet.copy(alpha = glow * .24f), Color.Transparent), center = Offset(w * .92f, h * .78f), radius = w * .68f), radius = w * .68f, center = Offset(w * .92f, h * .78f))
+            val wave = Path()
+            wave.moveTo(0f, h * .74f)
+            wave.cubicTo(w * .23f, h * .61f, w * .35f, h * .93f, w * .62f, h * .78f)
+            wave.cubicTo(w * .78f, h * .69f, w * .86f, h * .68f, w, h * .57f)
+            drawPath(wave, Brush.horizontalGradient(listOf(RexBlue.copy(alpha = .02f), RexBlue.copy(alpha = .28f), RexViolet.copy(alpha = .20f))), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+        }
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(Modifier.height(12.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    modifier = Modifier.size(118.dp).clip(RoundedCornerShape(34.dp)).background(Brush.linearGradient(listOf(RexBlue, RexViolet))).border(1.dp, Color.White.copy(alpha = .22f), RoundedCornerShape(34.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("R", fontSize = 82.sp, fontWeight = FontWeight.Black, color = Color.White, lineHeight = 86.sp)
+                    Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color.White.copy(alpha = .9f), modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).size(22.dp))
+                }
+                Text("RexManager", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF3F7FF), letterSpacing = (-.8).sp)
+                Text("Kelola File Tanpa Batas", fontSize = 15.sp, color = RexCyan, fontWeight = FontWeight.Medium)
+                Text("Semua file. Semua arsip. Satu tempat.", fontSize = 14.sp, color = Color(0xFFA7B5CA), textAlign = TextAlign.Center)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text("Cepat  •  Modern  •  Terorganisir", color = Color(0xFFA7B5CA), fontSize = 12.sp, textAlign = TextAlign.Center)
+                SwipeToStart(onStart = onStart, availableWidth = maxWidth - 56.dp)
+                Text("Geser tombol ke kanan untuk mulai", color = Color(0xFF8798B2), fontSize = 12.sp)
             }
         }
     }
+}
 
-    when (val dialog = state.dialog) {
-
-        /*
-         * No dialog.
-         */
-        null -> Unit
-
-        /*
-         * Rename.
-         */
-        is RexDialog.Rename -> {
-            RenameDialog(
-                file = dialog.file,
-                existingNames = siblingNames,
-                onConfirm = {
-                    actions.onConfirmRename(
-                        dialog.file,
-                        it
+@Composable
+private fun SwipeToStart(onStart: () -> Unit, availableWidth: androidx.compose.ui.unit.Dp) {
+    var drag by remember { mutableFloatStateOf(0f) }
+    var maxDrag by remember { mutableFloatStateOf(0f) }
+    val animatedDrag by animateFloatAsState(drag, animationSpec = tween(180), label = "swipe-position")
+    val hint = rememberInfiniteTransition(label = "swipe-hint")
+    val hintAlpha by hint.animateFloat(.45f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "swipe-alpha")
+    BoxWithConstraints(
+        modifier = Modifier.width(availableWidth.coerceAtMost(420.dp)).height(62.dp).clip(CircleShape)
+            .background(Brush.horizontalGradient(listOf(Color(0xFF17243A), Color(0xFF101A2B))))
+            .border(1.dp, Color(0xFF344B6B), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val thumbSize = 50.dp
+        val trackWidth = with(density) { constraints.maxWidth.toFloat() }
+        val thumbPx = with(density) { thumbSize.toPx() }
+        val maxOffset = (trackWidth - thumbPx - with(density) { 8.dp.toPx() }).coerceAtLeast(0f)
+        maxDrag = maxOffset
+        Text("MULAI", color = Color.White.copy(alpha = .78f), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, letterSpacing = 2.sp)
+        Icon(Icons.Default.Swipe, contentDescription = null, tint = RexCyan.copy(alpha = hintAlpha), modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(20.dp))
+        Box(
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp).offset { IntOffset(animatedDrag.roundToInt(), 0) }
+                .size(thumbSize).clip(CircleShape).background(Brush.linearGradient(listOf(RexBlue, RexViolet)))
+                .border(1.dp, Color.White.copy(alpha = .45f), CircleShape)
+                .pointerInput(maxOffset) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (drag >= maxDrag * .72f) onStart()
+                            else drag = 0f
+                        },
+                        onDragCancel = { drag = 0f },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            drag = (drag + amount.x).coerceIn(0f, maxOffset)
+                        }
                     )
                 },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Create folder / file.
-         */
-        is RexDialog.Create -> {
-            NewFolderDialog(
-                isFolder = dialog.isFolder,
-                existingNames = siblingNames,
-                onConfirm = {
-                    actions.onConfirmCreate(
-                        dialog.isFolder,
-                        it
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Delete.
-         */
-        is RexDialog.Delete -> {
-            DeleteDialog(
-                files = dialog.files,
-                onConfirm = {
-                    actions.onConfirmDelete(
-                        dialog.files
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Compress.
-         */
-        is RexDialog.Compress -> {
-            CompressDialog(
-                files = dialog.files,
-                destinationPath = state.currentPath,
-                existingNames = siblingNames,
-                onConfirm = { name, format ->
-                    actions.onConfirmCompress(
-                        dialog.files,
-                        name,
-                        format
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Extract.
-         */
-        is RexDialog.Extract -> {
-            ExtractDialog(
-                archive = dialog.archive,
-                parentPath = File(
-                    dialog.archive.path
-                ).parent.orEmpty(),
-                onConfirm = { folder, policy ->
-                    actions.onConfirmExtract(
-                        dialog.archive,
-                        folder,
-                        policy
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Properties.
-         */
-        is RexDialog.Properties -> {
-            PropertiesDialog(
-                metadata = dialog.metadata,
-                totalSize = dialog.totalSize,
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * Hide / unhide.
-         */
-        is RexDialog.Hide -> {
-            HideFileDialog(
-                files = dialog.files,
-                hide = dialog.hide,
-                conflicts = dialog.conflicts,
-                onConfirm = {
-                    actions.onConfirmHide(
-                        dialog.files,
-                        dialog.hide
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
-
-        /*
-         * File collision.
-         */
-        is RexDialog.Collision -> {
-            CollisionDialog(
-                conflicts = dialog.conflicts,
-                isMove = dialog.transfer.isMove,
-                onResolve = {
-                    actions.onResolveCollision(
-                        dialog.transfer,
-                        it
-                    )
-                },
-                onDismiss = actions::onDismissDialog
-            )
-        }
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Default.ArrowForward, contentDescription = "Geser untuk mulai", tint = Color.White, modifier = Modifier.size(24.dp)) }
     }
 }
