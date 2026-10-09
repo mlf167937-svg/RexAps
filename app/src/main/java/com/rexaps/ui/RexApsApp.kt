@@ -52,14 +52,17 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -483,8 +486,8 @@ private fun FloatingNavBar(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(
-                horizontal = 28.dp,
-                vertical = 14.dp
+                horizontal = 22.dp,
+                vertical = 10.dp
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -571,8 +574,8 @@ private fun NavItem(
                 role = Role.Tab
             )
             .padding(
-                horizontal = 20.dp,
-                vertical = 13.dp
+                horizontal = 16.dp,
+                vertical = 11.dp
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -610,23 +613,24 @@ private fun HomeContent(
     onAppClick: (RexModule) -> Unit,
     onOpenTheme: () -> Unit
 ) {
-
     val apps = RexAppRegistry.modules
+    val featured = apps.firstOrNull { it.id == "rexfox" }
+    val others = apps.filter { it.id != "rexfox" }
+    val availableCount = apps.count { it.available }
 
-    val featured =
-        apps.firstOrNull {
-            it.id == "rexfox"
-        }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var appFilter by rememberSaveable { mutableStateOf("Semua") }
 
-    val others =
-        apps.filter {
-            it.id != "rexfox"
+    val filteredApps = others.filter { app ->
+        val matchesQuery = app.name.contains(searchQuery.trim(), ignoreCase = true) ||
+            app.description.contains(searchQuery.trim(), ignoreCase = true)
+        val matchesFilter = when (appFilter) {
+            "Tersedia" -> app.available
+            "Segera" -> !app.available
+            else -> true
         }
-
-    val availableCount =
-        apps.count {
-            it.available
-        }
+        matchesQuery && matchesFilter
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -636,31 +640,20 @@ private fun HomeContent(
         contentPadding = PaddingValues(
             start = 20.dp,
             end = 20.dp,
-            top = 24.dp,
-            bottom = 32.dp
+            top = 20.dp,
+            bottom = 36.dp
         ),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
-        item(
-            span = {
-                GridItemSpan(maxLineSpan)
-            }
-        ) {
-
+        item(span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
                 onOpenTheme = onOpenTheme,
                 modifier = Modifier.entrance(0)
             )
         }
 
-        item(
-            span = {
-                GridItemSpan(maxLineSpan)
-            }
-        ) {
-
+        item(span = { GridItemSpan(maxLineSpan) }) {
             HeroCard(
                 appCount = apps.size,
                 availableCount = availableCount,
@@ -671,89 +664,128 @@ private fun HomeContent(
         }
 
         if (featured != null) {
-
-            item(
-                span = {
-                    GridItemSpan(maxLineSpan)
-                }
-            ) {
-
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 FeaturedCard(
                     app = featured,
                     isActive = isActive,
-                    onClick = {
-                        onAppClick(featured)
-                    },
+                    onClick = { onAppClick(featured) },
                     modifier = Modifier.entrance(2)
                 )
             }
         }
 
-        if (others.isNotEmpty()) {
-
-            item(
-                span = {
-                    GridItemSpan(maxLineSpan)
-                }
-            ) {
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                        .entrance(3),
-                    horizontalArrangement =
-                        Arrangement.SpaceBetween,
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    Text(
-                        text = "Aplikasi lainnya",
-                        style =
-                            MaterialTheme.typography.titleLarge
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .entrance(3),
+                singleLine = true,
+                shape = RoundedCornerShape(20.dp),
+                placeholder = { Text("Cari aplikasi atau fitur...") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Cari aplikasi",
+                        tint = MaterialTheme.colorScheme.primary
                     )
+                }
+            )
+        }
 
-                    Surface(
-                        shape = CircleShape,
-                        color =
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant
-                        )
-                    ) {
-
-                        Text(
-                            text = "${others.size}",
-                            style =
-                                MaterialTheme.typography.labelLarge,
-                            color =
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(
-                                horizontal = 12.dp,
-                                vertical = 5.dp
-                            )
-                        )
-                    }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .entrance(4),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Semua", "Tersedia", "Segera").forEach { filter ->
+                    FilterChip(
+                        selected = appFilter == filter,
+                        onClick = { appFilter = filter },
+                        label = { Text(filter) }
+                    )
                 }
             }
         }
 
-        itemsIndexed(
-            others,
-            key = { _, app ->
-                app.id
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+                    .entrance(5),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = if (searchQuery.isBlank()) "Jelajahi aplikasi" else "Hasil pencarian",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Text(
+                        text = when (appFilter) {
+                            "Tersedia" -> "Aplikasi yang bisa dibuka sekarang"
+                            "Segera" -> "Aplikasi yang akan hadir"
+                            else -> "Semua tools dalam satu tempat"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Text(
+                        text = "${filteredApps.size}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
             }
-        ) { index, app ->
+        }
 
-            AppCard(
-                app = app,
-                onClick = {
-                    onAppClick(app)
-                },
-                modifier = Modifier.entrance(index + 4)
-            )
+        if (filteredApps.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(34.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("Aplikasi tidak ditemukan", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Coba kata kunci lain atau ubah filter.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            itemsIndexed(
+                filteredApps,
+                key = { _, app -> app.id }
+            ) { index, app ->
+                AppCard(
+                    app = app,
+                    onClick = { onAppClick(app) },
+                    modifier = Modifier.entrance(index + 6)
+                )
+            }
         }
     }
 }
@@ -1351,7 +1383,7 @@ private fun AppCard(
     val colors = MaterialTheme.colorScheme
 
     val shape =
-        RoundedCornerShape(28.dp)
+        RoundedCornerShape(24.dp)
 
     val borderColor =
         if (app.available) {
@@ -1363,7 +1395,7 @@ private fun AppCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(180.dp)
+            .height(166.dp)
             .pressable(
                 enabled = app.available,
                 onClick = onClick
@@ -1374,7 +1406,7 @@ private fun AppCard(
             .shadow(
                 elevation =
                     if (app.available)
-                        8.dp
+                        4.dp
                     else
                         0.dp,
                 shape = shape,
