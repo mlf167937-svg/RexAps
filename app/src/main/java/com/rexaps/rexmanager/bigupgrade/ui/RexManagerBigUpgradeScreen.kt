@@ -107,7 +107,7 @@ fun RexManagerBigUpgradeScreen(
 
 @Composable private fun NavItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.weight(1f).clickable(onClick = onClick).padding(vertical = 8.dp),
+        modifier = Modifier.width(80.dp).clickable(onClick = onClick).padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
