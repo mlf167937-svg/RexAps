@@ -14,8 +14,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2686
-        versionName = "26.86"
+        versionCode = 2687
+        versionName = "26.87"
     }
 
     buildFeatures {
@@ -111,6 +111,9 @@ dependencies {
 
     // PDF rendering uses Android's built-in PdfRenderer.
     // PDF text extraction needs a separate backend if required.
+
+    // Google Identity Services authorization for Google Drive OAuth
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
