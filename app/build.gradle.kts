@@ -56,7 +56,7 @@ ksp {
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     // GeckoView (Mozilla Gecko engine)
-    implementation("org.mozilla.geckoview:geckoview-stable:159.0.20261008041355")
+    implementation("org.mozilla.geckoview:geckoview-stable:157.0.20261005135250")
 
     // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
