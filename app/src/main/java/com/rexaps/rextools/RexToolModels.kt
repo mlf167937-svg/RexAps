@@ -125,19 +125,27 @@ data class TiktokDownloadResult(
     val id: String? = null,
     val duration: String? = null,
     val cover: String? = null,
-    val size_wm: String? = null,
-    val size_nowm: String? = null,
-    val size_nowm_hd: String? = null,
+    val size_wm: Long? = null,
+    val size_nowm: Long? = null,
+    val size_nowm_hd: Long? = null,
     val data: List<String>? = null,
     val music_info: TiktokMusicInfo? = null,
     val stats: TiktokDownloadStats? = null,
     val author: TiktokAuthor? = null
 ) {
     /** true = video (durasi > 0), false = foto */
-    val isVideo: Boolean get() = duration?.let {
-        val num = it.split(" ").firstOrNull()?.toFloatOrNull() ?: 0f
-        num > 0f
-    } ?: true
+    val isVideo: Boolean
+        get() {
+            val d = duration ?: return true
+            val num = Regex("""(\d+(?:\.\d+)?)""").find(d)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+            return num > 0f
+        }
+
+    val videoUrl: String?
+        get() = if (isVideo) data?.firstOrNull() else null
+
+    val photoUrls: List<String>
+        get() = if (!isVideo) data.orEmpty() else emptyList()
 }
 
 data class TiktokMusicInfo(

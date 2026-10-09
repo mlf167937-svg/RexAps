@@ -77,6 +77,10 @@ object ApiClient {
                 com.rexaps.rexmusic.LyricsData::class.java,
                 com.rexaps.rexmusic.LyricsDataAdapter()
             )
+            .registerTypeAdapter(
+                com.rexaps.rextools.TiktokDownloadResult::class.java,
+                com.rexaps.rextools.tiktok.TiktokDownloadAdapter()
+            )
             .create()
     }
 
