@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   RexMusic widget - EXTENDED (5x1, dipilih kode saat lebar >= WIDE_MIN_DP).
-  Beda dengan compact: cover 50dp, label sumber panjang (ONLINE · STREAMING /
-  OFFLINE · FILE LOKAL), dan satu baris lirik aktif. Tinggi tetap ~60dp.
+  ID wajib sama dengan widget_rexmusic_player.xml:
+  widget_root, widget_tint, widget_cover, widget_cover_bg, widget_track_title,
+  widget_track_artist, widget_source, widget_lyrics, widget_lyrics_small,
+  widget_progress, widget_time_current, widget_time_total,
+  widget_prev, widget_play_pause, widget_next.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -12,10 +15,29 @@
     android:background="@drawable/rexw_bg"
     tools:ignore="HardcodedText,ContentDescription">
 
+    <!-- Cover besar di KANAN sebagai background -->
+    <ImageView
+        android:id="@+id/widget_cover_bg"
+        android:layout_width="160dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop"
+        android:src="@drawable/rexw_cover_placeholder" />
+
+    <!-- Scrim gradient kiri→kanan supaya teks tetap kebaca -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/rexw_scrim"
+        android:importantForAccessibility="no" />
+
+    <!-- Tint warna dominan (tipis) -->
     <ImageView
         android:id="@+id/widget_tint"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:alpha="0.18"
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
         android:src="@drawable/rexw_tint"
@@ -64,7 +86,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -96,6 +118,7 @@
                     android:textSize="9sp" />
             </LinearLayout>
 
+            <!-- Lirik baris penuh (khusus wide) -->
             <TextView
                 android:id="@+id/widget_lyrics"
                 android:layout_width="match_parent"
@@ -110,6 +133,23 @@
                 android:textColor="#FFCFC8FF"
                 android:textSize="11sp" />
 
+            <!-- Lirik kecil (dipakai kode untuk kedua layout) -->
+            <TextView
+                android:id="@+id/widget_lyrics_small"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="♪"
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="italic" />
+
             <ProgressBar
                 android:id="@+id/widget_progress"
                 style="?android:attr/progressBarStyleHorizontal"
@@ -120,8 +160,39 @@
                 android:max="1000"
                 android:maxHeight="3dp"
                 android:minHeight="3dp"
-                android:progress="380"
+                android:progress="0"
                 android:progressDrawable="@drawable/rexw_progress" />
+
+            <!-- Durasi current / total -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_time_current"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="monospace"
+                    android:importantForAccessibility="no"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+
+                <TextView
+                    android:id="@+id/widget_time_total"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:importantForAccessibility="no"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
