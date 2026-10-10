@@ -1,47 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="14dp"
-    android:background="@drawable/bg_rexmusic_widget">
+    android:background="@drawable/bg_rexmusic_widget"
+    android:padding="9dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-        <ImageView
-            android:id="@+id/widget_cover"
-            android:layout_width="58dp"
-            android:layout_height="58dp"
-            android:scaleType="centerCrop"
-            android:contentDescription="Album cover" />
+
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="12dp"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingEnd="8dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="REXMUSIC  /  NOW PLAYING"
-                android:textColor="#8FA8C7"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="▶  REXMUSIC  ·  NOW PLAYING"
+                android:textColor="#8CBFFF"
                 android:textSize="9sp"
-                android:letterSpacing="0.08" />
+                android:textStyle="bold"
+                android:letterSpacing="0.04" />
+
             <TextView
                 android:id="@+id/widget_track_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="RexMusic"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
+
             <TextView
                 android:id="@+id/widget_track_artist"
                 android:layout_width="match_parent"
@@ -49,77 +50,101 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Pilih lagu untuk mulai"
-                android:textColor="#B8C5D8"
-                android:textSize="12sp" />
+                android:textColor="#C0CBDE"
+                android:textSize="11sp" />
+
             <TextView
                 android:id="@+id/widget_source"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="PLAYER SIAP"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="● PLAYER SIAP"
                 android:textColor="#5FBEFF"
                 android:textSize="9sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_lyrics"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:ellipsize="marquee"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:singleLine="true"
+                android:text="♪  Lirik akan muncul di sini"
+                android:textColor="#E4EAF6"
+                android:textSize="10sp"
+                android:textStyle="italic" />
+
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="0"
+                android:progressTint="#69B7FF"
+                android:progressBackgroundTint="#354256" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:layout_marginTop="3dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_prev"
+                    android:layout_width="40dp"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="|◀"
+                    android:textColor="#EAF2FF"
+                    android:textSize="17sp" />
+
+                <TextView
+                    android:id="@+id/widget_play_pause"
+                    android:layout_width="42dp"
+                    android:layout_height="30dp"
+                    android:background="@drawable/bg_rexmusic_widget_play"
+                    android:gravity="center"
+                    android:text="▶"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_next"
+                    android:layout_width="40dp"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="▶|"
+                    android:textColor="#EAF2FF"
+                    android:textSize="17sp" />
+            </LinearLayout>
         </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="104dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp">
+
+            <ImageView
+                android:id="@+id/widget_cover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="Album cover"
+                android:scaleType="centerCrop"
+                android:background="#202B40" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#33081220" />
+        </FrameLayout>
     </LinearLayout>
-
-    <ProgressBar
-        android:id="@+id/widget_progress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:layout_marginTop="12dp"
-        android:progress="0"
-        android:progressTint="#69B7FF"
-        android:progressBackgroundTint="#354256" />
-
-    <TextView
-        android:id="@+id/widget_lyrics"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="9dp"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:minHeight="34dp"
-        android:gravity="center_vertical"
-        android:text="♪  Lirik akan muncul di sini"
-        android:textColor="#E5ECF7"
-        android:textSize="12sp"
-        android:textStyle="italic" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:gravity="center"
-        android:orientation="horizontal">
-        <TextView
-            android:id="@+id/widget_prev"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="|◀"
-            android:textColor="#DDE8F7"
-            android:textSize="20sp" />
-        <TextView
-            android:id="@+id/widget_play_pause"
-            android:layout_width="54dp"
-            android:layout_height="42dp"
-            android:background="@drawable/bg_rexmusic_widget_play"
-            android:gravity="center"
-            android:text="▶"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-        <TextView
-            android:id="@+id/widget_next"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="▶|"
-            android:textColor="#DDE8F7"
-            android:textSize="20sp" />
-    </LinearLayout>
-</LinearLayout>
+</FrameLayout>

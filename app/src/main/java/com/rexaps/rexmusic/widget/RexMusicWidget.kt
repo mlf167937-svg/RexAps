@@ -79,6 +79,8 @@ class RexMusicWidget : AppWidgetProvider() {
             })
             val lyric = currentLyric(state)
             views.setTextViewText(R.id.widget_lyrics, lyric.ifBlank { "♪  Lirik belum tersedia" })
+            views.setViewVisibility(R.id.widget_lyrics, android.view.View.VISIBLE)
+            views.setBoolean(R.id.widget_lyrics, "setSelected", true)
             views.setTextViewText(R.id.widget_play_pause, if (state.isPlaying) "Ⅱ" else "▶")
             views.setProgressBar(
                 R.id.widget_progress,
@@ -86,8 +88,11 @@ class RexMusicWidget : AppWidgetProvider() {
                 if (state.durationMs > 0) ((state.positionMs * 100L) / state.durationMs).toInt().coerceIn(0, 100) else 0,
                 false
             )
-            views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher_round)
-            if (cover != null) views.setImageViewBitmap(R.id.widget_cover, cover)
+            if (cover != null) {
+                views.setImageViewBitmap(R.id.widget_cover, cover)
+            } else if (track == null) {
+                views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher_round)
+            }
             views.setOnClickPendingIntent(R.id.widget_root, pending(context, ACTION_OPEN, 10))
             views.setOnClickPendingIntent(R.id.widget_prev, pending(context, ACTION_PREV, 11))
             views.setOnClickPendingIntent(R.id.widget_play_pause, pending(context, ACTION_TOGGLE, 12))
