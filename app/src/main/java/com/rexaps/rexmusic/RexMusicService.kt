@@ -30,6 +30,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import com.rexaps.rexmusic.widget.RexMusicWidget
 
 /**
  * Foreground service: notifikasi media (prev / play-pause / next / tutup) + MediaSession.
@@ -84,6 +85,7 @@ class RexMusicService : Service() {
 
         startForegroundCompat(buildNotification(RexPlayerController.state.value))
         observeState()
+        observeWidgetState()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -132,6 +134,27 @@ class RexMusicService : Service() {
         }
     }
 
+    /** Keep home-screen player metadata and synced lyric line aligned with playback. */
+    private fun observeWidgetState() {
+        scope.launch {
+            RexPlayerController.state
+                .map { s ->
+                    val lyricIndex = s.lyrics.synced.indexOfLast { it.timeMs <= s.positionMs }
+                    listOf(
+                        s.nowPlaying?.id.orEmpty(), s.nowPlaying?.title.orEmpty(),
+                        s.nowPlaying?.artist.orEmpty(), s.isPlaying.toString(),
+                        s.nowPlayingOffline.toString(), (s.positionMs / 1000L).toString(),
+                        lyricIndex.toString(), s.lyrics.plain.hashCode().toString(),
+                        s.phase.name, s.offline.enabled.toString()
+                    ).joinToString("|")
+                }
+                .distinctUntilChanged()
+                .collect {
+                    RexMusicWidget.updateAll(applicationContext, RexPlayerController.state.value, coverBitmap)
+                }
+        }
+    }
+
     private fun refresh() {
         if (closed) return
         val s = RexPlayerController.state.value
@@ -154,6 +177,7 @@ class RexMusicService : Service() {
             if (bmp != null && coverUrl == url && !closed) {
                 coverBitmap = bmp
                 refresh()
+                RexMusicWidget.updateAll(applicationContext, RexPlayerController.state.value, coverBitmap)
             }
         }
     }

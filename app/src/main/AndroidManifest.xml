@@ -100,6 +100,23 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <receiver
+            android:name="com.rexaps.rexmusic.widget.RexMusicWidget"
+            android:label="RexMusic Player"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.rexaps.rexmusic.widget.TOGGLE" />
+                <action android:name="com.rexaps.rexmusic.widget.NEXT" />
+                <action android:name="com.rexaps.rexmusic.widget.PREV" />
+                <action android:name="com.rexaps.rexmusic.widget.OPEN" />
+                <action android:name="com.rexaps.rexmusic.widget.REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rexmusic_widget_info" />
+        </receiver>
+
         <!-- ============================ REX WARP ============================ -->
 
         <!-- RexWarp VPN Service -->
