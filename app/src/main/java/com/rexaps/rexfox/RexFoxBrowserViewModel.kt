@@ -69,7 +69,7 @@ class RexFoxBrowserViewModel(
     fun load(url: String) {
         val tab = tabManager.getActiveTab()
         if (tab == null) tabManager.createTab(false, url)
-        else { tab.url = url; tab.session.loadUri(url) }
+        else { tab.url = url; tab.webView.loadUrl(url) }
         _state.value = _state.value.copy(screen = Screen.Browser, error = null)
     }
 
@@ -96,15 +96,15 @@ class RexFoxBrowserViewModel(
     }
 
     fun back() {
-        tabManager.getActiveTab()?.let { if (it.canGoBack) it.session.goBack() }
+        tabManager.getActiveTab()?.let { if (it.canGoBack) it.webView.goBack() }
     }
 
     fun forward() {
-        tabManager.getActiveTab()?.let { if (it.canGoForward) it.session.goForward() }
+        tabManager.getActiveTab()?.let { if (it.canGoForward) it.webView.goForward() }
     }
 
-    fun reload() = tabManager.getActiveTab()?.session?.reload()
-    fun stop() = tabManager.getActiveTab()?.session?.stop()
+    fun reload() = tabManager.getActiveTab()?.webView?.reload()
+    fun stop() = tabManager.getActiveTab()?.webView?.stopLoading()
 
     fun toggleBookmark() {
         val tab = tabManager.getActiveTab() ?: return

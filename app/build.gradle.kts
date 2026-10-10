@@ -13,10 +13,10 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 26174
-        versionName = "27.01"
+        versionCode = 26175
+        versionName = "27.02"
 
-        // Membatasi arsitektur CPU untuk memangkas ukuran APK dari GeckoView
+        // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
             abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a"))
         }
@@ -60,13 +60,10 @@ ksp {
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     
-    // GeckoView / Mozilla Browser Engine
-    implementation("org.mozilla.components:browser-engine-gecko:132.0.2")
-
     // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     // SSH
