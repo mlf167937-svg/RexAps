@@ -2,7 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp")}
+    id("com.google.devtools.ksp")
+}
 
 android {
     namespace = "com.rexaps"
@@ -12,8 +13,13 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2696
-        versionName = "26.96"
+        versionCode = 26174
+        versionName = "27.01"
+
+        // Membatasi arsitektur CPU untuk memangkas ukuran APK dari GeckoView
+        ndk {
+            abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a"))
+        }
     }
 
     buildFeatures {
@@ -54,7 +60,7 @@ ksp {
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     
-    // GeckoView (Mozilla Gecko engine) - DIPERBAIKI
+    // GeckoView / Mozilla Browser Engine
     implementation("org.mozilla.components:browser-engine-gecko:132.0.2")
 
     // AndroidX
