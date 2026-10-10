@@ -7,51 +7,28 @@
     android:background="@drawable/rexw_bg"
     tools:ignore="HardcodedText,ContentDescription">
 
-    <!-- 1. Cover besar di KANAN sebagai background -->
     <ImageView
-        android:id="@+id/widget_cover_bg"
-        android:layout_width="120dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:importantForAccessibility="no"
-        android:scaleType="centerCrop"
-        android:src="@drawable/rexw_cover_placeholder" />
-
-    <!-- Scrim gradient kiri→kanan supaya teks tetap kebaca -->
-    <ImageView
+        android:id="@+id/widget_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
-        android:src="@drawable/rexw_scrim" />
+        android:src="@drawable/rexw_bg" />
 
-    <!-- 3. Tint warna dominan (opsional, tipis saja) -->
-    <ImageView
-        android:id="@+id/widget_tint"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:alpha="0.18"
-        android:importantForAccessibility="no"
-        android:scaleType="fitXY"
-        android:src="@drawable/rexw_tint"
-        android:tint="#FF5B47E0" />
-
-    <!-- 4. Konten utama -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
-        android:paddingEnd="4dp"
-        android:paddingBottom="5dp">
+        android:paddingStart="10dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="8dp">
 
-        <!-- Cover kecil di kiri -->
         <ImageView
             android:id="@+id/widget_cover"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:importantForAccessibility="no"
             android:scaleType="fitCenter"
             android:src="@drawable/rexw_cover_placeholder" />
@@ -59,8 +36,8 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="4dp"
+            android:layout_marginStart="11dp"
+            android:layout_marginEnd="2dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:orientation="vertical">
@@ -76,13 +53,13 @@
                 android:maxLines="1"
                 android:text="RexMusic"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
-            <!-- Artist + source (status) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="2dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -96,72 +73,76 @@
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="Pilih lagu untuk mulai"
-                    android:textColor="#B8FFFFFF"
-                    android:textSize="11sp" />
+                    android:textColor="#C7FFFFFF"
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/widget_source"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
+                    android:background="@drawable/rexw_chip"
                     android:fontFamily="sans-serif-medium"
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
-                    android:letterSpacing="0.05"
+                    android:letterSpacing="0.06"
                     android:maxLines="1"
+                    android:paddingStart="6dp"
+                    android:paddingTop="2dp"
+                    android:paddingEnd="6dp"
+                    android:paddingBottom="2dp"
                     android:text="● ONLINE"
-                    android:textColor="#FF5FBEFF"
-                    android:textSize="9sp" />
+                    android:textColor="#FF78C8FF"
+                    android:textSize="8sp" />
             </LinearLayout>
 
-            <!-- LIRIK KECIL (1 baris) -->
             <TextView
-                android:id="@+id/widget_lyrics_small"
+                android:id="@+id/widget_lyrics"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="3dp"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif"
+                android:fontFamily="sans-serif-medium"
                 android:importantForAccessibility="no"
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:singleLine="true"
                 android:text="♪"
-                android:textColor="#99FFFFFF"
-                android:textSize="10sp"
-                android:textStyle="italic" />
-
-            <!-- Progress + durasi -->
-            <ProgressBar
-                android:id="@+id/widget_progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="3dp"
-                android:layout_marginTop="4dp"
-                android:importantForAccessibility="no"
-                android:max="1000"
-                android:maxHeight="3dp"
-                android:minHeight="3dp"
-                android:progress="0"
-                android:progressDrawable="@drawable/rexw_progress" />
+                android:textColor="#FFA99BFF"
+                android:textSize="11sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="5dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/widget_time_current"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:fontFamily="monospace"
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#B3FFFFFF"
                     android:textSize="9sp" />
+
+                <ProgressBar
+                    android:id="@+id/widget_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="4dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:importantForAccessibility="no"
+                    android:max="1000"
+                    android:maxHeight="4dp"
+                    android:minHeight="4dp"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/rexw_progress" />
 
                 <TextView
                     android:id="@+id/widget_time_total"
@@ -171,12 +152,11 @@
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#B3FFFFFF"
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Kontrol -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -185,36 +165,34 @@
 
             <ImageView
                 android:id="@+id/widget_prev"
-                android:layout_width="38dp"
-                android:layout_height="44dp"
-                android:background="@drawable/rexw_btn_ghost"
+                android:layout_width="36dp"
+                android:layout_height="40dp"
                 android:contentDescription="Lagu sebelumnya"
-                android:paddingLeft="7dp"
+                android:paddingStart="8dp"
                 android:paddingTop="10dp"
-                android:paddingRight="7dp"
+                android:paddingEnd="8dp"
                 android:paddingBottom="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_prev" />
 
             <ImageView
                 android:id="@+id/widget_play_pause"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:background="@drawable/rexw_btn_play"
                 android:contentDescription="Putar"
-                android:padding="10dp"
+                android:padding="12dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_play" />
 
             <ImageView
                 android:id="@+id/widget_next"
-                android:layout_width="38dp"
-                android:layout_height="44dp"
-                android:background="@drawable/rexw_btn_ghost"
+                android:layout_width="36dp"
+                android:layout_height="40dp"
                 android:contentDescription="Lagu berikutnya"
-                android:paddingLeft="7dp"
+                android:paddingStart="8dp"
                 android:paddingTop="10dp"
-                android:paddingRight="7dp"
+                android:paddingEnd="8dp"
                 android:paddingBottom="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_next" />

@@ -1,16 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Tombol utama: lingkaran putih (sama seperti player di aplikasi) + ripple. -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="#33000000">
-    <item>
-        <inset
-            android:insetBottom="2dp"
-            android:insetLeft="2dp"
-            android:insetRight="2dp"
-            android:insetTop="2dp">
-            <shape android:shape="oval">
-                <solid android:color="#FFFFFFFF" />
-            </shape>
-        </inset>
-    </item>
-</ripple>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FFFFFFFF" />
+</shape>

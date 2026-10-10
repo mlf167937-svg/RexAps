@@ -6,15 +6,19 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.widget.RemoteViews
@@ -28,31 +32,17 @@ import com.rexaps.rexmusic.isPlayerBusy
 import kotlin.math.abs
 import kotlin.math.min
 
-/**
- * Widget home-screen RexMusic: compact 4x1 (default) dan extended 5x1.
- *
- * Fitur:
- * - Cover besar di sisi kanan sebagai background (dengan scrim gradient).
- * - Baris lirik kecil (1 baris) di compact dan wide.
- * - Durasi mm:ss di kiri & kanan progress bar.
- */
 class RexMusicWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val app = context.applicationContext
         RexPlayerController.init(app)
-        // Pastikan service hidup supaya cover di-load dan widget dapat update lanjutan.
-        if (RexPlayerController.state.value.nowPlaying != null) {
-            RexMusicService.start(app)
-        }
+        if (RexPlayerController.state.value.nowPlaying != null) RexMusicService.start(app)
         updateIds(app, manager, ids, RexPlayerController.state.value)
     }
 
     override fun onAppWidgetOptionsChanged(
-        context: Context,
-        manager: AppWidgetManager,
-        appWidgetId: Int,
-        newOptions: Bundle
+        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle
     ) {
         super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions)
         val app = context.applicationContext
@@ -76,6 +66,8 @@ class RexMusicWidget : AppWidgetProvider() {
         updateAll(app, RexPlayerController.state.value, force = true)
     }
 
+    private data class Lyr(val cur: String, val next: String)
+
     companion object {
         const val ACTION_TOGGLE = "com.rexaps.rexmusic.widget.TOGGLE"
         const val ACTION_NEXT = "com.rexaps.rexmusic.widget.NEXT"
@@ -89,11 +81,11 @@ class RexMusicWidget : AppWidgetProvider() {
         private const val WIDE_MIN_DP = 372
         private const val PROGRESS_STEP_MS = 1_000L
 
-        private const val DEFAULT_TINT = 0xFF5B47E0.toInt()
-
-        private val COLOR_ONLINE = Color.rgb(95, 190, 255)
-        private val COLOR_OFFLINE = Color.rgb(96, 230, 170)
-        private val COLOR_MUTED = Color.rgb(176, 176, 196)
+        private const val DEFAULT_ACCENT = 0xFFA99BFF.toInt()
+        private val COLOR_ONLINE = Color.rgb(120, 200, 255)
+        private val COLOR_OFFLINE = Color.rgb(110, 235, 180)
+        private val COLOR_MUTED = Color.rgb(200, 200, 215)
+        private const val ICON_DARK = 0xFF121212.toInt()
 
         private const val RC_OPEN = 10
         private const val RC_PREV = 11
@@ -115,68 +107,53 @@ class RexMusicWidget : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(ComponentName(app, RexMusicWidget::class.java))
             if (ids.isEmpty()) return
 
-            if (cover != null) {
-                WidgetArt.put(coverUrl ?: state.nowPlaying?.cover.orEmpty(), cover)
-            }
+            if (cover != null) WidgetArt.put(coverUrl ?: state.nowPlaying?.cover.orEmpty(), cover)
             val art = WidgetArt.forTrack(state.nowPlaying?.cover)
-            val lyric = lyricLine(state)
-            if (!shouldRender(app, state, art, lyric, force)) return
-            renderInto(app, manager, ids, state, art, lyric)
+            val lyr = lyricLines(state)
+            if (!shouldRender(app, state, art, lyr, force)) return
+            renderInto(app, manager, ids, state, art, lyr)
         }
 
         private fun updateIds(
-            context: Context,
-            manager: AppWidgetManager,
-            ids: IntArray,
-            state: RexMusicUiState
+            context: Context, manager: AppWidgetManager, ids: IntArray, state: RexMusicUiState
         ) {
             val art = WidgetArt.forTrack(state.nowPlaying?.cover)
-            val lyric = lyricLine(state)
-            lastSignature = signature(state, art, lyric)
+            val lyr = lyricLines(state)
+            lastSignature = signature(state, art, lyr)
             lastPositionMs = state.positionMs
-            renderInto(context, manager, ids, state, art, lyric)
+            renderInto(context, manager, ids, state, art, lyr)
         }
 
         private fun renderInto(
-            context: Context,
-            manager: AppWidgetManager,
-            ids: IntArray,
-            state: RexMusicUiState,
-            art: WidgetArt.Art?,
-            lyric: String
+            context: Context, manager: AppWidgetManager, ids: IntArray,
+            state: RexMusicUiState, art: WidgetArt.Art?, lyr: Lyr
         ) {
             val built = HashMap<Boolean, RemoteViews>(2)
             for (id in ids) {
                 val wide = isWide(context, manager, id)
-                val views = built.getOrPut(wide) { render(context, state, art, lyric, wide) }
+                val views = built.getOrPut(wide) { render(context, state, art, lyr, wide) }
                 runCatching { manager.updateAppWidget(id, views) }
             }
         }
 
         // ---------- throttle ----------
 
-        private fun signature(state: RexMusicUiState, art: WidgetArt.Art?, lyric: String): String {
+        private fun signature(state: RexMusicUiState, art: WidgetArt.Art?, lyr: Lyr): String {
             val t = state.nowPlaying
             return listOf(
                 t?.id.orEmpty(), t?.title.orEmpty(), t?.artist.orEmpty(),
                 (art != null).toString(), state.isPlaying.toString(),
                 state.nowPlayingOffline.toString(), state.phase.name,
                 (state.durationMs / 1000L).toString(),
-                state.lyricsLoading.toString(),
-                state.lyrics.isEmpty.toString(),
-                state.lyrics.synced.size.toString(),
-                lyric
+                lyr.cur, lyr.next
             ).joinToString("|")
         }
 
         private fun shouldRender(
-            context: Context,
-            state: RexMusicUiState,
-            art: WidgetArt.Art?,
-            lyric: String,
-            force: Boolean
+            context: Context, state: RexMusicUiState, art: WidgetArt.Art?,
+            lyr: Lyr, force: Boolean
         ): Boolean {
-            val sig = signature(state, art, lyric)
+            val sig = signature(state, art, lyr)
             val pos = state.positionMs
             if (force || sig != lastSignature) {
                 lastSignature = sig
@@ -190,28 +167,20 @@ class RexMusicWidget : AppWidgetProvider() {
             return true
         }
 
-        // ---------- ukuran ----------
-
         private fun isWide(context: Context, manager: AppWidgetManager, id: Int): Boolean {
             val options = manager.getAppWidgetOptions(id) ?: return false
             val landscape =
                 context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-            val key = if (landscape) {
-                AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
-            } else {
-                AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
-            }
+            val key = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+            else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
             return options.getInt(key, 0) >= WIDE_MIN_DP
         }
 
         // ---------- render ----------
 
         private fun render(
-            context: Context,
-            state: RexMusicUiState,
-            art: WidgetArt.Art?,
-            lyric: String,
-            wide: Boolean
+            context: Context, state: RexMusicUiState, art: WidgetArt.Art?,
+            lyr: Lyr, wide: Boolean
         ): RemoteViews {
             val views = RemoteViews(
                 context.packageName,
@@ -219,6 +188,7 @@ class RexMusicWidget : AppWidgetProvider() {
             )
             val track = state.nowPlaying
             val busy = track != null && state.phase.isPlayerBusy
+            val accent = art?.accent ?: DEFAULT_ACCENT
             val title = track?.title?.takeIf { it.isNotBlank() } ?: "RexMusic"
             val artist = when {
                 track == null -> "Pilih lagu untuk mulai"
@@ -232,24 +202,17 @@ class RexMusicWidget : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_source, source.first)
             views.setTextColor(R.id.widget_source, source.second)
 
-            val safeLyric = lyric.ifBlank { "♪" }
-            if (wide) {
-                views.setTextViewText(R.id.widget_lyrics, safeLyric)
-            }
-            views.setTextViewText(R.id.widget_lyrics_small, safeLyric)
+            views.setTextViewText(R.id.widget_lyrics, lyr.cur.ifBlank { "♪" })
+            views.setTextColor(R.id.widget_lyrics, accent)
+            if (wide) views.setTextViewText(R.id.widget_lyrics_next, lyr.next)
 
             if (track != null && art != null) {
-                views.setImageViewBitmap(R.id.widget_cover, art.bitmap)
-                views.setImageViewBitmap(R.id.widget_cover_bg, art.bitmap)
+                views.setImageViewBitmap(R.id.widget_cover, art.cover)
+                views.setImageViewBitmap(R.id.widget_bg, if (wide) art.bgWide else art.bgCompact)
             } else {
                 views.setImageViewResource(R.id.widget_cover, R.drawable.rexw_cover_placeholder)
-                views.setImageViewResource(
-                    R.id.widget_cover_bg,
-                    R.drawable.rexw_cover_placeholder
-                )
+                views.setImageViewResource(R.id.widget_bg, R.drawable.rexw_bg)
             }
-
-            views.setInt(R.id.widget_tint, "setColorFilter", art?.tint ?: DEFAULT_TINT)
 
             views.setTextViewText(R.id.widget_time_current, formatTime(state.positionMs))
             views.setTextViewText(R.id.widget_time_total, formatTime(state.durationMs))
@@ -258,6 +221,7 @@ class RexMusicWidget : AppWidgetProvider() {
                 R.id.widget_play_pause,
                 if (state.isPlaying) R.drawable.rexw_ic_pause else R.drawable.rexw_ic_play
             )
+            views.setInt(R.id.widget_play_pause, "setColorFilter", ICON_DARK)
             views.setInt(R.id.widget_play_pause, "setImageAlpha", if (busy) 140 else 255)
             views.setContentDescription(
                 R.id.widget_play_pause, if (state.isPlaying) "Jeda" else "Putar"
@@ -265,10 +229,13 @@ class RexMusicWidget : AppWidgetProvider() {
 
             val progress = if (state.durationMs > 0L) {
                 ((state.positionMs * 1000L) / state.durationMs).toInt().coerceIn(0, 1000)
-            } else {
-                0
-            }
+            } else 0
             views.setProgressBar(R.id.widget_progress, 1000, progress, false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                views.setColorStateList(
+                    R.id.widget_progress, "setProgressTintList", ColorStateList.valueOf(accent)
+                )
+            }
 
             val open = openAppIntent(context)
             if (open != null) views.setOnClickPendingIntent(R.id.widget_root, open)
@@ -282,12 +249,9 @@ class RexMusicWidget : AppWidgetProvider() {
 
             views.setContentDescription(
                 R.id.widget_root,
-                if (track == null) {
-                    "RexMusic. Belum ada lagu. Ketuk untuk membuka aplikasi"
-                } else {
-                    "$title, $artist. ${source.first.removePrefix("● ").lowercase()}. " +
-                        "Ketuk untuk membuka RexMusic"
-                }
+                if (track == null) "RexMusic. Belum ada lagu. Ketuk untuk membuka aplikasi"
+                else "$title, $artist. ${source.first.removePrefix("● ").lowercase()}. " +
+                    "Ketuk untuk membuka RexMusic"
             )
             return views
         }
@@ -304,24 +268,25 @@ class RexMusicWidget : AppWidgetProvider() {
                 return text to COLOR_MUTED
             }
             return if (state.nowPlayingOffline) {
-                (if (wide) "● OFFLINE · FILE LOKAL" else "● OFFLINE") to COLOR_OFFLINE
+                (if (wide) "● OFFLINE · LOKAL" else "● OFFLINE") to COLOR_OFFLINE
             } else {
-                (if (wide) "● ONLINE · STREAMING" else "● ONLINE") to COLOR_ONLINE
+                (if (wide) "● ONLINE · STREAM" else "● ONLINE") to COLOR_ONLINE
             }
         }
 
-        private fun lyricLine(state: RexMusicUiState): String {
-            if (state.nowPlaying == null) return ""
+        private fun lyricLines(state: RexMusicUiState): Lyr {
+            if (state.nowPlaying == null) return Lyr("", "")
             val lyrics = state.lyrics
             return when {
-                state.lyricsLoading -> "Memuat lirik…"
+                state.lyricsLoading -> Lyr("Memuat lirik…", "")
                 lyrics.hasSynced -> {
                     val i = activeIndex(lyrics.synced, state.positionMs)
-                    val text = if (i >= 0) lyrics.synced[i].text.trim() else ""
-                    if (text.isBlank()) "♪" else "♪  $text"
+                    val cur = if (i >= 0) lyrics.synced[i].text.trim() else ""
+                    val nxt = lyrics.synced.getOrNull(i + 1)?.text?.trim().orEmpty()
+                    Lyr(if (cur.isBlank()) "♪" else "♪  $cur", nxt)
                 }
-                !lyrics.isEmpty -> "Lirik tanpa sinkronisasi · buka aplikasi"
-                else -> "Lirik tidak tersedia"
+                !lyrics.isEmpty -> Lyr("Lirik tanpa sinkronisasi · buka aplikasi", "")
+                else -> Lyr("Lirik tidak tersedia", "")
             }
         }
 
@@ -331,12 +296,7 @@ class RexMusicWidget : AppWidgetProvider() {
             var result = -1
             while (lo <= hi) {
                 val mid = (lo + hi) ushr 1
-                if (list[mid].timeMs <= positionMs) {
-                    result = mid
-                    lo = mid + 1
-                } else {
-                    hi = mid - 1
-                }
+                if (list[mid].timeMs <= positionMs) { result = mid; lo = mid + 1 } else hi = mid - 1
             }
             return result
         }
@@ -344,9 +304,7 @@ class RexMusicWidget : AppWidgetProvider() {
         private fun formatTime(ms: Long): String {
             if (ms <= 0L) return "00:00"
             val total = ms / 1000L
-            val m = total / 60
-            val s = total % 60
-            return "%02d:%02d".format(m, s)
+            return "%02d:%02d".format(total / 60, total % 60)
         }
 
         // ---------- intents ----------
@@ -378,13 +336,15 @@ class RexMusicWidget : AppWidgetProvider() {
 }
 
 /**
- * Artwork widget: cover dibulatkan + warna dominan, di-cache untuk SATU lagu (kuncinya URL cover).
+ * Artwork widget (cache 1 lagu): cover bulat, background blur premium (compact & wide), warna aksen.
  */
 private object WidgetArt {
     class Art(
         val url: String,
-        val bitmap: Bitmap,
-        val tint: Int
+        val cover: Bitmap,
+        val bgCompact: Bitmap,
+        val bgWide: Bitmap,
+        val accent: Int
     )
 
     @Volatile
@@ -393,58 +353,108 @@ private object WidgetArt {
     @Synchronized
     fun put(url: String, source: Bitmap) {
         if (url.isBlank() || source.isRecycled) return
-        if (current?.url == url && current?.bitmap?.isRecycled == false) return
+        if (current?.url == url && current?.cover?.isRecycled == false) return
         runCatching {
             val soft: Bitmap = (if (source.config == Bitmap.Config.HARDWARE) {
                 source.copy(Bitmap.Config.ARGB_8888, false)
-            } else {
-                source
-            }) ?: return
-            current = Art(url, roundedSquare(soft), dominantTint(soft))
+            } else source) ?: return
+            val avg = averageColor(soft)
+            val hsv = FloatArray(3)
+            Color.colorToHSV(avg, hsv)
+            val sat = hsv[1].coerceIn(0.35f, 0.85f)
+            val accent = Color.HSVToColor(floatArrayOf(hsv[0], (sat * 0.65f).coerceAtMost(0.7f), 1f))
+            val base = Color.HSVToColor(floatArrayOf(hsv[0], sat, 0.30f))
+            current = Art(
+                url = url,
+                cover = roundedSquare(soft, 192, 0.2f),
+                bgCompact = blurBackground(soft, 640, 200, base),
+                bgWide = blurBackground(soft, 800, 200, base),
+                accent = accent
+            )
         }
     }
 
     fun forTrack(url: String?): Art? =
         current?.takeIf { !url.isNullOrBlank() && it.url == url }
 
-    private fun roundedSquare(src: Bitmap): Bitmap {
-        val size = 160
+    private fun roundedSquare(src: Bitmap, size: Int, radiusFrac: Float): Bitmap {
         val side = min(src.width, src.height)
         val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val dst = RectF(0f, 0f, size.toFloat(), size.toFloat())
-        val radius = size * 0.18f
-        canvas.drawRoundRect(dst, radius, radius, paint)
+        val r = size * radiusFrac
+        canvas.drawRoundRect(dst, r, r, paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
         val crop = Rect(
             (src.width - side) / 2, (src.height - side) / 2,
             (src.width + side) / 2, (src.height + side) / 2
         )
         canvas.drawBitmap(src, crop, dst, paint)
+        // hairline highlight
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            color = Color.argb(46, 255, 255, 255)
+        }
+        canvas.drawRoundRect(RectF(1f, 1f, size - 1f, size - 1f), r, r, border)
         return out
     }
 
-    private fun dominantTint(src: Bitmap): Int {
+    /** Blur murah: downscale ke 32px lalu upscale + gradient gelap→warna dominan + mask sudut bulat. */
+    private fun blurBackground(src: Bitmap, w: Int, h: Int, base: Int): Bitmap {
+        val n = 32
+        val tiny = Bitmap.createScaledBitmap(src, n, n, true)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val rect = RectF(0f, 0f, w.toFloat(), h.toFloat())
+
+        val sh = (n.toFloat() * h / w).toInt().coerceAtLeast(1)
+        val top = (n - sh) / 2
+        c.drawBitmap(tiny, Rect(0, top, n, top + sh), rect, p)
+
+        // peredup umum
+        c.drawColor(Color.argb(95, 0, 0, 0))
+
+        // gradient horizontal: kiri gelap pekat -> kanan transparan berwarna
+        val left = Color.argb(238, Color.red(base) / 2, Color.green(base) / 2, Color.blue(base) / 2)
+        val mid = Color.argb(170, Color.red(base), Color.green(base), Color.blue(base))
+        val right = Color.argb(70, Color.red(base), Color.green(base), Color.blue(base))
+        p.shader = LinearGradient(0f, 0f, w.toFloat(), 0f,
+            intArrayOf(left, mid, right), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(rect, p)
+
+        // vignette bawah
+        p.shader = LinearGradient(0f, 0f, 0f, h.toFloat(),
+            Color.TRANSPARENT, Color.argb(90, 0, 0, 0), Shader.TileMode.CLAMP)
+        c.drawRect(rect, p)
+        p.shader = null
+
+        // mask sudut bulat
+        val mask = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+        c.drawRoundRect(rect, 48f, 48f, mask)
+
+        // border tipis
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.argb(30, 255, 255, 255)
+        }
+        c.drawRoundRect(RectF(1f, 1f, w - 1f, h - 1f), 48f, 48f, stroke)
+        return out
+    }
+
+    private fun averageColor(src: Bitmap): Int {
         val small = Bitmap.createScaledBitmap(src, 8, 8, true)
         val px = IntArray(64)
         small.getPixels(px, 0, 8, 0, 0, 8, 8)
-        var r = 0L
-        var g = 0L
-        var b = 0L
-        var n = 0
+        var r = 0L; var g = 0L; var b = 0L; var n = 0
         for (p in px) {
             if ((p ushr 24) < 128) continue
-            r += (p shr 16) and 0xFF
-            g += (p shr 8) and 0xFF
-            b += p and 0xFF
-            n++
+            r += (p shr 16) and 0xFF; g += (p shr 8) and 0xFF; b += p and 0xFF; n++
         }
         if (n == 0) return 0xFF5B47E0.toInt()
-        val hsv = FloatArray(3)
-        Color.colorToHSV(Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt()), hsv)
-        hsv[1] = (hsv[1] * 1.15f).coerceAtMost(0.9f)
-        hsv[2] = hsv[2].coerceIn(0.40f, 0.85f)
-        return Color.HSVToColor(hsv)
+        return Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
     }
 }

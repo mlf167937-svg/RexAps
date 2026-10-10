@@ -2,10 +2,10 @@
 <!--
   RexMusic widget - EXTENDED (5x1, dipilih kode saat lebar >= WIDE_MIN_DP).
   ID wajib sama dengan widget_rexmusic_player.xml:
-  widget_root, widget_tint, widget_cover, widget_cover_bg, widget_track_title,
-  widget_track_artist, widget_source, widget_lyrics, widget_lyrics_small,
-  widget_progress, widget_time_current, widget_time_total,
-  widget_prev, widget_play_pause, widget_next.
+  widget_root, widget_bg, widget_cover, widget_track_title, widget_track_artist,
+  widget_source, widget_lyrics, widget_progress, widget_time_current,
+  widget_time_total, widget_prev, widget_play_pause, widget_next.
+  Khusus wide: widget_lyrics_next.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -15,48 +15,28 @@
     android:background="@drawable/rexw_bg"
     tools:ignore="HardcodedText,ContentDescription">
 
-    <!-- Cover besar di KANAN sebagai background -->
     <ImageView
-        android:id="@+id/widget_cover_bg"
-        android:layout_width="160dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:importantForAccessibility="no"
-        android:scaleType="centerCrop"
-        android:src="@drawable/rexw_cover_placeholder" />
-
-    <ImageView
+        android:id="@+id/widget_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
-        android:src="@drawable/rexw_scrim" />
-
-    <!-- Tint warna dominan (tipis) -->
-    <ImageView
-        android:id="@+id/widget_tint"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:alpha="0.18"
-        android:importantForAccessibility="no"
-        android:scaleType="fitXY"
-        android:src="@drawable/rexw_tint"
-        android:tint="#FF5B47E0" />
+        android:src="@drawable/rexw_bg" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="5dp"
-        android:paddingEnd="6dp"
-        android:paddingBottom="5dp">
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp">
 
         <ImageView
             android:id="@+id/widget_cover"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
             android:importantForAccessibility="no"
             android:scaleType="fitCenter"
             android:src="@drawable/rexw_cover_placeholder" />
@@ -64,8 +44,8 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="6dp"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="4dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:orientation="vertical">
@@ -81,12 +61,13 @@
                 android:maxLines="1"
                 android:text="RexMusic"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="2dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -100,7 +81,7 @@
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="Pilih lagu untuk mulai"
-                    android:textColor="#B8FFFFFF"
+                    android:textColor="#C7FFFFFF"
                     android:textSize="12sp" />
 
                 <TextView
@@ -108,79 +89,85 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
+                    android:background="@drawable/rexw_chip"
                     android:fontFamily="sans-serif-medium"
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
-                    android:letterSpacing="0.05"
+                    android:letterSpacing="0.06"
                     android:maxLines="1"
-                    android:text="● ONLINE · STREAMING"
-                    android:textColor="#FF5FBEFF"
-                    android:textSize="9sp" />
+                    android:paddingStart="7dp"
+                    android:paddingTop="2dp"
+                    android:paddingEnd="7dp"
+                    android:paddingBottom="2dp"
+                    android:text="● ONLINE · STREAM"
+                    android:textColor="#FF78C8FF"
+                    android:textSize="8sp" />
             </LinearLayout>
 
-            <!-- Lirik baris penuh (khusus wide) -->
+            <!-- Lirik aktif (warna aksen diatur dari kode) -->
             <TextView
                 android:id="@+id/widget_lyrics"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:fontFamily="sans-serif-medium"
                 android:importantForAccessibility="no"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:text="♪ Lirik tampil di sini"
-                android:textColor="#FFCFC8FF"
-                android:textSize="11sp" />
+                android:singleLine="true"
+                android:text="♪"
+                android:textColor="#FFA99BFF"
+                android:textSize="12sp" />
 
-            <!-- Lirik kecil (dipakai kode untuk kedua layout) -->
+            <!-- Lirik berikutnya -->
             <TextView
-                android:id="@+id/widget_lyrics_small"
+                android:id="@+id/widget_lyrics_next"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="1dp"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif"
                 android:importantForAccessibility="no"
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="♪"
-                android:textColor="#99FFFFFF"
-                android:textSize="10sp"
-                android:textStyle="italic" />
+                android:text=""
+                android:textColor="#73FFFFFF"
+                android:textSize="10sp" />
 
-            <ProgressBar
-                android:id="@+id/widget_progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="3dp"
-                android:layout_marginTop="4dp"
-                android:importantForAccessibility="no"
-                android:max="1000"
-                android:maxHeight="3dp"
-                android:minHeight="3dp"
-                android:progress="0"
-                android:progressDrawable="@drawable/rexw_progress" />
-
-            <!-- Durasi current / total -->
+            <!-- Durasi kiri | progress | durasi kanan -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="5dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/widget_time_current"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:fontFamily="monospace"
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#B3FFFFFF"
                     android:textSize="9sp" />
+
+                <ProgressBar
+                    android:id="@+id/widget_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="4dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:importantForAccessibility="no"
+                    android:max="1000"
+                    android:maxHeight="4dp"
+                    android:minHeight="4dp"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/rexw_progress" />
 
                 <TextView
                     android:id="@+id/widget_time_total"
@@ -190,11 +177,12 @@
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
                     android:text="00:00"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#B3FFFFFF"
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Kontrol -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -204,35 +192,33 @@
             <ImageView
                 android:id="@+id/widget_prev"
                 android:layout_width="40dp"
-                android:layout_height="46dp"
-                android:background="@drawable/rexw_btn_ghost"
+                android:layout_height="44dp"
                 android:contentDescription="Lagu sebelumnya"
-                android:paddingLeft="8dp"
+                android:paddingStart="9dp"
                 android:paddingTop="11dp"
-                android:paddingRight="8dp"
+                android:paddingEnd="9dp"
                 android:paddingBottom="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_prev" />
 
             <ImageView
                 android:id="@+id/widget_play_pause"
-                android:layout_width="46dp"
-                android:layout_height="46dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
                 android:background="@drawable/rexw_btn_play"
                 android:contentDescription="Putar"
-                android:padding="11dp"
+                android:padding="13dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_play" />
 
             <ImageView
                 android:id="@+id/widget_next"
                 android:layout_width="40dp"
-                android:layout_height="46dp"
-                android:background="@drawable/rexw_btn_ghost"
+                android:layout_height="44dp"
                 android:contentDescription="Lagu berikutnya"
-                android:paddingLeft="8dp"
+                android:paddingStart="9dp"
                 android:paddingTop="11dp"
-                android:paddingRight="8dp"
+                android:paddingEnd="9dp"
                 android:paddingBottom="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_next" />
