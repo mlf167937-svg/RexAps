@@ -17,12 +17,13 @@
         android:scaleType="centerCrop"
         android:src="@drawable/rexw_cover_placeholder" />
 
-    <!-- 2. Scrim gelap supaya teks tetap terbaca -->
-    <View
+    <!-- Scrim gradient kiri→kanan supaya teks tetap kebaca -->
+    <ImageView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/rexw_scrim"
-        android:importantForAccessibility="no" />
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/rexw_scrim" />
 
     <!-- 3. Tint warna dominan (opsional, tipis saja) -->
     <ImageView
