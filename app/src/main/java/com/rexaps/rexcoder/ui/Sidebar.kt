@@ -1,3 +1,4 @@
+//Sidebar.kt
 package com.rexaps.rexcoder.ui
 
 import androidx.compose.foundation.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -44,13 +46,18 @@ fun VerticalActivityBar(s: RexCoderState, roomy: Boolean) {
             val sel = s.view == v && s.sidebarVisible
             Box(
                 Modifier.size(item)
-                    .drawBehind { if (sel) drawRect(Color.White, size = Size(2.dp.toPx(), size.height)) }
+                    .drawBehind {
+                        if (sel) drawRect(
+                            Brush.verticalGradient(listOf(Rex.Accent, Rex.Accent2)),
+                            size = Size(2.dp.toPx(), size.height)
+                        )
+                    }
                     .clickable {
                         if (s.view == v) s.sidebarVisible = !s.sidebarVisible else { s.view = v; s.sidebarVisible = true }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(v.icon, v.title, tint = if (sel) Color.White else Rex.TextDim, modifier = Modifier.size(24.dp))
+                Icon(v.icon, v.title, tint = if (sel) Rex.Accent else Rex.TextDim, modifier = Modifier.size(24.dp))
             }
         }
         Spacer(Modifier.weight(1f))
@@ -68,8 +75,9 @@ fun Sidebar(
 ) {
     Column(modifier.background(Rex.SideBar)) {
         Text(
-            s.view.title.uppercase(), fontSize = 11.sp, letterSpacing = 0.8.sp, color = Rex.TextDim,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
+            s.view.title.uppercase(), fontSize = 11.sp, letterSpacing = 1.4.sp, color = Rex.TextDim,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp)
         )
         when (s.view) {
             SideView.Explorer -> ExplorerView(s, rowHeight, onFileOpened)
@@ -103,7 +111,7 @@ private fun ExplorerView(s: RexCoderState, rowHeight: Dp, onOpened: () -> Unit) 
     val rows = visibleRows(s.root, 0, s.expanded)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("WORKSPACE", fontSize = 10.sp, color = Rex.TextDim, modifier = Modifier.weight(1f))
+            Text("WORKSPACE", fontSize = 10.sp, letterSpacing = 1.sp, color = Rex.TextDim, modifier = Modifier.weight(1f))
             SmallIconButton(Icons.Outlined.NoteAdd, "New file", 32.dp) { name = ""; dialog = "file" }
             SmallIconButton(Icons.Outlined.CreateNewFolder, "New folder", 32.dp) { name = ""; dialog = "folder" }
             SmallIconButton(Icons.Outlined.Refresh, "Refresh", 32.dp) { s.refreshWorkspace() }
@@ -115,10 +123,27 @@ private fun ExplorerView(s: RexCoderState, rowHeight: Dp, onOpened: () -> Unit) 
     dialog?.let { kind ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { dialog = null },
+            containerColor = Rex.Overlay,
+            titleContentColor = Rex.TextBright,
+            textContentColor = Rex.Text,
             title = { Text(if (kind == "file") "Create file" else "Create folder") },
-            text = { BasicTextField(name, { name = it }, singleLine = true, textStyle = TextStyle(color = Rex.Text, fontSize = 14.sp), cursorBrush = SolidColor(Rex.Text), modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2E35), RoundedCornerShape(6.dp)).padding(12.dp)) },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { if (name.isNotBlank()) { if (kind == "file") s.createFile(name.trim()) else s.createFolder(name.trim()); dialog = null } }) { Text("Create") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { dialog = null }) { Text("Cancel") } }
+            text = {
+                BasicTextField(
+                    name, { name = it }, singleLine = true,
+                    textStyle = TextStyle(color = Rex.Text, fontSize = 14.sp),
+                    cursorBrush = SolidColor(Rex.Accent),
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Rex.Field, RoundedCornerShape(8.dp))
+                        .border(1.dp, Rex.Border, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    if (name.isNotBlank()) { if (kind == "file") s.createFile(name.trim()) else s.createFolder(name.trim()); dialog = null }
+                }) { Text("Create", color = Rex.Accent) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { dialog = null }) { Text("Cancel", color = Rex.TextDim) } }
         )
     }
 }
@@ -134,6 +159,7 @@ private fun TreeRow(s: RexCoderState, node: FileNode, depth: Int, rowH: Dp, onOp
     Row(
         Modifier.fillMaxWidth().height(rowH)
             .background(if (active) Rex.Selection else Color.Transparent)
+            .drawBehind { if (active) drawRect(Rex.Accent, size = Size(2.dp.toPx(), size.height)) }
             .combinedClickable(
                 onLongClick = { if (!node.isDir) { s.openToSide(node); onOpened() } }
             ) { if (node.isDir) s.toggle(node.path) else { s.openFile(node); onOpened() } }
@@ -162,14 +188,14 @@ private fun SearchView(s: RexCoderState, onOpened: () -> Unit) {
     val hits = remember(q) { s.search(q) }
     Box(
         Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth()
-            .clip(RoundedCornerShape(3.dp)).background(Color(0xFF3C3C3C))
-            .border(1.dp, Rex.Border, RoundedCornerShape(3.dp)).padding(horizontal = 8.dp, vertical = 9.dp)
+            .clip(RoundedCornerShape(8.dp)).background(Rex.Field)
+            .border(1.dp, Rex.Border, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
         if (q.isEmpty()) Text("Search", fontSize = 13.sp, color = Rex.TextDim)
         BasicTextField(
             q, { q = it }, singleLine = true,
             textStyle = TextStyle(color = Rex.Text, fontSize = 13.sp),
-            cursorBrush = SolidColor(Rex.Text), modifier = Modifier.fillMaxWidth()
+            cursorBrush = SolidColor(Rex.Accent), modifier = Modifier.fillMaxWidth()
         )
     }
     if (q.length >= 2) Text(
@@ -215,10 +241,10 @@ private fun GitView(s: RexCoderState) {
     }
     Spacer(Modifier.height(8.dp))
     Box(
-        Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(3.dp))
-            .background(Rex.Accent).clickable { s.saveAll() }.padding(vertical = 9.dp),
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .background(Rex.accentBrush()).clickable { s.saveAll() }.padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
-    ) { Text("✓  Commit All", fontSize = 13.sp, color = Color.White) }
+    ) { Text("✓  Commit All", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Rex.OnAccent) }
 }
 
 @Composable
@@ -231,9 +257,9 @@ private fun InfoList(items: List<Triple<String, String, String>>, onAction: () -
                     Text(sub, fontSize = 12.sp, color = Rex.TextDim)
                 }
                 Text(
-                    action, fontSize = 12.sp, color = Color.White,
-                    modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Rex.Accent)
-                        .clickable(onClick = onAction).padding(horizontal = 10.dp, vertical = 5.dp)
+                    action, fontSize = 12.sp, color = Rex.OnAccent, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Rex.Accent)
+                        .clickable(onClick = onAction).padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
         }

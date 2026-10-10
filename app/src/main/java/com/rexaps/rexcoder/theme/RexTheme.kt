@@ -4,31 +4,36 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 
 object Rex {
-    // Dark: VS Code inspired, with a restrained Rex blue accent.
-    val DarkEditorBg = Color(0xFF111827)
-    val DarkSideBar = Color(0xFF172033)
-    val DarkActivityBar = Color(0xFF0F172A)
-    val DarkTitleBar = Color(0xFF111B2E)
-    val DarkTabBar = Color(0xFF172033)
-    val DarkTabInactive = Color(0xFF1D2940)
-    val DarkBorder = Color(0xFF2A3954)
-    val DarkSelection = Color(0xFF203A5F)
-    val DarkSelectionEditor = Color(0xFF264F78)
-    val DarkLineHighlight = Color(0xFF18253A)
-    val DarkAccent = Color(0xFF3B82F6)
-    val DarkText = Color(0xFFD7E0EC)
-    val DarkTextDim = Color(0xFF8290A6)
-    val DarkTextBright = Color(0xFFF8FAFC)
-    val DarkError = Color(0xFFF87171)
+    // Dark: deep-space navy, neon cyan primary + violet secondary. Still VS Code layout, sci-fi skin.
+    val DarkEditorBg = Color(0xFF080C14)
+    val DarkSideBar = Color(0xFF0B111C)
+    val DarkActivityBar = Color(0xFF05080F)
+    val DarkTitleBar = Color(0xFF0A0F1A)
+    val DarkTabBar = Color(0xFF0B111C)
+    val DarkTabInactive = Color(0xFF0E1522)
+    val DarkBorder = Color(0xFF1B2840)
+    val DarkSelection = Color(0xFF12294A)
+    val DarkSelectionEditor = Color(0xFF1D4A7A)
+    val DarkLineHighlight = Color(0xFF0D1727)
+    val DarkAccent = Color(0xFF22D3EE)
+    val DarkAccent2 = Color(0xFF8B5CF6)
+    val DarkField = Color(0xFF0F1827)
+    val DarkOverlay = Color(0xFF0C1322)
+    val DarkOnAccent = Color(0xFF031018)
+    val DarkText = Color(0xFFD5E1F2)
+    val DarkTextDim = Color(0xFF7C8BA3)
+    val DarkTextBright = Color(0xFFF4F8FD)
+    val DarkError = Color(0xFFFB7185)
     val DarkWarning = Color(0xFFFBBF24)
     val DarkModified = Color(0xFFE2C08D)
-    val DarkSuccess = Color(0xFF73C991)
+    val DarkSuccess = Color(0xFF4ADE80)
 
     val LightEditorBg = Color(0xFFF8FAFC)
     val LightSideBar = Color(0xFFF1F5F9)
@@ -40,7 +45,11 @@ object Rex {
     val LightSelection = Color(0xFFDCEBFF)
     val LightSelectionEditor = Color(0xFFBBD7FF)
     val LightLineHighlight = Color(0xFFEFF5FC)
-    val LightAccent = Color(0xFF2563EB)
+    val LightAccent = Color(0xFF0891B2)
+    val LightAccent2 = Color(0xFF7C3AED)
+    val LightField = Color(0xFFFFFFFF)
+    val LightOverlay = Color(0xFFFFFFFF)
+    val LightOnAccent = Color(0xFFFFFFFF)
     val LightText = Color(0xFF1E293B)
     val LightTextDim = Color(0xFF64748B)
     val LightTextBright = Color(0xFF0F172A)
@@ -70,6 +79,10 @@ object Rex {
     var SelectionEditor: Color = Color.Unspecified
     var LineHighlight: Color = Color.Unspecified
     var Accent: Color = Color.Unspecified
+    var Accent2: Color = Color.Unspecified
+    var Field: Color = Color.Unspecified
+    var Overlay: Color = Color.Unspecified
+    var OnAccent: Color = Color.Unspecified
     var Text: Color = Color.Unspecified
     var TextDim: Color = Color.Unspecified
     var TextBright: Color = Color.Unspecified
@@ -77,6 +90,9 @@ object Rex {
     var Warning: Color = Color.Unspecified
     var Modified: Color = Color.Unspecified
     var Success: Color = Color.Unspecified
+
+    /** Signature cyan -> violet gradient used for highlights, focus lines and primary buttons. */
+    fun accentBrush(): Brush = Brush.horizontalGradient(listOf(Accent, Accent2))
 
     fun apply(dark: Boolean) {
         EditorBg = if (dark) DarkEditorBg else LightEditorBg
@@ -90,6 +106,10 @@ object Rex {
         SelectionEditor = if (dark) DarkSelectionEditor else LightSelectionEditor
         LineHighlight = if (dark) DarkLineHighlight else LightLineHighlight
         Accent = if (dark) DarkAccent else LightAccent
+        Accent2 = if (dark) DarkAccent2 else LightAccent2
+        Field = if (dark) DarkField else LightField
+        Overlay = if (dark) DarkOverlay else LightOverlay
+        OnAccent = if (dark) DarkOnAccent else LightOnAccent
         Text = if (dark) DarkText else LightText
         TextDim = if (dark) DarkTextDim else LightTextDim
         TextBright = if (dark) DarkTextBright else LightTextBright
@@ -100,18 +120,30 @@ object Rex {
     }
 }
 
+/** Editor text style for a given font size (sp). Line height scales with the size. */
+fun codeStyle(sizeSp: Int): TextStyle = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontSize = sizeSp.sp,
+    lineHeight = (sizeSp * 1.55f).sp,
+    color = Rex.Text
+)
+
 val CodeStyle: TextStyle
-    get() = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp, color = Rex.Text)
+    get() = codeStyle(13)
 
 @Composable
 fun RexTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
     Rex.apply(darkTheme)
     val scheme = if (darkTheme) darkColorScheme(
-        primary = Rex.DarkAccent, background = Rex.DarkEditorBg, surface = Rex.DarkSideBar,
-        onSurface = Rex.DarkText, onBackground = Rex.DarkText
+        primary = Rex.DarkAccent, onPrimary = Rex.DarkOnAccent, secondary = Rex.DarkAccent2,
+        background = Rex.DarkEditorBg, surface = Rex.DarkSideBar,
+        onSurface = Rex.DarkText, onBackground = Rex.DarkText,
+        surfaceVariant = Rex.DarkField, outline = Rex.DarkBorder
     ) else lightColorScheme(
-        primary = Rex.LightAccent, background = Rex.LightEditorBg, surface = Rex.LightSideBar,
-        onSurface = Rex.LightText, onBackground = Rex.LightText
+        primary = Rex.LightAccent, onPrimary = Rex.LightOnAccent, secondary = Rex.LightAccent2,
+        background = Rex.LightEditorBg, surface = Rex.LightSideBar,
+        onSurface = Rex.LightText, onBackground = Rex.LightText,
+        surfaceVariant = Rex.LightField, outline = Rex.LightBorder
     )
     MaterialTheme(colorScheme = scheme, content = content)
 }

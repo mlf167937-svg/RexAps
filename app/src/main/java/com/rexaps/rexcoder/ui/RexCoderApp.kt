@@ -1,3 +1,4 @@
+//RexCoderApp.kt
 package com.rexaps.rexcoder.ui
 
 import androidx.compose.foundation.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -42,6 +44,7 @@ import kotlinx.coroutines.launch
  * Entry point module RexCoder.
  *  - lebar >= 600dp (landscape / tablet): Activity bar + Sidebar + editor berdampingan
  *  - lebar <  600dp (portrait phone)    : Drawer + editor bertumpuk + bottom bar + extra keys
+ * Semua pembatas (sidebar, antar-editor, panel bawah) bisa digeser; double-tap pembatas = reset.
  */
 @Composable
 fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRexCoderState()) {
@@ -49,7 +52,10 @@ fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRe
     var darkTheme by rememberSaveable { mutableStateOf(true) }
     RexTheme(darkTheme = darkTheme) {
         BoxWithConstraints(modifier.fillMaxSize().background(Rex.EditorBg)) {
-            if (maxWidth >= 600.dp) WideLayout(state, roomy = maxHeight >= 480.dp, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme }) else CompactLayout(state, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
+            val widthDp = maxWidth.value
+            val heightDp = maxHeight.value
+            if (maxWidth >= 600.dp) WideLayout(state, roomy = maxHeight >= 480.dp, widthDp = widthDp, heightDp = heightDp, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
+            else CompactLayout(state, heightDp = heightDp, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
             if (state.paletteVisible) CommandPalette(state)
         }
     }
@@ -58,32 +64,57 @@ fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRe
 // ───────────── Landscape / tablet ─────────────
 
 @Composable
-private fun WideLayout(s: RexCoderState, roomy: Boolean, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun WideLayout(s: RexCoderState, roomy: Boolean, widthDp: Float, heightDp: Float, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+    val density = LocalDensity.current.density
+    val sidebarW = s.sidebarWidth.coerceIn(150f, (widthDp * 0.5f).coerceAtLeast(150f))
+    val panelH = s.panelHeight.coerceIn(90f, (heightDp * 0.6f).coerceAtLeast(90f))
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         if (roomy) TitleBar(s, darkTheme, onToggleTheme)
         Row(Modifier.weight(1f)) {
             VerticalActivityBar(s, roomy)
             if (s.sidebarVisible) {
-                Sidebar(s, Modifier.fillMaxHeight().width(if (roomy) 260.dp else 210.dp), rowHeight = if (roomy) 30.dp else 28.dp)
-                VDivider()
+                Sidebar(s, Modifier.fillMaxHeight().width(sidebarW.dp), rowHeight = if (roomy) 30.dp else 28.dp)
+                ResizeHandle(
+                    vertical = true, desc = "Ubah lebar sidebar",
+                    onDelta = { d -> s.sidebarWidth = (sidebarW + d / density).coerceIn(150f, (widthDp * 0.5f).coerceAtLeast(150f)) },
+                    onReset = { s.sidebarWidth = 260f }
+                )
             }
             Column(Modifier.weight(1f)) {
                 EditorArea(s, horizontal = true, modifier = Modifier.weight(1f))
-                if (s.panelVisible) { HDivider(); BottomPanel(s, Modifier.fillMaxWidth().height(if (roomy) 190.dp else 110.dp)) }
+                if (s.panelVisible) {
+                    PanelResizeHandle(s, panelH, heightDp, density)
+                    BottomPanel(s, Modifier.fillMaxWidth().height(panelH.dp))
+                }
             }
         }
         StatusBar(s, compact = false)
     }
 }
 
+/** Horizontal handle above the bottom panel. Dragging up makes the panel taller. */
+@Composable
+private fun PanelResizeHandle(s: RexCoderState, currentDp: Float, heightDp: Float, density: Float) {
+    ResizeHandle(
+        vertical = false, desc = "Ubah tinggi panel terminal",
+        onDelta = { d -> s.panelHeight = (currentDp - d / density).coerceIn(90f, (heightDp * 0.6f).coerceAtLeast(90f)) },
+        onReset = { s.panelHeight = 190f }
+    )
+}
+
 @Composable
 private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(36.dp).background(Rex.TitleBar).padding(horizontal = 10.dp),
+        Modifier.fillMaxWidth().height(36.dp).background(Rex.TitleBar)
+            .drawBehind { drawRect(Rex.accentBrush(), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()), alpha = 0.6f) }
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Outlined.Code, null, tint = Rex.Accent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
+        Text("REX", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, color = Rex.Accent)
+        Text("CODER", fontSize = 12.sp, fontWeight = FontWeight.Light, letterSpacing = 2.sp, color = Rex.TextBright)
+        Spacer(Modifier.width(10.dp))
         listOf("File", "Edit", "View", "Terminal").forEach { m ->
             Text(
                 m, fontSize = 12.sp, color = Rex.Text,
@@ -99,8 +130,8 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
         }
         Spacer(Modifier.width(8.dp))
         Row(
-            Modifier.weight(1f).widthIn(max = 320.dp).height(26.dp).clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF2B2B2B)).border(1.dp, Rex.Border, RoundedCornerShape(6.dp))
+            Modifier.weight(1f).widthIn(max = 320.dp).height(26.dp).clip(RoundedCornerShape(8.dp))
+                .background(Rex.Field).border(1.dp, Rex.Border, RoundedCornerShape(8.dp))
                 .clickable { s.paletteVisible = true }.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -117,10 +148,12 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
 // ───────────── Portrait phone ─────────────
 
 @Composable
-private fun CompactLayout(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun CompactLayout(s: RexCoderState, heightDp: Float, darkTheme: Boolean, onToggleTheme: () -> Unit) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val density = LocalDensity.current.density
+    val panelH = s.panelHeight.coerceIn(90f, (heightDp * 0.6f).coerceAtLeast(90f))
 
     ModalNavigationDrawer(
         drawerState = drawer,
@@ -134,7 +167,10 @@ private fun CompactLayout(s: RexCoderState, darkTheme: Boolean, onToggleTheme: (
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             CompactTopBar(s, darkTheme, onToggleTheme) { scope.launch { drawer.open() } }
             EditorArea(s, horizontal = false, modifier = Modifier.weight(1f))
-            if (s.panelVisible) { HDivider(); BottomPanel(s, Modifier.fillMaxWidth().height(170.dp)) }
+            if (s.panelVisible) {
+                PanelResizeHandle(s, panelH, heightDp, density)
+                BottomPanel(s, Modifier.fillMaxWidth().height(panelH.dp))
+            }
             if (imeVisible) ExtraKeysBar(s) else {
                 StatusBar(s, compact = true)
                 CompactBottomBar(s) { v -> s.view = v; scope.launch { drawer.open() } }
@@ -147,7 +183,9 @@ private fun CompactLayout(s: RexCoderState, darkTheme: Boolean, onToggleTheme: (
 private fun CompactTopBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> Unit, onMenu: () -> Unit) {
     val doc = s.focusedDoc
     Row(
-        Modifier.fillMaxWidth().height(48.dp).background(Rex.TitleBar).padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().height(48.dp).background(Rex.TitleBar)
+            .drawBehind { drawRect(Rex.accentBrush(), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()), alpha = 0.6f) }
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SmallIconButton(Icons.Outlined.Menu, "Open explorer", 44.dp, Rex.Text, onMenu)
@@ -174,8 +212,8 @@ private fun CompactBottomBar(s: RexCoderState, onSelect: (SideView) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
                 val sel = s.view == v
-                Icon(v.icon, v.title, tint = if (sel) Color.White else Rex.TextDim, modifier = Modifier.size(22.dp))
-                Text(v.title.substringBefore(' '), fontSize = 10.sp, color = if (sel) Color.White else Rex.TextDim, maxLines = 1)
+                Icon(v.icon, v.title, tint = if (sel) Rex.Accent else Rex.TextDim, modifier = Modifier.size(22.dp))
+                Text(v.title.substringBefore(' '), fontSize = 10.sp, color = if (sel) Rex.Accent else Rex.TextDim, maxLines = 1)
             }
         }
     }
@@ -188,14 +226,19 @@ fun LayoutMenu(s: RexCoderState, tint: Color = Rex.TextDim, size: Dp = 32.dp) {
     var open by remember { mutableStateOf(false) }
     Box {
         SmallIconButton(Icons.Outlined.ViewColumn, "Editor layout", size, tint) { open = true }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Rex.Overlay)) {
             (1..3).forEach { n ->
                 DropdownMenuItem(
-                    text = { Text(if (n == 1) "Single editor" else "$n editors") },
-                    leadingIcon = { if (s.groups.size == n) Icon(Icons.Outlined.Check, null) },
+                    text = { Text(if (n == 1) "Single editor" else "$n editors", color = Rex.Text) },
+                    leadingIcon = { if (s.groups.size == n) Icon(Icons.Outlined.Check, null, tint = Rex.Accent) },
                     onClick = { s.setLayout(n); open = false }
                 )
             }
+            if (s.groups.size > 1) DropdownMenuItem(
+                text = { Text("Samakan ukuran editor", color = Rex.Text) },
+                leadingIcon = { Icon(Icons.Outlined.ViewColumn, null, tint = Rex.TextDim) },
+                onClick = { s.equalizeGroups(); open = false }
+            )
         }
     }
 }
@@ -215,6 +258,9 @@ private fun CommandPalette(s: RexCoderState) {
             Cmd("Layout: Single Editor", "") { s.setLayout(1) },
             Cmd("Layout: Two Editors", "") { s.setLayout(2) },
             Cmd("Layout: Three Editors", "") { s.setLayout(3) },
+            Cmd("Equalize Editor Sizes", "") { s.equalizeGroups() },
+            Cmd("Editor Font: Increase", "") { s.adjustFocusedFont(1) },
+            Cmd("Editor Font: Decrease", "") { s.adjustFocusedFont(-1) },
             Cmd("Toggle Sidebar", "Ctrl+B") { s.sidebarVisible = !s.sidebarVisible },
             Cmd("Toggle Terminal Panel", "Ctrl+`") { s.panelVisible = !s.panelVisible },
             Cmd("Save File", "Ctrl+S") { s.save() },
@@ -227,17 +273,18 @@ private fun CommandPalette(s: RexCoderState) {
     val showFiles = !q.startsWith(">")
     val fHits = if (showFiles) files.filter { it.name.contains(term, true) } else emptyList()
     val cHits = cmds.filter { it.title.contains(term, true) }
+    val shape = RoundedCornerShape(12.dp)
 
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp).heightIn(max = 420.dp)
-                .clip(RoundedCornerShape(8.dp)).background(Color(0xFF252526))
-                .border(1.dp, Rex.Border, RoundedCornerShape(8.dp))
+                .clip(shape).background(Rex.Overlay)
+                .border(1.dp, Rex.accentBrush(), shape)
         ) {
             BasicTextField(
                 q, { q = it }, singleLine = true,
                 textStyle = TextStyle(color = Rex.Text, fontSize = 15.sp),
-                cursorBrush = SolidColor(Rex.Text),
+                cursorBrush = SolidColor(Rex.Accent),
                 modifier = Modifier.fillMaxWidth().focusRequester(fr).padding(14.dp),
                 decorationBox = { inner ->
                     if (q.isEmpty()) Text("Go to file…  or type > for commands", fontSize = 15.sp, color = Rex.TextDim)

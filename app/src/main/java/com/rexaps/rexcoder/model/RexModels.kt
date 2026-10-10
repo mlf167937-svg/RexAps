@@ -42,10 +42,23 @@ class DocState(val path: String, val name: String, text: String) {
     fun reload(text: String) { value = TextFieldValue(text); saved = text }
 }
 
+const val DEFAULT_EDITOR_FONT = 13
+const val MIN_EDITOR_FONT = 6
+const val MAX_EDITOR_FONT = 32
+
+/** Smallest share (of the total weight) an editor group may shrink to while dragging a divider. */
+const val MIN_GROUP_SHARE = 0.18f
+
 @Stable
-class EditorGroup(val id: Int) {
+class EditorGroup(val id: Int, fontSize: Int = DEFAULT_EDITOR_FONT) {
     val tabs = mutableStateListOf<String>()
     var active by mutableStateOf<String?>(null)
+
+    /** Per-editor font size (E1, E2, E3 each keep their own). */
+    var fontSize by mutableIntStateOf(fontSize)
+
+    /** Relative size of this editor inside the editor area; changed by dragging dividers. */
+    var weight by mutableFloatStateOf(1f)
 }
 
 data class SearchHit(val path: String, val name: String, val line: Int, val text: String)
@@ -67,11 +80,19 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     var panelVisible by mutableStateOf(false)
     var paletteVisible by mutableStateOf(false)
     var statusMessage by mutableStateOf("Ready")
+
+    // Resizable chrome (dp). Dragged with the dividers in the layouts.
+    var sidebarWidth by mutableFloatStateOf(260f)
+    var panelHeight by mutableFloatStateOf(190f)
+
     var sshLoginVisible by mutableStateOf(false)
     var sshCommand by mutableStateOf("")
     var sshPassword by mutableStateOf("")
     var sshConnected by mutableStateOf(false)
     var sshTarget by mutableStateOf<SshTarget?>(null)
+
+    /** When true, a successful SSH login immediately runs `cd` into the RexCoder workspace path. */
+    var sshAutoCd by mutableStateOf(true)
     private var sshSession: SshSession? = null
     private var nextGroupId = 1
 
@@ -131,10 +152,53 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         d.value = d.value.copy(selection = TextRange(offset.coerceIn(0, d.value.text.length)))
     }
 
-    fun addGroup(): EditorGroup = EditorGroup(nextGroupId++).also { groups.add(it); focusedGroupId = it.id }
+    // ───────────── Editor groups: add / remove / resize / font ─────────────
+
+    /** New groups inherit the focused editor's font size; all groups are re-balanced to equal width. */
+    fun addGroup(): EditorGroup = EditorGroup(nextGroupId++, focusedGroup.fontSize).also {
+        groups.add(it)
+        focusedGroupId = it.id
+        equalizeGroups()
+    }
+
     fun splitEditor() { if (groups.size < 3) { val src = focusedGroup.active; val g = addGroup(); if (src != null) { g.tabs.add(src); g.active = src } } }
-    fun removeGroup(id: Int) { if (groups.size > 1) { groups.removeAll { it.id == id }; if (focusedGroupId == id) focusedGroupId = groups.first().id } }
+
+    fun removeGroup(id: Int) {
+        if (groups.size > 1) {
+            groups.removeAll { it.id == id }
+            if (focusedGroupId == id) focusedGroupId = groups.first().id
+            equalizeGroups()
+        }
+    }
+
     fun setLayout(n: Int) { while (groups.size < n) splitEditor(); while (groups.size > n) removeGroup(groups.last().id) }
+
+    /** Reset every editor to the same size. */
+    fun equalizeGroups() { groups.forEach { it.weight = 1f } }
+
+    /**
+     * Drag the divider that sits between groups[leftIndex] and groups[leftIndex + 1].
+     * [deltaPx] is the finger movement along the split axis, [totalPx] the pixels available to all groups.
+     */
+    fun resizeGroups(leftIndex: Int, deltaPx: Float, totalPx: Float) {
+        val a = groups.getOrNull(leftIndex) ?: return
+        val b = groups.getOrNull(leftIndex + 1) ?: return
+        if (totalPx <= 0f) return
+        val total = groups.sumOf { it.weight.toDouble() }.toFloat()
+        val min = total * MIN_GROUP_SHARE
+        val pair = a.weight + b.weight
+        if (pair < min * 2f) return
+        val next = (a.weight + deltaPx / totalPx * total).coerceIn(min, pair - min)
+        a.weight = next
+        b.weight = pair - next
+    }
+
+    fun setFontSize(g: EditorGroup, px: Int) {
+        g.fontSize = px.coerceIn(MIN_EDITOR_FONT, MAX_EDITOR_FONT)
+        statusMessage = "E${groups.indexOf(g) + 1} font ${g.fontSize}px"
+    }
+
+    fun adjustFocusedFont(delta: Int) = setFontSize(focusedGroup, focusedGroup.fontSize + delta)
 
     fun closeTab(g: EditorGroup, path: String) {
         val i = g.tabs.indexOf(path); if (i < 0) return
@@ -228,12 +292,20 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
                 sshTarget = target
                 sshConnected = true
                 terminalLines.add("[SSH] Connected to ${target.user}@${target.host}:${target.port}")
+                if (sshAutoCd) autoCdToWorkspace(session)
             } catch (e: Exception) {
                 session.close()
                 if (sshSession === session) sshSession = null
                 terminalLines.add("error: SSH ${e.message ?: "connection failed"}")
             }
         }
+    }
+
+    /** Equivalent of typing `cd /storage/emulated/0/Download/RexAps/RexCoder` right after login. */
+    private fun autoCdToWorkspace(session: SshSession) {
+        val path = WorkspaceManager.DISPLAY_PATH.trimEnd('/')
+        terminalLines.add("[SSH] Auto cd → $path")
+        session.send("cd '$path'\n".toByteArray(Charsets.UTF_8))
     }
 
     fun openSshLogin() {

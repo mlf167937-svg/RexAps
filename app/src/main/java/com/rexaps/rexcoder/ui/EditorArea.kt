@@ -1,24 +1,32 @@
+//EditorArea.kt
 package com.rexaps.rexcoder.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -30,21 +38,28 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.rexcoder.editor.RexCodeSyntaxTransformation
 import com.rexaps.rexcoder.model.DocState
 import com.rexaps.rexcoder.model.EditorGroup
+import com.rexaps.rexcoder.model.MAX_EDITOR_FONT
+import com.rexaps.rexcoder.model.MIN_EDITOR_FONT
 import com.rexaps.rexcoder.model.RexCoderState
-import com.rexaps.rexcoder.theme.CodeStyle
 import com.rexaps.rexcoder.theme.Rex
+import com.rexaps.rexcoder.theme.codeStyle
 
 // ───────────── Shared small widgets ─────────────
 
@@ -73,28 +88,103 @@ fun SmallIconButton(
     ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(18.dp)) }
 }
 
-// ───────────── Editor groups (multi-editor) ─────────────
+// ───────────── Resize handle (drag to resize, double-tap to reset) ─────────────
 
-/** Horizontal = groups berdampingan (landscape/tablet), else bertumpuk (portrait). */
+/** Thickness of the touch area of every draggable divider. */
+val HANDLE_THICKNESS: Dp = 12.dp
+
+/**
+ * Draggable divider.
+ * [vertical] = true  → a vertical bar between side-by-side panes (drag left/right).
+ * [vertical] = false → a horizontal bar between stacked panes (drag up/down).
+ * [onDelta] receives the finger movement in px along the drag axis.
+ * Screen-reader users get "grow / shrink" custom actions instead of a drag gesture.
+ */
+@Composable
+fun ResizeHandle(
+    vertical: Boolean,
+    desc: String,
+    onDelta: (Float) -> Unit,
+    onReset: (() -> Unit)? = null
+) {
+    val currentDelta by rememberUpdatedState(onDelta)
+    val currentReset by rememberUpdatedState(onReset)
+    var dragging by remember { mutableStateOf(false) }
+    val lineColor by animateColorAsState(if (dragging) Rex.Accent else Rex.Border, tween(120), label = "resizeLine")
+    val gripColor by animateColorAsState(if (dragging) Rex.Accent else Rex.TextDim.copy(alpha = 0.45f), tween(120), label = "resizeGrip")
+
+    val area = if (vertical) Modifier.fillMaxHeight().width(HANDLE_THICKNESS) else Modifier.fillMaxWidth().height(HANDLE_THICKNESS)
+    Box(
+        area
+            .semantics {
+                contentDescription = desc
+                customActions = listOf(
+                    CustomAccessibilityAction("Perbesar") { currentDelta(48f); true },
+                    CustomAccessibilityAction("Perkecil") { currentDelta(-48f); true }
+                )
+            }
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { currentReset?.invoke() }) }
+            .pointerInput(vertical) {
+                detectDragGestures(
+                    onDragStart = { dragging = true },
+                    onDragEnd = { dragging = false },
+                    onDragCancel = { dragging = false }
+                ) { change, drag ->
+                    change.consume()
+                    currentDelta(if (vertical) drag.x else drag.y)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val thin = if (dragging) 2.dp else 1.dp
+        Box((if (vertical) Modifier.fillMaxHeight().width(thin) else Modifier.fillMaxWidth().height(thin)).background(lineColor))
+        Box(
+            (if (vertical) Modifier.size(3.dp, 28.dp) else Modifier.size(28.dp, 3.dp))
+                .clip(CircleShape).background(gripColor)
+        )
+    }
+}
+
+// ───────────── Editor groups (multi-editor, resizable) ─────────────
+
+/** Horizontal = groups berdampingan (landscape/tablet), else bertumpuk (portrait). Dividers are draggable. */
 @Composable
 fun EditorArea(s: RexCoderState, horizontal: Boolean, modifier: Modifier = Modifier) {
     val groups = s.groups.toList()
-    if (horizontal) Row(modifier) {
+    var areaPx by remember { mutableFloatStateOf(0f) }
+    val handlePx = with(LocalDensity.current) { HANDLE_THICKNESS.toPx() }
+    val availablePx = (areaPx - handlePx * (groups.size - 1)).coerceAtLeast(1f)
+    val sized = modifier.onSizeChanged { areaPx = (if (horizontal) it.width else it.height).toFloat() }
+
+    if (horizontal) Row(sized) {
         groups.forEachIndexed { i, g ->
-            key(g.id) { if (i > 0) VDivider(); EditorGroupView(s, g, Modifier.weight(1f).fillMaxHeight()) }
+            key(g.id) {
+                if (i > 0) ResizeHandle(
+                    vertical = true, desc = "Ubah lebar editor ${i} dan ${i + 1}",
+                    onDelta = { s.resizeGroups(i - 1, it, availablePx) }, onReset = { s.equalizeGroups() }
+                )
+                EditorGroupView(s, g, i, Modifier.weight(g.weight.coerceAtLeast(0.01f)).fillMaxHeight())
+            }
         }
-    } else Column(modifier) {
+    } else Column(sized) {
         groups.forEachIndexed { i, g ->
-            key(g.id) { if (i > 0) HDivider(); EditorGroupView(s, g, Modifier.weight(1f).fillMaxWidth()) }
+            key(g.id) {
+                if (i > 0) ResizeHandle(
+                    vertical = false, desc = "Ubah tinggi editor ${i} dan ${i + 1}",
+                    onDelta = { s.resizeGroups(i - 1, it, availablePx) }, onReset = { s.equalizeGroups() }
+                )
+                EditorGroupView(s, g, i, Modifier.weight(g.weight.coerceAtLeast(0.01f)).fillMaxWidth())
+            }
         }
     }
 }
 
 @Composable
-private fun EditorGroupView(s: RexCoderState, g: EditorGroup, modifier: Modifier) {
+private fun EditorGroupView(s: RexCoderState, g: EditorGroup, index: Int, modifier: Modifier) {
     val focused = s.focusedGroupId == g.id
     Column(
         modifier
+            .clipToBounds()
             .background(Rex.EditorBg)
             .pointerInput(g.id) {
                 awaitPointerEventScope {
@@ -105,18 +195,18 @@ private fun EditorGroupView(s: RexCoderState, g: EditorGroup, modifier: Modifier
                 }
             }
     ) {
-        TabBar(s, g, focused)
+        TabBar(s, g, index, focused)
         val doc = g.active?.let { s.docs[it] }
         if (doc == null) Welcome(Modifier.weight(1f).fillMaxWidth())
         else {
             Breadcrumbs(doc.path)
-            key(doc.path) { CodeEditor(doc, focused, Modifier.weight(1f).fillMaxWidth()) }
+            key(doc.path) { CodeEditor(doc, focused, g.fontSize, Modifier.weight(1f).fillMaxWidth()) }
         }
     }
 }
 
 @Composable
-private fun TabBar(s: RexCoderState, g: EditorGroup, focused: Boolean) {
+private fun TabBar(s: RexCoderState, g: EditorGroup, index: Int, focused: Boolean) {
     val listState = rememberLazyListState()
     LaunchedEffect(g.active) {
         val i = g.tabs.indexOf(g.active)
@@ -128,6 +218,7 @@ private fun TabBar(s: RexCoderState, g: EditorGroup, focused: Boolean) {
                 s.docs[path]?.let { Tab(s, g, it, active = path == g.active, groupFocused = focused) }
             }
         }
+        FontSizeChip(label = "E${index + 1}", group = g, focused = focused) { s.setFontSize(g, it) }
         if (s.groups.size < 3) SmallIconButton(Icons.Outlined.ViewColumn, "Split editor") {
             s.focusedGroupId = g.id; s.splitEditor()
         }
@@ -135,16 +226,76 @@ private fun TabBar(s: RexCoderState, g: EditorGroup, focused: Boolean) {
     }
 }
 
+/** "E2 12px" chip. Tap → stepper + presets for this editor's own font size. */
+@Composable
+private fun FontSizeChip(label: String, group: EditorGroup, focused: Boolean, onChange: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    Box {
+        Row(
+            Modifier
+                .padding(horizontal = 2.dp)
+                .height(26.dp)
+                .clip(shape)
+                .border(1.dp, if (focused) Rex.Accent.copy(alpha = 0.7f) else Rex.Border, shape)
+                .clickable(role = Role.Button, onClickLabel = "Ubah ukuran font $label") { open = true }
+                .padding(horizontal = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = Rex.Accent)
+            Spacer(Modifier.width(5.dp))
+            Text("${group.fontSize}px", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Rex.Text, maxLines = 1)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Rex.Overlay)) {
+            Text(
+                "FONT $label", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Rex.TextDim,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)
+            )
+            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SmallIconButton(Icons.Outlined.Remove, "Kecilkan font $label", 40.dp, Rex.Text) {
+                    if (group.fontSize > MIN_EDITOR_FONT) onChange(group.fontSize - 1)
+                }
+                Text(
+                    "${group.fontSize}px", fontSize = 16.sp, fontFamily = FontFamily.Monospace, color = Rex.TextBright,
+                    textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 64.dp)
+                )
+                SmallIconButton(Icons.Outlined.Add, "Besarkan font $label", 40.dp, Rex.Text) {
+                    if (group.fontSize < MAX_EDITOR_FONT) onChange(group.fontSize + 1)
+                }
+            }
+            Row(
+                Modifier.padding(horizontal = 10.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(8, 10, 12, 13, 14, 16, 18, 20).forEach { p ->
+                    val sel = p == group.fontSize
+                    Text(
+                        "$p", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                        color = if (sel) Rex.OnAccent else Rex.Text,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(if (sel) Rex.Accent else Rex.Field)
+                            .clickable(role = Role.Button, onClickLabel = "Set $p px") { onChange(p) }
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Tab(s: RexCoderState, g: EditorGroup, doc: DocState, active: Boolean, groupFocused: Boolean) {
     val (icon, tint) = fileStyle(doc.name)
-    val topColor = if (groupFocused) Rex.Accent else Color(0xFF6B6B6B)
     Row(
         Modifier
             .fillMaxHeight()
             .background(if (active) Rex.EditorBg else Rex.TabInactive)
             .drawBehind {
-                if (active) drawRect(topColor, size = Size(size.width, 2.dp.toPx()))
+                if (active) {
+                    if (groupFocused) drawRect(Rex.accentBrush(), size = Size(size.width, 2.dp.toPx()))
+                    else drawRect(Rex.TextDim.copy(alpha = 0.5f), size = Size(size.width, 2.dp.toPx()))
+                }
                 drawRect(Rex.Border, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height))
             }
             .clickable { g.active = doc.path; s.focusedGroupId = g.id }
@@ -162,7 +313,7 @@ private fun Tab(s: RexCoderState, g: EditorGroup, doc: DocState, active: Boolean
             Modifier.size(32.dp).clip(CircleShape).clickable { s.closeTab(g, doc.path) },
             contentAlignment = Alignment.Center
         ) {
-            if (doc.modified) Box(Modifier.size(8.dp).clip(CircleShape).background(Rex.Text))
+            if (doc.modified) Box(Modifier.size(8.dp).clip(CircleShape).background(Rex.Modified))
             else Icon(Icons.Outlined.Close, "Close ${doc.name}", tint = Rex.TextDim, modifier = Modifier.size(14.dp))
         }
     }
@@ -170,7 +321,7 @@ private fun Tab(s: RexCoderState, g: EditorGroup, doc: DocState, active: Boolean
 
 @Composable
 private fun Breadcrumbs(path: String) {
-    val parts = path.split('/')
+    val parts = path.substringAfter("/Download/RexAps/", path).split('/').filter { it.isNotEmpty() }
     Row(
         Modifier.fillMaxWidth().height(24.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -185,20 +336,26 @@ private fun Breadcrumbs(path: String) {
 @Composable
 private fun Welcome(modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Outlined.Code, null, tint = Color.White.copy(alpha = 0.08f), modifier = Modifier.size(64.dp))
-        Text("RexCoder", fontSize = 22.sp, fontWeight = FontWeight.Light, color = Color.White.copy(alpha = 0.25f))
-        Spacer(Modifier.height(10.dp))
-        listOf("Open a file from the Explorer", "Long-press a file to open it to the side", "Tap the search icon for the Command Palette")
-            .forEach { Text(it, fontSize = 12.sp, color = Rex.TextDim, textAlign = TextAlign.Center) }
+        Icon(Icons.Outlined.Code, null, tint = Rex.Accent.copy(alpha = 0.35f), modifier = Modifier.size(56.dp))
+        Spacer(Modifier.height(6.dp))
+        Text("REX//CODER", fontSize = 20.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp, color = Rex.TextDim)
+        Spacer(Modifier.height(12.dp))
+        listOf(
+            "Open a file from the Explorer",
+            "Long-press a file to open it to the side",
+            "Drag a divider to resize · double-tap it to reset",
+            "Tap E1 / E2 / E3 to set that editor's font size"
+        ).forEach { Text(it, fontSize = 12.sp, color = Rex.TextDim, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) }
     }
 }
 
 // ───────────── The code editor ─────────────
 
 @Composable
-fun CodeEditor(doc: DocState, focused: Boolean, modifier: Modifier = Modifier) {
+fun CodeEditor(doc: DocState, focused: Boolean, fontSize: Int, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
-    val lh = with(density) { 20.sp.toPx() }
+    val style = codeStyle(fontSize)
+    val lh = with(density) { style.lineHeight.toPx() }
     val padTop = with(density) { 8.dp.toPx() }
     val vScroll = rememberScrollState()
     val hScroll = rememberScrollState()
@@ -218,14 +375,19 @@ fun CodeEditor(doc: DocState, focused: Boolean, modifier: Modifier = Modifier) {
                 .verticalScroll(vScroll)
                 .fillMaxWidth()
                 .heightIn(min = minH)
-                .drawBehind { if (focused) drawRect(Rex.LineHighlight, Offset(0f, padTop + curLine * lh), Size(size.width, lh)) }
+                .drawBehind {
+                    if (focused) {
+                        drawRect(Rex.LineHighlight, Offset(0f, padTop + curLine * lh), Size(size.width, lh))
+                        drawRect(Rex.Accent.copy(alpha = 0.55f), Offset(0f, padTop + curLine * lh), Size(2.dp.toPx(), lh))
+                    }
+                }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                     focusRequester.requestFocus()
                 }
         ) {
             Text(
                 numbers,
-                style = CodeStyle.copy(color = Rex.TextDim, textAlign = TextAlign.End),
+                style = style.copy(color = Rex.TextDim, textAlign = TextAlign.End),
                 modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 12.dp).widthIn(min = 24.dp)
             )
             CompositionLocalProvider(
@@ -235,8 +397,8 @@ fun CodeEditor(doc: DocState, focused: Boolean, modifier: Modifier = Modifier) {
                     BasicTextField(
                         value = doc.value,
                         onValueChange = { doc.value = it },
-                        textStyle = CodeStyle,
-                        cursorBrush = SolidColor(Color.White),
+                        textStyle = style,
+                        cursorBrush = SolidColor(Rex.Accent),
                         visualTransformation = transformation,
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
                         modifier = Modifier.focusRequester(focusRequester).defaultMinSize(minWidth = 160.dp)
