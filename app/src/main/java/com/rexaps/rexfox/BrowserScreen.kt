@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebView
+import org.mozilla.geckoview.GeckoView
 
 @Composable
 fun BrowserScreen(
@@ -46,140 +46,197 @@ fun BrowserScreen(
 ) {
     val tab = tabs.getActiveTab() ?: return
     var editing by remember(tab.id) { mutableStateOf(false) }
-    var address by remember(tab.id, tab.url) { mutableStateOf(tab.url.takeUnless { it == "about:blank" }.orEmpty()) }
-    var menuExpanded by remember { mutableStateOf(false) }
+    var address by remember(tab.id, tab.url) { mutableStateOf(tab.url) }
     val focusRequester = remember { FocusRequester() }
     val isBookmarked = state.bookmarks.any { it.url == tab.url }
 
-    LaunchedEffect(editing) { if (editing) focusRequester.requestFocus() }
+    LaunchedEffect(editing) {
+        if (editing) focusRequester.requestFocus()
+    }
 
     Column(Modifier.fillMaxSize().background(DeepBlack)) {
-        Column(Modifier.fillMaxWidth().background(SurfaceDark).statusBarsPadding()) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 9.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(RexFoxAccent), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Explore, null, tint = Color.White, modifier = Modifier.size(19.dp))
-                }
-                Spacer(Modifier.width(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("RexFox", fontWeight = FontWeight.Bold, fontSize = 17.sp, lineHeight = 19.sp)
-                    Text(if (tab.isIncognito) "Private tab" else "Fast, focused browsing", color = OnSurfaceMuted, fontSize = 10.sp)
-                }
-                Surface(color = SurfaceCard, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Tab, null, tint = VioletLight, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("${state.tabs.size}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, "More options", tint = OnSurfacePrimary)
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(text = { Text("New tab") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menuExpanded = false; onNewTab() })
-                        DropdownMenuItem(text = { Text(if (isBookmarked) "Remove bookmark" else "Add bookmark") }, leadingIcon = { Icon(Icons.Default.BookmarkBorder, null) }, onClick = { menuExpanded = false; onBookmark() })
-                        DropdownMenuItem(text = { Text("Developer tools") }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menuExpanded = false; onDevTools() })
-                        DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { menuExpanded = false; onSettings() })
-                    }
-                }
-            }
 
+        /* ------------------------------ TOP BAR ------------------------------ */
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(SurfaceDark)
+                .statusBarsPadding()
+        ) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (editing) {
                     OutlinedTextField(
                         value = address,
                         onValueChange = { address = it },
-                        modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
                         singleLine = true,
-                        shape = RoundedCornerShape(17.dp),
-                        placeholder = { Text("Search or enter web address") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        trailingIcon = { IconButton(onClick = { editing = false }) { Icon(Icons.Default.Close, "Cancel") } },
+                        shape = RoundedCornerShape(24.dp),
+                        placeholder = { Text("Search or enter address") },
+                        trailingIcon = {
+                            IconButton(onClick = { editing = false }) {
+                                Icon(Icons.Default.Close, "Cancel")
+                            }
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Violet, unfocusedBorderColor = BorderSubtle,
-                            focusedContainerColor = SurfaceCard, unfocusedContainerColor = SurfaceCard,
+                            focusedBorderColor = Violet,
+                            unfocusedBorderColor = BorderSubtle,
+                            focusedContainerColor = SurfaceCard,
+                            unfocusedContainerColor = SurfaceCard,
                             cursorColor = Cyan
                         ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { editing = false; onNavigate(address) })
+                        keyboardActions = KeyboardActions(onGo = {
+                            editing = false
+                            onNavigate(address)
+                        })
                     )
                 } else {
                     Row(
-                        Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(17.dp))
-                            .background(SurfaceCard).border(1.dp, BorderSubtle, RoundedCornerShape(17.dp))
-                            .rexPressable(onClick = { address = tab.url.takeUnless { it == "about:blank" }.orEmpty(); editing = true })
-                            .padding(start = 13.dp, end = 4.dp),
+                        Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(SurfaceCard)
+                            .border(1.dp, BorderSubtle, RoundedCornerShape(24.dp))
+                            .rexPressable(onClick = { editing = true })
+                            .padding(start = 14.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (tab.url.startsWith("https://")) Icons.Default.Lock else Icons.Default.Search,
-                            null, tint = if (tab.url.startsWith("https://")) Cyan else OnSurfaceMuted,
-                            modifier = Modifier.size(17.dp)
+                            Icons.Default.Search,
+                            null,
+                            tint = VioletLight,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(Modifier.width(9.dp))
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            tab.url.removePrefix("https://").removePrefix("http://").takeUnless { it == "about:blank" } ?: "Search or enter address",
-                            Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (tab.url == "about:blank") OnSurfaceMuted else OnSurfacePrimary, fontSize = 13.sp
+                            tab.url.removePrefix("https://").removePrefix("http://"),
+                            Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 13.sp
                         )
-                        IconButton(onClick = { if (state.loading) onStop() else onReload() }, modifier = Modifier.size(38.dp)) {
-                            Icon(if (state.loading) Icons.Default.Close else Icons.Default.Refresh, if (state.loading) "Stop" else "Reload", modifier = Modifier.size(19.dp))
+                        IconButton(
+                            onClick = { if (state.loading) onStop() else onReload() },
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                if (state.loading) Icons.Default.Close else Icons.Default.Refresh,
+                                if (state.loading) "Stop" else "Reload",
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
-                    IconButton(onClick = onBookmark, modifier = Modifier.size(42.dp)) {
-                        Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Bookmark", tint = if (isBookmarked) VioletLight else OnSurfacePrimary)
-                    }
+                }
+
+                IconButton(onClick = onBookmark) {
+                    Icon(
+                        if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        "Bookmark",
+                        tint = VioletLight
+                    )
+                }
+                IconButton(onClick = onDevTools) {
+                    Icon(Icons.Default.Code, "Developer tools", tint = Cyan)
                 }
             }
+
             Box(Modifier.fillMaxWidth().height(2.dp)) {
-                if (state.loading) LinearProgressIndicator(
-                    progress = { state.progress / 100f }, modifier = Modifier.fillMaxSize(),
-                    color = Cyan, trackColor = Color.Transparent
-                )
+                if (state.loading) {
+                    LinearProgressIndicator(
+                        progress = { state.progress / 100f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Cyan,
+                        trackColor = Color.Transparent
+                    )
+                }
             }
         }
 
+        /* ------------------------------- ERROR ------------------------------- */
         state.error?.let {
-            Row(Modifier.fillMaxWidth().background(SurfaceCard).animateContentSize().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(SurfaceCard)
+                    .animateContentSize()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(Icons.Default.WifiOff, null, tint = Cyan)
                 Spacer(Modifier.width(10.dp))
                 Text(it, color = OnSurfaceMuted, fontSize = 12.sp)
             }
         }
 
+        /* ------------------------------- GECKOVIEW ----------------------------- */
         key(tab.id) {
-            AndroidView(factory = { tab.webView }, modifier = Modifier.weight(1f))
+            AndroidView(
+                factory = { context -> GeckoView(context).apply { setSession(tab.session) } },
+                modifier = Modifier.weight(1f),
+                update = { view ->
+                    // Each keyed tab owns one GeckoView instance; its session stays in the tab manager.
+                    if (view.session !== tab.session) {
+                        view.releaseSession()
+                        view.setSession(tab.session)
+                    }
+                }
+            )
         }
 
+        /* ----------------------------- BOTTOM BAR ---------------------------- */
         Row(
-            Modifier.fillMaxWidth().background(SurfaceDark).navigationBarsPadding().padding(horizontal = 10.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically
+            Modifier
+                .fillMaxWidth()
+                .background(SurfaceDark)
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            NavigationIcon(Icons.Default.ArrowBack, "Back", enabled = tab.canGoBack, onClick = onBack)
-            NavigationIcon(Icons.Default.ArrowForward, "Forward", enabled = tab.canGoForward, onClick = onForward)
-            IconButton(onClick = onHome) { Icon(Icons.Default.Home, "Home", tint = OnSurfacePrimary) }
-            Box(Modifier.size(43.dp).clip(RoundedCornerShape(15.dp)).background(RexFoxAccent).rexPressable(onClick = onNewTab), contentAlignment = Alignment.Center) {
+            IconButton(onClick = onBack, enabled = tab.canGoBack) {
+                Icon(Icons.Default.ArrowBack, "Back")
+            }
+            IconButton(onClick = onForward, enabled = tab.canGoForward) {
+                Icon(Icons.Default.ArrowForward, "Forward")
+            }
+
+            Box(
+                Modifier
+                    .size(50.dp)
+                    .rexPressable(onClick = onNewTab)
+                    .clip(CircleShape)
+                    .background(RexFoxAccent),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(Icons.Default.Add, "New tab", tint = Color.White)
             }
+
             IconButton(onClick = onTabs) {
-                Box(Modifier.size(25.dp).border(1.7.dp, OnSurfacePrimary, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
-                    Text("${state.tabs.size}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    Modifier
+                        .size(26.dp)
+                        .border(2.dp, OnSurfacePrimary, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "${state.tabs.size}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
-            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings", tint = OnSurfacePrimary) }
+            IconButton(onClick = onHome) { Icon(Icons.Default.Home, "Home") }
+            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
         }
-    }
-}
-
-@Composable
-private fun NavigationIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled) {
-        Icon(icon, description, tint = if (enabled) OnSurfacePrimary else OnSurfaceMuted.copy(alpha = 0.4f))
     }
 }
 
