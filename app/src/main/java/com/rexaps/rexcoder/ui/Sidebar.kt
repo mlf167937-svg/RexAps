@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.rexcoder.model.FileNode
+import com.rexaps.rexcoder.model.MAX_TREE_FONT
+import com.rexaps.rexcoder.model.MIN_TREE_FONT
 import com.rexaps.rexcoder.model.RexCoderState
 import com.rexaps.rexcoder.model.SideView
 import com.rexaps.rexcoder.theme.Rex
@@ -111,10 +113,17 @@ private fun ExplorerView(s: RexCoderState, rowHeight: Dp, onOpened: () -> Unit) 
     val rows = visibleRows(s.root, 0, s.expanded)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("WORKSPACE", fontSize = 10.sp, letterSpacing = 1.sp, color = Rex.TextDim, modifier = Modifier.weight(1f))
-            SmallIconButton(Icons.Outlined.NoteAdd, "New file", 32.dp) { name = ""; dialog = "file" }
-            SmallIconButton(Icons.Outlined.CreateNewFolder, "New folder", 32.dp) { name = ""; dialog = "folder" }
-            SmallIconButton(Icons.Outlined.Refresh, "Refresh", 32.dp) { s.refreshWorkspace() }
+            Text(
+                "WORKSPACE", fontSize = 10.sp, letterSpacing = 1.sp, color = Rex.TextDim,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+            )
+            FontMenuButton(
+                title = "TREE", value = s.treeFontSize, min = MIN_TREE_FONT, max = MAX_TREE_FONT,
+                presets = listOf(4, 6, 8, 10, 11, 12, 13, 14), size = 30.dp
+            ) { s.setTreeFont(it) }
+            SmallIconButton(Icons.Outlined.NoteAdd, "New file", 30.dp) { name = ""; dialog = "file" }
+            SmallIconButton(Icons.Outlined.CreateNewFolder, "New folder", 30.dp) { name = ""; dialog = "folder" }
+            SmallIconButton(Icons.Outlined.Refresh, "Refresh", 30.dp) { s.refreshWorkspace() }
         }
         LazyColumn(Modifier.fillMaxSize()) {
             items(rows, key = { it.first.path }) { (node, depth) -> TreeRow(s, node, depth, rowHeight, onOpened) }
@@ -156,26 +165,37 @@ private fun TreeRow(s: RexCoderState, node: FileNode, depth: Int, rowH: Dp, onOp
     val (icon, tint) = if (node.isDir)
         (if (open) Icons.Outlined.FolderOpen else Icons.Outlined.Folder) to Color(0xFFC09553)
     else fileStyle(node.name)
+
+    // Semua dimensi baris ikut skala font tree (default 13px = ukuran normal).
+    val fs = s.treeFontSize
+    val k = fs / 13f
+    val height = (rowH * k).coerceAtLeast(10.dp)
+    val iconSize = (16f * k).coerceAtLeast(5f).dp
+    val gap = (4f * k).coerceAtLeast(1f).dp
+    val gap2 = (6f * k).coerceAtLeast(1f).dp
+    val indent = ((8 + depth * 12) * k).coerceAtLeast(2f).dp
+    val endPad = (8f * k).coerceAtLeast(2f).dp
+
     Row(
-        Modifier.fillMaxWidth().height(rowH)
+        Modifier.fillMaxWidth().height(height)
             .background(if (active) Rex.Selection else Color.Transparent)
             .drawBehind { if (active) drawRect(Rex.Accent, size = Size(2.dp.toPx(), size.height)) }
             .combinedClickable(
                 onLongClick = { if (!node.isDir) { s.openToSide(node); onOpened() } }
             ) { if (node.isDir) s.toggle(node.path) else { s.openFile(node); onOpened() } }
-            .padding(start = (8 + depth * 12).dp, end = 8.dp),
+            .padding(start = indent, end = endPad),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (node.isDir) Icon(
             if (open) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight, null,
-            tint = Rex.TextDim, modifier = Modifier.size(16.dp)
-        ) else Spacer(Modifier.width(16.dp))
-        Spacer(Modifier.width(4.dp))
-        if (node.isDir) Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
-        else RexLanguageIcon(node.name, Modifier.width(24.dp))
-        Spacer(Modifier.width(6.dp))
+            tint = Rex.TextDim, modifier = Modifier.size(iconSize)
+        ) else Spacer(Modifier.width(iconSize))
+        Spacer(Modifier.width(gap))
+        if (node.isDir) Icon(icon, null, tint = tint, modifier = Modifier.size(iconSize))
+        else RexLanguageIcon(node.name, Modifier.width((24f * k).coerceAtLeast(4f).dp), fontSize = (10f * k).coerceAtLeast(3f).sp)
+        Spacer(Modifier.width(gap2))
         Text(
-            node.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            node.name, fontSize = fs.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = if (active) Rex.TextBright else Rex.Text,
             fontWeight = if (depth == 0) FontWeight.SemiBold else FontWeight.Normal
         )

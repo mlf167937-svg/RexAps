@@ -1,22 +1,21 @@
 package com.rexaps.rexcoder.ui
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Html
-import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.rexcoder.theme.Rex
 
 /** Original RexCoder language badge set; not copied from third-party icon packs. */
 @Composable
-fun RexLanguageIcon(fileName: String, modifier: Modifier = Modifier) {
+fun RexLanguageIcon(fileName: String, modifier: Modifier = Modifier, fontSize: TextUnit = 10.sp) {
     val ext = fileName.substringAfterLast('.', "").lowercase()
     val label = when (ext) {
         "py" -> "Py"; "js", "mjs", "cjs" -> "JS"; "ts" -> "TS"; "tsx" -> "TX"; "jsx" -> "JX"
@@ -26,8 +25,11 @@ fun RexLanguageIcon(fileName: String, modifier: Modifier = Modifier) {
         "vue" -> "V"; "c" -> "C"; "cpp", "cc", "cxx" -> "C++"; "cs" -> "C#"; "toml", "ini", "env" -> "="
         "gradle", "dockerfile" -> "◆"; else -> null
     }
-    if (label == null) Icon(Icons.Outlined.Description, null, tint = Rex.TextDim, modifier = modifier)
-    else Text(label, color = languageColor(ext), fontSize = 10.sp, maxLines = 1, modifier = modifier)
+    if (label == null) Icon(
+        Icons.Outlined.Description, null, tint = Rex.TextDim,
+        modifier = modifier.heightIn(max = (fontSize.value * 1.6f).dp)
+    )
+    else Text(label, color = languageColor(ext), fontSize = fontSize, maxLines = 1, modifier = modifier)
 }
 
 private fun languageColor(ext: String): Color = when (ext) {

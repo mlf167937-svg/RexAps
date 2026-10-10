@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Checkbox
@@ -24,15 +27,26 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.librex.rexcode.RexCode
+import com.rexaps.rexcoder.model.MAX_TERMINAL_FONT
+import com.rexaps.rexcoder.model.MIN_TERMINAL_FONT
 import com.rexaps.rexcoder.model.RexCoderState
+import com.rexaps.rexcoder.runtime.AnsiText
 import com.rexaps.rexcoder.theme.Rex
 
 // ───────────── Bottom panel: Problems / Output / Terminal ─────────────
@@ -57,16 +71,29 @@ fun BottomPanel(s: RexCoderState, modifier: Modifier = Modifier) {
             val target = s.sshTarget
             if (s.sshConnected && target != null) {
                 Text(
-                    "● ${target.user}@${target.host}", fontSize = 11.sp, color = Rex.Success, maxLines = 1,
-                    modifier = Modifier.padding(end = 4.dp)
+                    "● ${target.user}@${target.host}", fontSize = 11.sp, color = Rex.Success,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 150.dp).padding(end = 4.dp)
+                )
+                Text(
+                    "^C", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Rex.Warning,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                        .clickable(role = Role.Button, onClickLabel = "Kirim Ctrl+C") { s.sendInterrupt() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }
+            FontMenuButton(
+                title = "TERM", value = s.terminalFontSize,
+                min = MIN_TERMINAL_FONT, max = MAX_TERMINAL_FONT,
+                presets = listOf(6, 8, 10, 12, 14, 16, 18, 20)
+            ) { s.setTerminalFont(it) }
             if (s.sshConnected) {
                 SmallIconButton(Icons.Outlined.LinkOff, "Disconnect SSH", 32.dp, Rex.Error) { s.disconnectSsh() }
             } else {
                 SmallIconButton(Icons.Outlined.Link, "SSH login", 32.dp, Rex.Accent) { s.openSshLogin() }
             }
-            SmallIconButton(Icons.Outlined.DeleteSweep, "Clear terminal", 32.dp) { s.terminalLines.clear() }
+            SmallIconButton(Icons.Outlined.DeleteSweep, "Clear terminal", 32.dp) { s.clearTerminal() }
             SmallIconButton(Icons.Outlined.Close, "Close panel") { s.panelVisible = false }
         }
         HDivider()
@@ -152,17 +179,57 @@ private fun SshLoginDialog(s: RexCoderState) {
 
 @Composable
 private fun TerminalView(s: RexCoderState) {
+    val density = LocalDensity.current
     val scroll = rememberScrollState()
-    LaunchedEffect(s.terminalLines.size) { scroll.animateScrollTo(scroll.maxValue) }
+    val fontSp = s.terminalFontSize
+    val dark = Rex.EditorBg.luminance() < 0.5f
+    val textColor = Rex.Text
+    val bgColor = Rex.EditorBg
+
+    // Parse ANSI -> AnnotatedString berwarna. Di-cache; invalid saat jumlah baris / baris terakhir berubah.
+    val count = s.terminalLines.size
+    val last = s.terminalLines.lastOrNull()
+    val rendered = remember(count, last, dark, textColor) {
+        AnsiText.render(s.terminalLines.toList(), dark, textColor, bgColor)
+    }
+
+    val lineHeightSp = fontSp * 1.5f
+    val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSp.sp, lineHeight = lineHeightSp.sp)
+
+    // Hitung kolom/baris yang muat -> dikirim ke PTY SSH (htop, nano, dll ikut menyesuaikan).
+    val measurer = rememberTextMeasurer()
+    val cellW = remember(fontSp) { measurer.measure("M", style).size.width.coerceAtLeast(1) }
+    val lineHpx = with(density) { lineHeightSp.sp.toPx() }.coerceAtLeast(1f)
+    val padPx = with(density) { 24.dp.toPx() }
+    var area by remember { mutableStateOf(IntSize.Zero) }
+    LaunchedEffect(area, cellW, lineHpx) {
+        if (area.width > 0 && area.height > 0) {
+            s.resizeTerminal(((area.width - padPx) / cellW).toInt(), (area.height / lineHpx).toInt())
+        }
+    }
+
+    // Selalu ikut ke bawah saat konten bertambah.
+    LaunchedEffect(scroll.maxValue) { scroll.scrollTo(scroll.maxValue) }
+
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 8.dp)) {
-            s.terminalLines.forEach { line ->
-                val color = when {
-                    line.startsWith("error:") -> Rex.Error
-                    line.startsWith("[SSH]") || line.startsWith("[RexCoder]") -> Rex.Accent
-                    else -> Rex.Text
+        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { area = it }) {
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                SelectionContainer {
+                    Column {
+                        rendered.forEachIndexed { i, line ->
+                            val raw = s.terminalLines.getOrNull(i) ?: ""
+                            val base = when {
+                                raw.startsWith("error:") -> Rex.Error
+                                raw.startsWith("[SSH]") || raw.startsWith("[RexCoder]") -> Rex.Accent
+                                else -> Rex.Text
+                            }
+                            Text(
+                                if (line.text.isEmpty()) AnnotatedString(" ") else line,
+                                style = style, color = base
+                            )
+                        }
+                    }
                 }
-                Text(line, style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp, color = color))
             }
         }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -174,6 +241,8 @@ private fun TerminalView(s: RexCoderState) {
                 singleLine = true,
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Rex.Text),
                 cursorBrush = SolidColor(Rex.Accent),
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { s.submitTerminal() }),
                 modifier = Modifier.weight(1f)
                     .background(Rex.Field, RoundedCornerShape(8.dp))
                     .border(1.dp, Rex.Border, RoundedCornerShape(8.dp))

@@ -4,6 +4,8 @@ package com.rexaps.rexcoder.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -86,6 +88,65 @@ fun SmallIconButton(
         Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(18.dp)) }
+}
+
+// ───────────── Font size menu (dipakai editor, tree, terminal) ─────────────
+
+/** Isi menu: judul, stepper − / + dan deretan preset. */
+@Composable
+private fun FontStepperContent(
+    label: String, value: Int, min: Int, max: Int, presets: List<Int>, onChange: (Int) -> Unit
+) {
+    Column {
+        Text(
+            "FONT $label  ($min–$max)", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Rex.TextDim,
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)
+        )
+        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SmallIconButton(Icons.Outlined.Remove, "Kecilkan font $label", 40.dp, Rex.Text) {
+                if (value > min) onChange(value - 1)
+            }
+            Text(
+                "${value}px", fontSize = 16.sp, fontFamily = FontFamily.Monospace, color = Rex.TextBright,
+                textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 64.dp)
+            )
+            SmallIconButton(Icons.Outlined.Add, "Besarkan font $label", 40.dp, Rex.Text) {
+                if (value < max) onChange(value + 1)
+            }
+        }
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            presets.forEach { p ->
+                val sel = p == value
+                Text(
+                    "$p", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    color = if (sel) Rex.OnAccent else Rex.Text,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(if (sel) Rex.Accent else Rex.Field)
+                        .clickable(role = Role.Button, onClickLabel = "Set $p px") { onChange(p) }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Tombol ikon "Aa" yang membuka menu ukuran font. */
+@Composable
+fun FontMenuButton(
+    title: String, value: Int, min: Int, max: Int, presets: List<Int>,
+    size: Dp = 32.dp, tint: Color = Rex.TextDim, onChange: (Int) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        SmallIconButton(Icons.Outlined.TextFields, "Ukuran font $title", size, tint) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Rex.Overlay)) {
+            FontStepperContent(title, value, min, max, presets, onChange)
+        }
+    }
 }
 
 // ───────────── Resize handle (drag to resize, double-tap to reset) ─────────────
@@ -200,7 +261,12 @@ private fun EditorGroupView(s: RexCoderState, g: EditorGroup, index: Int, modifi
         if (doc == null) Welcome(Modifier.weight(1f).fillMaxWidth())
         else {
             Breadcrumbs(doc.path)
-            key(doc.path) { CodeEditor(doc, focused, g.fontSize, Modifier.weight(1f).fillMaxWidth()) }
+            key(doc.path) {
+                CodeEditor(
+                    doc, focused, g.fontSize, Modifier.weight(1f).fillMaxWidth(),
+                    onFontChange = { s.setFontSize(g, it) }
+                )
+            }
         }
     }
 }
@@ -247,39 +313,10 @@ private fun FontSizeChip(label: String, group: EditorGroup, focused: Boolean, on
             Text("${group.fontSize}px", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Rex.Text, maxLines = 1)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Rex.Overlay)) {
-            Text(
-                "FONT $label", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Rex.TextDim,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)
+            FontStepperContent(
+                label, group.fontSize, MIN_EDITOR_FONT, MAX_EDITOR_FONT,
+                listOf(2, 4, 6, 8, 10, 12, 13, 14, 16, 18, 20, 22), onChange
             )
-            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SmallIconButton(Icons.Outlined.Remove, "Kecilkan font $label", 40.dp, Rex.Text) {
-                    if (group.fontSize > MIN_EDITOR_FONT) onChange(group.fontSize - 1)
-                }
-                Text(
-                    "${group.fontSize}px", fontSize = 16.sp, fontFamily = FontFamily.Monospace, color = Rex.TextBright,
-                    textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 64.dp)
-                )
-                SmallIconButton(Icons.Outlined.Add, "Besarkan font $label", 40.dp, Rex.Text) {
-                    if (group.fontSize < MAX_EDITOR_FONT) onChange(group.fontSize + 1)
-                }
-            }
-            Row(
-                Modifier.padding(horizontal = 10.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf(8, 10, 12, 13, 14, 16, 18, 20).forEach { p ->
-                    val sel = p == group.fontSize
-                    Text(
-                        "$p", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                        color = if (sel) Rex.OnAccent else Rex.Text,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(if (sel) Rex.Accent else Rex.Field)
-                            .clickable(role = Role.Button, onClickLabel = "Set $p px") { onChange(p) }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                    )
-                }
-            }
         }
     }
 }
@@ -344,7 +381,8 @@ private fun Welcome(modifier: Modifier) {
             "Open a file from the Explorer",
             "Long-press a file to open it to the side",
             "Drag a divider to resize · double-tap it to reset",
-            "Tap E1 / E2 / E3 to set that editor's font size"
+            "Pinch with two fingers in the editor to zoom the font",
+            "Tap E1 / E2 / E3 to set that editor's font size (2–22px)"
         ).forEach { Text(it, fontSize = 12.sp, color = Rex.TextDim, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) }
     }
 }
@@ -352,7 +390,13 @@ private fun Welcome(modifier: Modifier) {
 // ───────────── The code editor ─────────────
 
 @Composable
-fun CodeEditor(doc: DocState, focused: Boolean, fontSize: Int, modifier: Modifier = Modifier) {
+fun CodeEditor(
+    doc: DocState,
+    focused: Boolean,
+    fontSize: Int,
+    modifier: Modifier = Modifier,
+    onFontChange: (Int) -> Unit = {}
+) {
     val density = LocalDensity.current
     val style = codeStyle(fontSize)
     val lh = with(density) { style.lineHeight.toPx() }
@@ -368,7 +412,36 @@ fun CodeEditor(doc: DocState, focused: Boolean, fontSize: Int, modifier: Modifie
     val curLine = remember(text, cursor) { text.take(cursor).count { it == '\n' } }
     val numbers = remember(lineCount) { (1..lineCount).joinToString("\n") }
 
-    BoxWithConstraints(modifier.background(Rex.EditorBg)) {
+    // Pinch dua jari = zoom font (tiap ±12% jarak = ±1px). Satu jari tetap scroll / pilih teks seperti biasa.
+    val currentFont by rememberUpdatedState(fontSize)
+    val currentChange by rememberUpdatedState(onFontChange)
+    val pinch = Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            var font = currentFont
+            var lastDist = 0f
+            var acc = 1f
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val down = event.changes.filter { it.pressed }
+                if (down.size >= 2) {
+                    val dist = (down[0].position - down[1].position).getDistance()
+                    if (lastDist > 0f && dist > 0f) {
+                        acc *= dist / lastDist
+                        if (acc > 1.12f) { font += 1; currentChange(font); acc = 1f }
+                        else if (acc < 0.89f) { font -= 1; currentChange(font); acc = 1f }
+                    }
+                    lastDist = dist
+                    event.changes.forEach { it.consume() }
+                } else {
+                    lastDist = 0f
+                    acc = 1f
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
+
+    BoxWithConstraints(modifier.background(Rex.EditorBg).then(pinch)) {
         val minH = maxHeight
         Row(
             Modifier

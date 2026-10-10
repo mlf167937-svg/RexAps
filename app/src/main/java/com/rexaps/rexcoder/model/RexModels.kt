@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.rexaps.rexcoder.storage.WorkspaceManager
+import com.rexaps.rexcoder.runtime.AnsiText
 import com.rexaps.rexcoder.runtime.RexRuntime
 import com.rexaps.rexcoder.runtime.RexTerminal
 import com.rexaps.rexcoder.runtime.SshSession
@@ -42,9 +43,21 @@ class DocState(val path: String, val name: String, text: String) {
     fun reload(text: String) { value = TextFieldValue(text); saved = text }
 }
 
+// ───────────── Ukuran font ─────────────
 const val DEFAULT_EDITOR_FONT = 13
-const val MIN_EDITOR_FONT = 6
-const val MAX_EDITOR_FONT = 32
+const val MIN_EDITOR_FONT = 2
+const val MAX_EDITOR_FONT = 22
+
+const val DEFAULT_TREE_FONT = 13
+const val MIN_TREE_FONT = 4
+const val MAX_TREE_FONT = 14
+
+const val DEFAULT_TERMINAL_FONT = 12
+const val MIN_TERMINAL_FONT = 6
+const val MAX_TERMINAL_FONT = 20
+
+/** Maksimum baris riwayat terminal yang disimpan. */
+const val MAX_TERMINAL_LINES = 3000
 
 /** Smallest share (of the total weight) an editor group may shrink to while dragging a divider. */
 const val MIN_GROUP_SHARE = 0.18f
@@ -85,6 +98,18 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     var sidebarWidth by mutableFloatStateOf(260f)
     var panelHeight by mutableFloatStateOf(190f)
 
+    /** Ukuran font tree project (4..14, default 13). */
+    var treeFontSize by mutableIntStateOf(DEFAULT_TREE_FONT)
+
+    /** Ukuran font terminal (6..20, default 12). */
+    var terminalFontSize by mutableIntStateOf(DEFAULT_TERMINAL_FONT)
+
+    /** Ukuran terminal dalam karakter; diisi otomatis dari lebar/tinggi panel, dikirim ke PTY SSH. */
+    var terminalCols = 80
+        private set
+    var terminalRows = 24
+        private set
+
     var sshLoginVisible by mutableStateOf(false)
     var sshCommand by mutableStateOf("")
     var sshPassword by mutableStateOf("")
@@ -95,6 +120,10 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     var sshAutoCd by mutableStateOf(true)
     private var sshSession: SshSession? = null
     private var nextGroupId = 1
+
+    // Stream terminal: sisa escape sequence yang terpotong + status baris terakhir belum selesai.
+    private var termPending = ""
+    private var termPartial = false
 
     init {
         RexRuntime.ensureLayout()
@@ -200,6 +229,16 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
 
     fun adjustFocusedFont(delta: Int) = setFontSize(focusedGroup, focusedGroup.fontSize + delta)
 
+    fun setTreeFont(px: Int) {
+        treeFontSize = px.coerceIn(MIN_TREE_FONT, MAX_TREE_FONT)
+        statusMessage = "Tree font ${treeFontSize}px"
+    }
+
+    fun setTerminalFont(px: Int) {
+        terminalFontSize = px.coerceIn(MIN_TERMINAL_FONT, MAX_TERMINAL_FONT)
+        statusMessage = "Terminal font ${terminalFontSize}px"
+    }
+
     fun closeTab(g: EditorGroup, path: String) {
         val i = g.tabs.indexOf(path); if (i < 0) return
         g.tabs.removeAt(i)
@@ -234,23 +273,90 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         refreshWorkspace()
     }
 
+    // ───────────── Terminal output helpers ─────────────
+
+    private fun trimTerminal() {
+        val extra = terminalLines.size - MAX_TERMINAL_LINES
+        if (extra > 0) repeat(extra) { terminalLines.removeAt(0) }
+    }
+
+    /** Tambah satu baris utuh (pesan lokal). Baris SSH yang belum selesai dibiarkan apa adanya. */
+    private fun addLine(text: String) {
+        termPartial = false
+        terminalLines.add(text)
+        trimTerminal()
+    }
+
+    fun clearTerminal() {
+        terminalLines.clear()
+        termPartial = false
+        termPending = ""
+    }
+
+    /**
+     * Masukkan output mentah dari SSH (boleh berisi ANSI escape).
+     * Menyambung baris yang belum selesai antar chunk, menangani CRLF / CR, dan
+     * menahan escape sequence yang terpotong. Warna dirender di UI oleh AnsiText.
+     */
+    fun appendTerminalOutput(chunk: String) {
+        val data = termPending + chunk
+        termPending = ""
+        val cut = AnsiText.incompleteEscapeStart(data)
+        val usable = if (cut >= 0) { termPending = data.substring(cut); data.substring(0, cut) } else data
+        if (usable.isEmpty()) return
+
+        val sb = StringBuilder()
+        if (termPartial && terminalLines.isNotEmpty()) sb.append(terminalLines.removeAt(terminalLines.lastIndex))
+
+        var i = 0
+        while (i < usable.length) {
+            val c = usable[i]
+            when (c) {
+                '\r' -> {
+                    val next = usable.getOrNull(i + 1)
+                    if (next != null && next != '\n') sb.setLength(0) // CR murni: timpa baris
+                }
+                '\n' -> { terminalLines.add(sb.toString()); sb.setLength(0) }
+                else -> sb.append(c)
+            }
+            i++
+        }
+        if (sb.isNotEmpty()) { terminalLines.add(sb.toString()); termPartial = true } else termPartial = false
+        trimTerminal()
+    }
+
+    /** Dipanggil UI saat ukuran panel/font terminal berubah. */
+    fun resizeTerminal(cols: Int, rows: Int) {
+        val c = cols.coerceIn(20, 300)
+        val r = rows.coerceIn(5, 120)
+        if (c == terminalCols && r == terminalRows) return
+        terminalCols = c
+        terminalRows = r
+        sshSession?.resize(c, r)
+    }
+
+    /** Ctrl+C ke sesi SSH. */
+    fun sendInterrupt() { sshSession?.send(byteArrayOf(3)) }
+
     fun submitTerminal() {
         val line = terminalInput.trim()
-        if (line.isBlank()) return
-        terminalInput = ""
-        terminalLines.add(if (sshConnected) "remote$ $line" else "$ $line")
+
         if (sshConnected) {
-            if (line == "exit" || line == "logout") {
-                disconnectSsh()
-            } else {
-                sshSession?.send((line + "\n").toByteArray(Charsets.UTF_8))
-            }
+            terminalInput = ""
+            // Remote PTY sudah echo sendiri, jadi tidak ada echo lokal (hindari baris dobel).
+            if (line == "exit" || line == "logout") disconnectSsh()
+            else sshSession?.send((line + "\n").toByteArray(Charsets.UTF_8))
             return
         }
+
+        if (line.isBlank()) return
+        terminalInput = ""
+        addLine("$ $line")
+
         if (line == "ssh" || line.startsWith("ssh ")) {
             val target = parseSshCommand(line)
             if (target == null) {
-                terminalLines.add("error: Format SSH salah. Contoh: ssh -p 8022 user@192.168.0.101")
+                addLine("error: Format SSH salah. Contoh: ssh -p 8022 user@192.168.0.101")
             } else {
                 sshCommand = line
                 sshPassword = ""
@@ -261,8 +367,8 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         scope.launch {
             val result = withContext(Dispatchers.IO) { terminal.execute(line) }
             result.fold(
-                { out -> if (out == "\u000C") terminalLines.clear() else if (out.isNotBlank()) terminalLines.addAll(out.lines()) },
-                { e -> terminalLines.add("error: ${e.message ?: "command failed"}") }
+                { out -> if (out == "\u000C") clearTerminal() else if (out.isNotBlank()) out.lines().forEach { addLine(it) } },
+                { e -> addLine("error: ${e.message ?: "command failed"}") }
             )
             terminalCwd = terminal.cwd.absolutePath
             refreshWorkspace()
@@ -271,32 +377,38 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
 
     fun connectSsh(command: String, password: String) {
         val target = parseSshCommand(command) ?: run {
-            terminalLines.add("error: Format SSH salah")
+            addLine("error: Format SSH salah")
             return
         }
         if (sshConnected) disconnectSsh()
         sshLoginVisible = false
-        terminalLines.add("Connecting to ${target.user}@${target.host}:${target.port} ...")
+        termPending = ""
+        addLine("Connecting to ${target.user}@${target.host}:${target.port} ...")
         val session = SshSession()
         sshSession = session
         scope.launch {
             try {
-                session.connect(target, password, 120, 36,
+                session.connect(target, password, terminalCols, terminalRows,
                     onText = { text ->
-                        scope.launch(Dispatchers.Main.immediate) { terminalLines.addAll(text.replace("\r", "").split('\n')) }
+                        scope.launch(Dispatchers.Main.immediate) { appendTerminalOutput(text) }
                     },
                     onClosed = {
-                        scope.launch(Dispatchers.Main.immediate) { if (sshSession === session) { sshConnected = false; sshTarget = null; sshSession = null; terminalLines.add("[SSH] Connection closed") } }
+                        scope.launch(Dispatchers.Main.immediate) {
+                            if (sshSession === session) {
+                                sshConnected = false; sshTarget = null; sshSession = null
+                                addLine("[SSH] Connection closed")
+                            }
+                        }
                     }
                 )
                 sshTarget = target
                 sshConnected = true
-                terminalLines.add("[SSH] Connected to ${target.user}@${target.host}:${target.port}")
+                addLine("[SSH] Connected to ${target.user}@${target.host}:${target.port}")
                 if (sshAutoCd) autoCdToWorkspace(session)
             } catch (e: Exception) {
                 session.close()
                 if (sshSession === session) sshSession = null
-                terminalLines.add("error: SSH ${e.message ?: "connection failed"}")
+                addLine("error: SSH ${e.message ?: "connection failed"}")
             }
         }
     }
@@ -304,7 +416,7 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
     /** Equivalent of typing `cd /storage/emulated/0/Download/RexAps/RexCoder` right after login. */
     private fun autoCdToWorkspace(session: SshSession) {
         val path = WorkspaceManager.DISPLAY_PATH.trimEnd('/')
-        terminalLines.add("[SSH] Auto cd → $path")
+        addLine("[SSH] Auto cd → $path")
         session.send("cd '$path'\n".toByteArray(Charsets.UTF_8))
     }
 
@@ -319,7 +431,8 @@ class RexCoderState(initialRoot: FileNode = WorkspaceManager.readTree()) {
         sshSession = null
         sshConnected = false
         sshTarget = null
-        terminalLines.add("[SSH] Disconnected")
+        termPending = ""
+        addLine("[SSH] Disconnected")
     }
 
     fun search(q: String): List<SearchHit> {
