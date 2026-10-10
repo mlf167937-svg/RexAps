@@ -3,7 +3,6 @@ package com.rexaps.rexfox
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import org.mozilla.geckoview.GeckoSession
 
  data class Bookmark(val url: String, val title: String, val id: Long = System.currentTimeMillis())
 
@@ -36,7 +35,7 @@ data class BrowserTab(
     val id: Int,
     var title: String = "New Tab",
     var url: String = "about:blank",
-    val session: GeckoSession,
+    val webView: android.webkit.WebView,
     val isIncognito: Boolean = false,
     var canGoBack: Boolean = false,
     var canGoForward: Boolean = false

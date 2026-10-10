@@ -26,7 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import org.mozilla.geckoview.GeckoView
 
 @Composable
 fun BrowserScreen(
@@ -177,16 +176,14 @@ fun BrowserScreen(
             }
         }
 
-        /* ------------------------------- GECKOVIEW ----------------------------- */
+        /* ------------------------------- ANDROID WEBVIEW ------------------------ */
         key(tab.id) {
             AndroidView(
-                factory = { context -> GeckoView(context).apply { setSession(tab.session) } },
+                factory = { tab.webView },
                 modifier = Modifier.weight(1f),
                 update = { view ->
-                    // Each keyed tab owns one GeckoView instance; its session stays in the tab manager.
-                    if (view.session !== tab.session) {
-                        view.releaseSession()
-                        view.setSession(tab.session)
+                    if (view.url != tab.url && tab.url.isNotBlank() && tab.url != "about:blank") {
+                        view.loadUrl(tab.url)
                     }
                 }
             )
