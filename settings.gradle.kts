@@ -11,7 +11,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://maven.mozilla.org/maven2/") }
+        // Tambahkan repository Mozilla di sini
+        maven {
+            url 'https://maven.mozilla.org/maven2/'
+        }
     }
 }
 
