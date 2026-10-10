@@ -81,7 +81,9 @@ class BrowserTabManager(
                     onChanged()
                 }
             }
-            setDownloadListener { downloadUrl, userAgent, contentDisposition, mimeType ->
+            setDownloadListener { downloadUrl, userAgent, contentDisposition, mimeType, _ ->
+                // WebView supplies contentLength as the fifth argument; the download manager
+                // currently determines the file size from the response itself.
                 onDownload(downloadUrl, userAgent, contentDisposition, mimeType)
             }
         }
