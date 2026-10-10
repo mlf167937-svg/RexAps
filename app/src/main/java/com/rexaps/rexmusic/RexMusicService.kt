@@ -135,22 +135,34 @@ class RexMusicService : Service() {
     }
 
     /** Keep home-screen player metadata and synced lyric line aligned with playback. */
+    /** Keep home-screen player metadata and synced lyric line aligned with playback. */
     private fun observeWidgetState() {
         scope.launch {
             RexPlayerController.state
                 .map { s ->
                     val lyricIndex = s.lyrics.synced.indexOfLast { it.timeMs <= s.positionMs }
                     listOf(
-                        s.nowPlaying?.id.orEmpty(), s.nowPlaying?.title.orEmpty(),
-                        s.nowPlaying?.artist.orEmpty(), s.isPlaying.toString(),
-                        s.nowPlayingOffline.toString(), (s.positionMs / 1000L).toString(),
-                        lyricIndex.toString(), s.lyrics.plain.hashCode().toString(),
-                        s.phase.name, s.offline.enabled.toString()
+                        s.nowPlaying?.id.orEmpty(),
+                        s.nowPlaying?.title.orEmpty(),
+                        s.nowPlaying?.artist.orEmpty(),
+                        s.isPlaying.toString(),
+                        s.nowPlayingOffline.toString(),
+                        (s.positionMs / 1000L).toString(),
+                        lyricIndex.toString(),
+                        s.lyrics.plain.hashCode().toString(),
+                        s.lyricsLoading.toString(),
+                        s.lyrics.synced.size.toString(),
+                        s.phase.name,
+                        s.offline.enabled.toString()
                     ).joinToString("|")
                 }
                 .distinctUntilChanged()
                 .collect {
-                    RexMusicWidget.updateAll(applicationContext, RexPlayerController.state.value, coverBitmap)
+                    RexMusicWidget.updateAll(
+                        applicationContext,
+                        RexPlayerController.state.value,
+                        coverBitmap
+                    )
                 }
         }
     }

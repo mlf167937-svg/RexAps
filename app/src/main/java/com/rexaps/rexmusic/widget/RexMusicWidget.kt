@@ -21,6 +21,7 @@ import android.widget.RemoteViews
 import com.rexaps.R
 import com.rexaps.rexmusic.LoadPhase
 import com.rexaps.rexmusic.LyricLine
+import com.rexaps.rexmusic.RexMusicService
 import com.rexaps.rexmusic.RexMusicUiState
 import com.rexaps.rexmusic.RexPlayerController
 import com.rexaps.rexmusic.isPlayerBusy
@@ -30,28 +31,23 @@ import kotlin.math.min
 /**
  * Widget home-screen RexMusic: compact 4x1 (default) dan extended 5x1.
  *
- * - Sumber data: [RexMusicUiState] dari [RexPlayerController] (satu-satunya player; tidak ada
- *   MediaPlayer kedua). Status online/offline memakai `nowPlayingOffline`, yaitu true hanya
- *   kalau lagu benar-benar diputar dari file lokal.
- * - Dipicu oleh RexMusicService (lihat observeWidgetState) dan oleh tombol widget sendiri.
- * - Layout dipilih dari lebar widget sebenarnya (OPTION_APPWIDGET_*_WIDTH), bukan jumlah cell.
- * - Pembaruan dihemat: posisi progress hanya dirender tiap [PROGRESS_STEP_MS], dan saat layar
- *   mati hanya perubahan nyata (lagu, play/pause, lirik, sumber) yang dirender.
- *
- * Fitur tampilan:
+ * Fitur:
  * - Cover besar di sisi kanan sebagai background (dengan scrim gradient).
  * - Baris lirik kecil (1 baris) di compact dan wide.
- * - Durasi `mm:ss` di kiri & kanan progress bar.
+ * - Durasi mm:ss di kiri & kanan progress bar.
  */
 class RexMusicWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val app = context.applicationContext
         RexPlayerController.init(app)
+        // Pastikan service hidup supaya cover di-load dan widget dapat update lanjutan.
+        if (RexPlayerController.state.value.nowPlaying != null) {
+            RexMusicService.start(app)
+        }
         updateIds(app, manager, ids, RexPlayerController.state.value)
     }
 
-    /** Dipanggil saat pengguna me-resize widget: pilih ulang layout compact / wide. */
     override fun onAppWidgetOptionsChanged(
         context: Context,
         manager: AppWidgetManager,
@@ -90,17 +86,9 @@ class RexMusicWidget : AppWidgetProvider() {
         private val CONTROL_ACTIONS =
             setOf(ACTION_TOGGLE, ACTION_NEXT, ACTION_PREV, ACTION_OPEN, ACTION_REFRESH)
 
-        /** Lebar (dp) mulai dari mana layout extended dipakai. Tinggal diubah kalau perlu. */
         private const val WIDE_MIN_DP = 372
-
-        /**
-         * Progress dirender paling cepat tiap ini (ms).
-         * 1 detik supaya detik durasi terasa hidup, tapi tetap hemat baterai.
-         */
         private const val PROGRESS_STEP_MS = 1_000L
 
-        private const val ART_PX = 160
-        private const val ART_RADIUS_RATIO = 0.18f
         private const val DEFAULT_TINT = 0xFF5B47E0.toInt()
 
         private val COLOR_ONLINE = Color.rgb(95, 190, 255)
@@ -112,15 +100,9 @@ class RexMusicWidget : AppWidgetProvider() {
         private const val RC_TOGGLE = 12
         private const val RC_NEXT = 13
 
-        // throttle (hanya diakses dari main thread)
         private var lastSignature = ""
         private var lastPositionMs = -1L
 
-        /**
-         * Dipanggil RexMusicService setiap state berubah.
-         * [cover] + [coverUrl] = artwork yang sudah di-load service beserta URL-nya, supaya
-         * artwork lagu lama tidak pernah dipasangkan dengan judul lagu baru.
-         */
         fun updateAll(
             context: Context,
             state: RexMusicUiState,
@@ -134,7 +116,6 @@ class RexMusicWidget : AppWidgetProvider() {
             if (ids.isEmpty()) return
 
             if (cover != null) {
-                // pemanggil lama tanpa URL: anggap milik lagu yang sedang tampil
                 WidgetArt.put(coverUrl ?: state.nowPlaying?.cover.orEmpty(), cover)
             }
             val art = WidgetArt.forTrack(state.nowPlaying?.cover)
@@ -151,7 +132,6 @@ class RexMusicWidget : AppWidgetProvider() {
         ) {
             val art = WidgetArt.forTrack(state.nowPlaying?.cover)
             val lyric = lyricLine(state)
-            // sinkronkan throttle supaya tick berikutnya tidak merender ulang sia-sia
             lastSignature = signature(state, art, lyric)
             lastPositionMs = state.positionMs
             renderInto(context, manager, ids, state, art, lyric)
@@ -181,7 +161,11 @@ class RexMusicWidget : AppWidgetProvider() {
                 t?.id.orEmpty(), t?.title.orEmpty(), t?.artist.orEmpty(),
                 (art != null).toString(), state.isPlaying.toString(),
                 state.nowPlayingOffline.toString(), state.phase.name,
-                (state.durationMs / 1000L).toString(), lyric
+                (state.durationMs / 1000L).toString(),
+                state.lyricsLoading.toString(),
+                state.lyrics.isEmpty.toString(),
+                state.lyrics.synced.size.toString(),
+                lyric
             ).joinToString("|")
         }
 
@@ -200,7 +184,7 @@ class RexMusicWidget : AppWidgetProvider() {
                 return true
             }
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            if (pm != null && !pm.isInteractive) return false // layar mati: tidak ada yang melihat
+            if (pm != null && !pm.isInteractive) return false
             if (abs(pos - lastPositionMs) < PROGRESS_STEP_MS) return false
             lastPositionMs = pos
             return true
@@ -248,25 +232,17 @@ class RexMusicWidget : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_source, source.first)
             views.setTextColor(R.id.widget_source, source.second)
 
-            // Lirik: wide pakai baris penuh, compact pakai satu baris kecil.
-            // Keduanya aman kalau ID tidak ada di layout (RemoteViews skip).
             val safeLyric = lyric.ifBlank { "♪" }
             if (wide) {
                 views.setTextViewText(R.id.widget_lyrics, safeLyric)
             }
             views.setTextViewText(R.id.widget_lyrics_small, safeLyric)
 
-            // Cover kecil (kiri)
             if (track != null && art != null) {
                 views.setImageViewBitmap(R.id.widget_cover, art.bitmap)
-            } else {
-                views.setImageViewResource(R.id.widget_cover, R.drawable.rexw_cover_placeholder)
-            }
-
-            // Cover besar sebagai background kanan
-            if (track != null && art != null) {
                 views.setImageViewBitmap(R.id.widget_cover_bg, art.bitmap)
             } else {
+                views.setImageViewResource(R.id.widget_cover, R.drawable.rexw_cover_placeholder)
                 views.setImageViewResource(
                     R.id.widget_cover_bg,
                     R.drawable.rexw_cover_placeholder
@@ -275,11 +251,9 @@ class RexMusicWidget : AppWidgetProvider() {
 
             views.setInt(R.id.widget_tint, "setColorFilter", art?.tint ?: DEFAULT_TINT)
 
-            // Durasi
             views.setTextViewText(R.id.widget_time_current, formatTime(state.positionMs))
             views.setTextViewText(R.id.widget_time_total, formatTime(state.durationMs))
 
-            // Kontrol
             views.setImageViewResource(
                 R.id.widget_play_pause,
                 if (state.isPlaying) R.drawable.rexw_ic_pause else R.drawable.rexw_ic_play
@@ -300,7 +274,6 @@ class RexMusicWidget : AppWidgetProvider() {
             if (open != null) views.setOnClickPendingIntent(R.id.widget_root, open)
             views.setOnClickPendingIntent(R.id.widget_prev, broadcast(context, ACTION_PREV, RC_PREV))
             views.setOnClickPendingIntent(R.id.widget_next, broadcast(context, ACTION_NEXT, RC_NEXT))
-            // belum ada lagu: tombol utama membuka aplikasi, bukan tombol mati
             views.setOnClickPendingIntent(
                 R.id.widget_play_pause,
                 if (track == null && open != null) open
@@ -319,7 +292,6 @@ class RexMusicWidget : AppWidgetProvider() {
             return views
         }
 
-        /** Label + warna sumber. Offline hanya kalau file lokal benar-benar sedang diputar. */
         private fun sourceLabel(state: RexMusicUiState, wide: Boolean): Pair<String, Int> {
             val track = state.nowPlaying ?: return "SIAP" to COLOR_MUTED
             if (track.title.isBlank() && track.artist.isBlank()) return "SIAP" to COLOR_MUTED
@@ -338,7 +310,6 @@ class RexMusicWidget : AppWidgetProvider() {
             }
         }
 
-        /** Satu baris lirik. Tanpa teks bertumpuk; selalu satu string pendek. */
         private fun lyricLine(state: RexMusicUiState): String {
             if (state.nowPlaying == null) return ""
             val lyrics = state.lyrics
@@ -370,9 +341,6 @@ class RexMusicWidget : AppWidgetProvider() {
             return result
         }
 
-        // ---------- util ----------
-
-        /** Format milidetik ke `mm:ss`. Nilai <= 0 jadi `00:00`. */
         private fun formatTime(ms: Long): String {
             if (ms <= 0L) return "00:00"
             val total = ms / 1000L
@@ -411,11 +379,6 @@ class RexMusicWidget : AppWidgetProvider() {
 
 /**
  * Artwork widget: cover dibulatkan + warna dominan, di-cache untuk SATU lagu (kuncinya URL cover).
- * [forTrack] hanya mengembalikan artwork kalau URL-nya sama dengan lagu yang sedang diputar,
- * jadi cover lagu sebelumnya tidak pernah muncul di lagu baru.
- *
- * Selain versi rounded-square (untuk cover kecil), disimpan juga [Art.raw] versi persegi penuh
- * untuk dipakai sebagai background kanan (`centerCrop` sudah di-handle oleh ImageView).
  */
 private object WidgetArt {
     class Art(
@@ -429,16 +392,14 @@ private object WidgetArt {
 
     @Synchronized
     fun put(url: String, source: Bitmap) {
-        if (url.isBlank() || source.isRecycled || current?.url == url) return
+        if (url.isBlank() || source.isRecycled) return
+        if (current?.url == url && current?.bitmap?.isRecycled == false) return
         runCatching {
             val soft: Bitmap = (if (source.config == Bitmap.Config.HARDWARE) {
                 source.copy(Bitmap.Config.ARGB_8888, false)
             } else {
                 source
             }) ?: return
-            // Untuk background kanan, kita pakai bitmap yang sama (rounded) — ImageView
-            // dengan scaleType=centerCrop akan memotongnya, sudut membulat tidak terlihat
-            // karena tertutup oleh scrim gradient. Jadi cukup satu bitmap.
             current = Art(url, roundedSquare(soft), dominantTint(soft))
         }
     }
@@ -446,7 +407,6 @@ private object WidgetArt {
     fun forTrack(url: String?): Art? =
         current?.takeIf { !url.isNullOrBlank() && it.url == url }
 
-    /** Crop tengah -> persegi [ART_PX] -> sudut membulat (RemoteViews tidak bisa clip sendiri). */
     private fun roundedSquare(src: Bitmap): Bitmap {
         val size = 160
         val side = min(src.width, src.height)
@@ -465,7 +425,6 @@ private object WidgetArt {
         return out
     }
 
-    /** Rata-rata 8x8 piksel, lalu dijaga tidak terlalu gelap/terang agar teks putih tetap terbaca. */
     private fun dominantTint(src: Bitmap): Int {
         val small = Bitmap.createScaledBitmap(src, 8, 8, true)
         val px = IntArray(64)
