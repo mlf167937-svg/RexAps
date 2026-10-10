@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lapisan warna dinamis. Warna RGB diganti dari kode (warna dominan cover) lewat
+     setColorFilter(SRC_ATOP); alpha gradient ini yang dipertahankan. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="22dp" />
+    <gradient
+        android:angle="0"
+        android:centerColor="#1FFFFFFF"
+        android:centerX="0.45"
+        android:endColor="#00FFFFFF"
+        android:startColor="#73FFFFFF" />
+</shape>

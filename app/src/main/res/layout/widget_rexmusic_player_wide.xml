@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  RexMusic widget - COMPACT (default 4x1).
-  [cover 48] [judul / artis + status / progress] [prev] [play] [next]
-  Progress ada di kolom teks supaya tinggi total tetap ~58dp (satu baris launcher).
-  ID dibagi dengan widget_rexmusic_player_wide.xml.
+  RexMusic widget - EXTENDED (5x1, dipilih kode saat lebar >= WIDE_MIN_DP).
+  Beda dengan compact: cover 50dp, label sumber panjang (ONLINE · STREAMING /
+  OFFLINE · FILE LOKAL), dan satu baris lirik aktif. Tinggi tetap ~60dp.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -29,13 +28,13 @@
         android:orientation="horizontal"
         android:paddingStart="8dp"
         android:paddingTop="5dp"
-        android:paddingEnd="4dp"
+        android:paddingEnd="6dp"
         android:paddingBottom="5dp">
 
         <ImageView
             android:id="@+id/widget_cover"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
             android:importantForAccessibility="no"
             android:scaleType="fitCenter"
             android:src="@drawable/rexw_cover_placeholder" />
@@ -43,8 +42,8 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="4dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:orientation="vertical">
@@ -86,23 +85,37 @@
                     android:id="@+id/widget_source"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="8dp"
                     android:fontFamily="sans-serif-medium"
                     android:importantForAccessibility="no"
                     android:includeFontPadding="false"
                     android:letterSpacing="0.05"
                     android:maxLines="1"
-                    android:text="● ONLINE"
+                    android:text="● ONLINE · STREAMING"
                     android:textColor="#FF5FBEFF"
                     android:textSize="9sp" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_lyrics"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="♪ Lirik tampil di sini"
+                android:textColor="#FFCFC8FF"
+                android:textSize="11sp" />
 
             <ProgressBar
                 android:id="@+id/widget_progress"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
                 android:layout_height="3dp"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="4dp"
                 android:importantForAccessibility="no"
                 android:max="1000"
                 android:maxHeight="3dp"
@@ -119,37 +132,37 @@
 
             <ImageView
                 android:id="@+id/widget_prev"
-                android:layout_width="38dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="46dp"
                 android:background="@drawable/rexw_btn_ghost"
                 android:contentDescription="Lagu sebelumnya"
-                android:paddingLeft="7dp"
-                android:paddingTop="10dp"
-                android:paddingRight="7dp"
-                android:paddingBottom="10dp"
+                android:paddingLeft="8dp"
+                android:paddingTop="11dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_prev" />
 
             <ImageView
                 android:id="@+id/widget_play_pause"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:background="@drawable/rexw_btn_play"
                 android:contentDescription="Putar"
-                android:padding="10dp"
+                android:padding="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_play" />
 
             <ImageView
                 android:id="@+id/widget_next"
-                android:layout_width="38dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="46dp"
                 android:background="@drawable/rexw_btn_ghost"
                 android:contentDescription="Lagu berikutnya"
-                android:paddingLeft="7dp"
-                android:paddingTop="10dp"
-                android:paddingRight="7dp"
-                android:paddingBottom="10dp"
+                android:paddingLeft="8dp"
+                android:paddingTop="11dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/rexw_ic_next" />
         </LinearLayout>
