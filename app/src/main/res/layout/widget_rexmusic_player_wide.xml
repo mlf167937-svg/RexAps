@@ -25,12 +25,12 @@
         android:scaleType="centerCrop"
         android:src="@drawable/rexw_cover_placeholder" />
 
-    <!-- Scrim gradient kiri→kanan supaya teks tetap kebaca -->
-    <View
+    <ImageView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/rexw_scrim"
-        android:importantForAccessibility="no" />
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/rexw_scrim" />
 
     <!-- Tint warna dominan (tipis) -->
     <ImageView
