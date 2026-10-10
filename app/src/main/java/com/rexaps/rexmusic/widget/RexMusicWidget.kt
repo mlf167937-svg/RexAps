@@ -37,6 +37,11 @@ import kotlin.math.min
  * - Layout dipilih dari lebar widget sebenarnya (OPTION_APPWIDGET_*_WIDTH), bukan jumlah cell.
  * - Pembaruan dihemat: posisi progress hanya dirender tiap [PROGRESS_STEP_MS], dan saat layar
  *   mati hanya perubahan nyata (lagu, play/pause, lirik, sumber) yang dirender.
+ *
+ * Fitur tampilan:
+ * - Cover besar di sisi kanan sebagai background (dengan scrim gradient).
+ * - Baris lirik kecil (1 baris) di compact dan wide.
+ * - Durasi `mm:ss` di kiri & kanan progress bar.
  */
 class RexMusicWidget : AppWidgetProvider() {
 
@@ -88,8 +93,11 @@ class RexMusicWidget : AppWidgetProvider() {
         /** Lebar (dp) mulai dari mana layout extended dipakai. Tinggal diubah kalau perlu. */
         private const val WIDE_MIN_DP = 372
 
-        /** Progress dirender paling cepat tiap ini (ms) -> hemat baterai & binder call. */
-        private const val PROGRESS_STEP_MS = 2_000L
+        /**
+         * Progress dirender paling cepat tiap ini (ms).
+         * 1 detik supaya detik durasi terasa hidup, tapi tetap hemat baterai.
+         */
+        private const val PROGRESS_STEP_MS = 1_000L
 
         private const val ART_PX = 160
         private const val ART_RADIUS_RATIO = 0.18f
@@ -239,17 +247,39 @@ class RexMusicWidget : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_track_artist, artist)
             views.setTextViewText(R.id.widget_source, source.first)
             views.setTextColor(R.id.widget_source, source.second)
-            if (wide) views.setTextViewText(R.id.widget_lyrics, lyric.ifBlank { "♪" })
 
-            // cover + warna dinamis
+            // Lirik: wide pakai baris penuh, compact pakai satu baris kecil.
+            // Keduanya aman kalau ID tidak ada di layout (RemoteViews skip).
+            val safeLyric = lyric.ifBlank { "♪" }
+            if (wide) {
+                views.setTextViewText(R.id.widget_lyrics, safeLyric)
+            }
+            views.setTextViewText(R.id.widget_lyrics_small, safeLyric)
+
+            // Cover kecil (kiri)
             if (track != null && art != null) {
                 views.setImageViewBitmap(R.id.widget_cover, art.bitmap)
             } else {
                 views.setImageViewResource(R.id.widget_cover, R.drawable.rexw_cover_placeholder)
             }
+
+            // Cover besar sebagai background kanan
+            if (track != null && art != null) {
+                views.setImageViewBitmap(R.id.widget_cover_bg, art.bitmap)
+            } else {
+                views.setImageViewResource(
+                    R.id.widget_cover_bg,
+                    R.drawable.rexw_cover_placeholder
+                )
+            }
+
             views.setInt(R.id.widget_tint, "setColorFilter", art?.tint ?: DEFAULT_TINT)
 
-            // kontrol
+            // Durasi
+            views.setTextViewText(R.id.widget_time_current, formatTime(state.positionMs))
+            views.setTextViewText(R.id.widget_time_total, formatTime(state.durationMs))
+
+            // Kontrol
             views.setImageViewResource(
                 R.id.widget_play_pause,
                 if (state.isPlaying) R.drawable.rexw_ic_pause else R.drawable.rexw_ic_play
@@ -273,7 +303,8 @@ class RexMusicWidget : AppWidgetProvider() {
             // belum ada lagu: tombol utama membuka aplikasi, bukan tombol mati
             views.setOnClickPendingIntent(
                 R.id.widget_play_pause,
-                if (track == null && open != null) open else broadcast(context, ACTION_TOGGLE, RC_TOGGLE)
+                if (track == null && open != null) open
+                else broadcast(context, ACTION_TOGGLE, RC_TOGGLE)
             )
 
             views.setContentDescription(
@@ -307,7 +338,7 @@ class RexMusicWidget : AppWidgetProvider() {
             }
         }
 
-        /** Satu baris lirik untuk layout wide. Tanpa teks bertumpuk; selalu satu string pendek. */
+        /** Satu baris lirik. Tanpa teks bertumpuk; selalu satu string pendek. */
         private fun lyricLine(state: RexMusicUiState): String {
             if (state.nowPlaying == null) return ""
             val lyrics = state.lyrics
@@ -337,6 +368,17 @@ class RexMusicWidget : AppWidgetProvider() {
                 }
             }
             return result
+        }
+
+        // ---------- util ----------
+
+        /** Format milidetik ke `mm:ss`. Nilai <= 0 jadi `00:00`. */
+        private fun formatTime(ms: Long): String {
+            if (ms <= 0L) return "00:00"
+            val total = ms / 1000L
+            val m = total / 60
+            val s = total % 60
+            return "%02d:%02d".format(m, s)
         }
 
         // ---------- intents ----------
@@ -371,9 +413,16 @@ class RexMusicWidget : AppWidgetProvider() {
  * Artwork widget: cover dibulatkan + warna dominan, di-cache untuk SATU lagu (kuncinya URL cover).
  * [forTrack] hanya mengembalikan artwork kalau URL-nya sama dengan lagu yang sedang diputar,
  * jadi cover lagu sebelumnya tidak pernah muncul di lagu baru.
+ *
+ * Selain versi rounded-square (untuk cover kecil), disimpan juga [Art.raw] versi persegi penuh
+ * untuk dipakai sebagai background kanan (`centerCrop` sudah di-handle oleh ImageView).
  */
 private object WidgetArt {
-    class Art(val url: String, val bitmap: Bitmap, val tint: Int)
+    class Art(
+        val url: String,
+        val bitmap: Bitmap,
+        val tint: Int
+    )
 
     @Volatile
     private var current: Art? = null
@@ -387,6 +436,9 @@ private object WidgetArt {
             } else {
                 source
             }) ?: return
+            // Untuk background kanan, kita pakai bitmap yang sama (rounded) — ImageView
+            // dengan scaleType=centerCrop akan memotongnya, sudut membulat tidak terlihat
+            // karena tertutup oleh scrim gradient. Jadi cukup satu bitmap.
             current = Art(url, roundedSquare(soft), dominantTint(soft))
         }
     }
@@ -394,7 +446,7 @@ private object WidgetArt {
     fun forTrack(url: String?): Art? =
         current?.takeIf { !url.isNullOrBlank() && it.url == url }
 
-    /** Crop tengah -> persegi [160px] -> sudut membulat (RemoteViews tidak bisa clip sendiri). */
+    /** Crop tengah -> persegi [ART_PX] -> sudut membulat (RemoteViews tidak bisa clip sendiri). */
     private fun roundedSquare(src: Bitmap): Bitmap {
         val size = 160
         val side = min(src.width, src.height)

@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  RexMusic widget - COMPACT (default 4x1).
-  [cover 48] [judul / artis + status / progress] [prev] [play] [next]
-  Progress ada di kolom teks supaya tinggi total tetap ~58dp (satu baris launcher).
-  ID dibagi dengan widget_rexmusic_player_wide.xml.
--->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/widget_root"
@@ -13,15 +7,35 @@
     android:background="@drawable/rexw_bg"
     tools:ignore="HardcodedText,ContentDescription">
 
+    <!-- 1. Cover besar di KANAN sebagai background -->
+    <ImageView
+        android:id="@+id/widget_cover_bg"
+        android:layout_width="120dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop"
+        android:src="@drawable/rexw_cover_placeholder" />
+
+    <!-- 2. Scrim gelap supaya teks tetap terbaca -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/rexw_scrim"
+        android:importantForAccessibility="no" />
+
+    <!-- 3. Tint warna dominan (opsional, tipis saja) -->
     <ImageView
         android:id="@+id/widget_tint"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:alpha="0.18"
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
         android:src="@drawable/rexw_tint"
         android:tint="#FF5B47E0" />
 
+    <!-- 4. Konten utama -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -32,6 +46,7 @@
         android:paddingEnd="4dp"
         android:paddingBottom="5dp">
 
+        <!-- Cover kecil di kiri -->
         <ImageView
             android:id="@+id/widget_cover"
             android:layout_width="48dp"
@@ -62,10 +77,11 @@
                 android:textColor="#FFFFFFFF"
                 android:textSize="14sp" />
 
+            <!-- Artist + source (status) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -80,7 +96,7 @@
                     android:maxLines="1"
                     android:text="Pilih lagu untuk mulai"
                     android:textColor="#B8FFFFFF"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/widget_source"
@@ -97,20 +113,69 @@
                     android:textSize="9sp" />
             </LinearLayout>
 
+            <!-- LIRIK KECIL (1 baris) -->
+            <TextView
+                android:id="@+id/widget_lyrics_small"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="♪"
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="italic" />
+
+            <!-- Progress + durasi -->
             <ProgressBar
                 android:id="@+id/widget_progress"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
                 android:layout_height="3dp"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="4dp"
                 android:importantForAccessibility="no"
                 android:max="1000"
                 android:maxHeight="3dp"
                 android:minHeight="3dp"
-                android:progress="380"
+                android:progress="0"
                 android:progressDrawable="@drawable/rexw_progress" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_time_current"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="monospace"
+                    android:importantForAccessibility="no"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+
+                <TextView
+                    android:id="@+id/widget_time_total"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:importantForAccessibility="no"
+                    android:includeFontPadding="false"
+                    android:text="00:00"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="9sp" />
+            </LinearLayout>
         </LinearLayout>
 
+        <!-- Kontrol -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
