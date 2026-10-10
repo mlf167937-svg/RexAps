@@ -11,9 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Tambahkan repository Mozilla di sini
+        // Perbaikan sintaks Kotlin DSL untuk repository tambahan:
         maven {
-            url 'https://maven.mozilla.org/maven2/'
+            url = uri("https://maven.mozilla.org/maven2/")
         }
     }
 }

@@ -1,10 +1,8 @@
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp")
-}
+    id("com.google.devtools.ksp")}
 
 android {
     namespace = "com.rexaps"
@@ -14,8 +12,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2693
-        versionName = "26.93"
+        versionCode = 2694
+        versionName = "26.94"
     }
 
     buildFeatures {
@@ -55,8 +53,9 @@ ksp {
 
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
-    // GeckoView (Mozilla Gecko engine)
-    implementation "org.mozilla.geckoview:geckoview-stable:132.0.2"
+    
+    // GeckoView (Mozilla Gecko engine) - DIPERBAIKI
+    implementation("org.mozilla.geckoview:geckoview-stable:132.0.2")
 
     // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
@@ -112,9 +111,6 @@ dependencies {
 
     // SLF4J
     implementation("org.slf4j:slf4j-nop:1.7.36")
-
-    // PDF rendering uses Android's built-in PdfRenderer.
-    // PDF text extraction needs a separate backend if required.
 
     // Network
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
