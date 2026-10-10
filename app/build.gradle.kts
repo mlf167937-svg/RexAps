@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 26190
-        versionName = "27.17"
+        versionCode = 26191
+        versionName = "27.18"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
@@ -60,6 +60,10 @@ ksp {
 dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     
+
+    implementation("org.apache.commons:commons-compress:1.26.1")
+    implementation("org.tukaani:xz:1.9")
+
     // AndroidX
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -104,10 +108,6 @@ dependencies {
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // RexArchive: ZIP, TAR, GZIP, BZIP2, XZ, 7z backends
-    implementation("org.apache.commons:commons-compress:1.26.2")
-    implementation("org.tukaani:xz:1.9")
 
     // RexArchive: RAR listing/extraction only
     implementation("com.github.junrar:junrar:7.5.5")
