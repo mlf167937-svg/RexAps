@@ -53,8 +53,17 @@ class RexMusicWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val action = intent.action ?: return
-        if (action !in CONTROL_ACTIONS) return
         val app = context.applicationContext
+
+        // RemoteViews lama bisa masih tersimpan oleh launcher setelah APK diperbarui.
+        // Render ulang seluruh instance supaya action/text target mengikuti layout terbaru.
+        if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            RexPlayerController.init(app)
+            updateAll(app, RexPlayerController.state.value, force = true)
+            return
+        }
+
+        if (action !in CONTROL_ACTIONS) return
         RexPlayerController.init(app)
         when (action) {
             ACTION_TOGGLE -> RexPlayerController.togglePlay()

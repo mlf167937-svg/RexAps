@@ -106,6 +106,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="com.rexaps.rexmusic.widget.TOGGLE" />
                 <action android:name="com.rexaps.rexmusic.widget.NEXT" />
                 <action android:name="com.rexaps.rexmusic.widget.PREV" />
