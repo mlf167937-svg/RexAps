@@ -92,7 +92,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rexaps.rexcoder.RexCoderScreen\nimport com.rexaps.rexspacex.RexSpaceXScreen
+import com.rexaps.rexcoder.RexCoderScreen
+import com.rexaps.rexspacex.RexSpaceXScreen
 
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexnux.RexNuxScreen
