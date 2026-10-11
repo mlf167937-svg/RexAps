@@ -1,7 +1,14 @@
 package com.rexaps.rexmanager
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -12,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -20,7 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun RexSplashManager(onStart: () -> Unit, modifier: Modifier = Modifier) {
+fun RexSplashManager(
+    onStart: () -> Unit,
+    modifier: Modifier = Modifier,
+    onExit: () -> Unit = {}
+) {
+    BackHandler(onBack = onExit)
+
     Box(
         modifier
             .fillMaxSize()
@@ -31,37 +45,50 @@ fun RexSplashManager(onStart: () -> Unit, modifier: Modifier = Modifier) {
             )
     ) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 32.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.weight(1f))
             Text(
-                "R", fontSize = 120.sp, fontWeight = FontWeight.Black,
-                style = androidx.compose.ui.text.TextStyle(
-                    brush = Brush.linearGradient(listOf(Color(0xFF7C5CFF), Color(0xFF3B82F6)))
+                text = "R",
+                fontSize = 120.sp,
+                fontWeight = FontWeight.Black,
+                style = TextStyle(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF7C5CFF), Color(0xFF3B82F6))
+                    )
                 )
             )
             Text(
-                buildAnnotatedString {
+                text = buildAnnotatedString {
                     withStyle(SpanStyle(color = Color.White)) { append("Rex") }
                     withStyle(SpanStyle(color = Color(0xFF3B82F6))) { append("Manager") }
                 },
-                fontSize = 36.sp, fontWeight = FontWeight.Bold
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(12.dp))
             Text("File Manager Next Level", color = Color.White, fontSize = 16.sp)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Kelola file, arsip, dan semua yang kamu butuhkan dalam satu aplikasi.",
-                color = Color(0xFFB4BCD0), fontSize = 13.sp, textAlign = TextAlign.Center
+                color = Color(0xFFB4BCD0),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
             )
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onStart,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
                 shape = RoundedCornerShape(26.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B6CF6))
-            ) { Text("Mulai", fontWeight = FontWeight.SemiBold) }
+            ) {
+                Text("Mulai", fontWeight = FontWeight.SemiBold)
+            }
             Spacer(Modifier.height(40.dp))
         }
     }
