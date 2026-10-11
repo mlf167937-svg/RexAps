@@ -92,7 +92,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rexaps.rexcoder.RexCoderScreen
+import com.rexaps.rexcoder.RexCoderScreen\nimport com.rexaps.rexspacex.RexSpaceXScreen
 
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexnux.RexNuxScreen
@@ -233,6 +233,13 @@ fun RexApsApp(activity: Activity) {
 
                         RexRoute.REXMONITOR ->
                             com.rexaps.rexmonitor.RexMonitorScreen(
+                                onExit = {
+                                    route = RexRoute.NONE
+                                }
+                            )
+
+                        RexRoute.REXSPACEX ->
+                            RexSpaceXScreen(
                                 onExit = {
                                     route = RexRoute.NONE
                                 }

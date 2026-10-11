@@ -54,6 +54,13 @@ object RexAppRegistry {
         ),
 
         RexModule(
+            id = "rexspacex",
+            name = "RexSpaceX",
+            description = "Game Space & Game Booster",
+            available = true
+        ),
+
+        RexModule(
             id = "rexmanager",
             name = "RexManager",
             description = "File manager lengkap",

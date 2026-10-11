@@ -59,6 +59,11 @@ enum class RexRoute(
     REXMONITOR(
         "rexmonitor",
         "RexMonitor"
+    ),
+
+    REXSPACEX(
+        "rexspacex",
+        "RexSpaceX"
     );
 
     companion object {
