@@ -1,3 +1,4 @@
+// PriviewScreen.kt
 package com.rexaps.rextools.preview
 
 import android.content.Intent
@@ -7,20 +8,16 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -30,34 +27,17 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.BrokenImage
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -68,7 +48,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
@@ -76,38 +55,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.SubcomposeAsyncImage
 import com.rexaps.rextools.downloader.MediaDownloader
+import com.rexaps.rextools.ui.*
 import kotlinx.coroutines.launch
 
-/* ───────────────────────── DESIGN TOKENS ───────────────────────── */
-
-private object Ui {
-    // Spacing
-    val s4 = 4.dp
-    val s8 = 8.dp
-    val s12 = 12.dp
-    val s16 = 16.dp
-    val s20 = 20.dp
-    val s24 = 24.dp
-
-    // Shape
-    val rSm = RoundedCornerShape(12.dp)
-    val rMd = RoundedCornerShape(16.dp)
-    val rLg = RoundedCornerShape(20.dp)
-    val rSheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-
-    // Touch target
-    val button = 52.dp
-}
-
-@Composable
-private fun accentBrush(): Brush {
-    val s = MaterialTheme.colorScheme
-    return Brush.linearGradient(listOf(s.primary, s.tertiary))
-}
-
-/* ───────────────────────── SCREEN ───────────────────────── */
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreen(
     onBack: () -> Unit = {},
@@ -137,45 +87,12 @@ fun PreviewScreen(
         PreviewMode.SINGLE -> "Media ${state.currentIndex + 1} dari ${state.items.size}"
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent
-                ),
-                title = {
-                    Column {
-                        Text(
-                            title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            subtitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                navigationIcon = {
-                    FilledTonalIconButton(
-                        onClick = goBack,
-                        modifier = Modifier.padding(start = Ui.s8)
-                    ) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Kembali")
-                    }
-                }
-            )
-        }
-    ) { pad ->
+    RexScreen(title = title, subtitle = subtitle, onBack = goBack, scroll = false, padded = false) {
         AnimatedContent(
             targetState = state.mode,
-            modifier = Modifier.fillMaxSize().padding(pad),
+            modifier = Modifier.fillMaxSize(),
             transitionSpec = {
-                (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 24 }) togetherWith
-                    fadeOut(tween(160))
+                (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 24 }) togetherWith fadeOut(tween(160))
             },
             label = "preview-mode"
         ) { mode ->
@@ -188,10 +105,7 @@ fun PreviewScreen(
                     onClear = vm::clear
                 )
 
-                PreviewMode.GRID -> GridView(
-                    items = state.items,
-                    onOpen = { vm.openSingle(it) }
-                )
+                PreviewMode.GRID -> GridView(items = state.items, onOpen = { vm.openSingle(it) })
 
                 PreviewMode.SINGLE -> {
                     val item = state.currentItem
@@ -204,11 +118,8 @@ fun PreviewScreen(
                             onNext = vm::next,
                             onDownload = { url, type ->
                                 scope.launch {
-                                    val res = if (type == MediaType.VIDEO) {
-                                        MediaDownloader.downloadVideo(ctx, url)
-                                    } else {
-                                        MediaDownloader.downloadImage(ctx, url)
-                                    }
+                                    val res = if (type == MediaType.VIDEO) MediaDownloader.downloadVideo(ctx, url)
+                                    else MediaDownloader.downloadImage(ctx, url)
                                     res.onSuccess {
                                         Toast.makeText(ctx, "Tersimpan ke perangkat", Toast.LENGTH_SHORT).show()
                                     }.onFailure {
@@ -224,68 +135,6 @@ fun PreviewScreen(
     }
 }
 
-/* ───────────────────────── SHARED COMPONENTS ───────────────────────── */
-
-/** Tombol utama dengan gradient aksen. */
-@Composable
-private fun GradientButton(
-    text: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    val brush = accentBrush()
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        shape = Ui.rMd,
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        ),
-        modifier = modifier.height(Ui.button)
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .then(if (enabled) Modifier.background(brush) else Modifier),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(Ui.s8))
-                Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
-}
-
-/** Pill kecil untuk tipe media / statistik. */
-@Composable
-private fun InfoPill(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    container: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    content: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Row(
-        modifier
-            .clip(CircleShape)
-            .background(container)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = content, fontWeight = FontWeight.Medium)
-    }
-}
-
 /* ───────────────────────── INPUT ───────────────────────── */
 
 @Composable
@@ -296,67 +145,36 @@ private fun InputView(
     onExtract: () -> Unit,
     onClear: () -> Unit
 ) {
-    val scheme = MaterialTheme.colorScheme
+    val s = MaterialTheme.colorScheme
     val clipboard = LocalClipboardManager.current
 
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = Ui.s20)
-            .padding(bottom = Ui.s16)
+            .padding(horizontal = 20.dp)
+            .padding(top = 8.dp, bottom = 16.dp)
             .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(Ui.s16)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Hero
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Ui.s16)
-        ) {
-            Box(
-                Modifier
-                    .size(56.dp)
-                    .shadow(12.dp, Ui.rMd, ambientColor = scheme.primary, spotColor = scheme.primary)
-                    .clip(Ui.rMd)
-                    .background(accentBrush()),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = scheme.onPrimary)
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "Ekstrak media dari mana saja",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    "URL tunggal, JSON, atau teks apa pun yang berisi link.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant
-                )
-            }
-        }
+        RexHero(
+            icon = Icons.Default.Link,
+            title = "Ekstrak media dari mana saja",
+            description = "URL tunggal, JSON, atau teks apa pun yang berisi link."
+        )
 
-        // Editor
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(Ui.rLg)
-                .background(scheme.surfaceContainerLow)
-                .border(BorderStroke(1.dp, scheme.outlineVariant), Ui.rLg)
+                .clip(RexLg)
+                .background(s.surfaceContainerLow.copy(alpha = 0.85f))
+                .border(hairline(), RexLg)
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(start = Ui.s16, end = Ui.s4, top = Ui.s4),
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "INPUT",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    modifier = Modifier.weight(1f)
-                )
+                RexOverline("Input", Modifier.weight(1f))
                 TextButton(onClick = {
                     clipboard.getText()?.text?.takeIf { it.isNotBlank() }?.let(onInput)
                 }) {
@@ -390,51 +208,13 @@ private fun InputView(
             )
         }
 
-        // Error — ikon + teks, tidak bergantung warna saja
-        AnimatedVisibility(
-            visible = error != null,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(Ui.rMd)
-                    .background(scheme.errorContainer)
-                    .padding(Ui.s12),
-                horizontalArrangement = Arrangement.spacedBy(Ui.s12),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = scheme.onErrorContainer)
-                Column {
-                    Text(
-                        "Tidak bisa mengekstrak",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = scheme.onErrorContainer
-                    )
-                    Text(
-                        error.orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onErrorContainer
-                    )
-                }
-            }
-        }
+        RexErrorSlot(error, "Tidak bisa mengekstrak")
 
-        // Aksi
-        Row(horizontalArrangement = Arrangement.spacedBy(Ui.s12), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(
-                onClick = onClear,
-                enabled = input.isNotBlank(),
-                shape = Ui.rMd,
-                modifier = Modifier.weight(1f).height(Ui.button)
-            ) {
-                Text("Bersihkan")
-            }
-            GradientButton(
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            RexOutlinedButton("Bersihkan", null, onClear, Modifier.weight(1f).height(52.dp), enabled = input.isNotBlank())
+            RexPrimaryButton(
                 text = "Extract & Preview",
-                icon = Icons.Default.AutoAwesome,
+                icon = Icons.Default.Search,
                 onClick = onExtract,
                 enabled = input.isNotBlank(),
                 modifier = Modifier.weight(2f)
@@ -454,20 +234,15 @@ private fun GridView(items: List<PreviewItem>, onOpen: (Int) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = Ui.s16, end = Ui.s16, top = Ui.s4, bottom = Ui.s24
-        ),
-        horizontalArrangement = Arrangement.spacedBy(Ui.s12),
-        verticalArrangement = Arrangement.spacedBy(Ui.s12)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(
-                Modifier.padding(bottom = Ui.s4),
-                horizontalArrangement = Arrangement.spacedBy(Ui.s8)
-            ) {
-                if (images > 0) InfoPill(Icons.Default.Image, "$images foto")
-                if (videos > 0) InfoPill(Icons.Default.Videocam, "$videos video")
-                if (others > 0) InfoPill(Icons.Default.Link, "$others link")
+            Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (images > 0) RexPill("$images foto", icon = Icons.Default.Image)
+                if (videos > 0) RexPill("$videos video", icon = Icons.Default.Videocam)
+                if (others > 0) RexPill("$others link", icon = Icons.Default.Link)
             }
         }
         itemsIndexed(items, key = { _, it -> it.id }) { idx, item ->
@@ -478,7 +253,7 @@ private fun GridView(items: List<PreviewItem>, onOpen: (Int) -> Unit) {
 
 @Composable
 private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
+    val s = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(120), label = "tile-press")
@@ -493,31 +268,26 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(0.85f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(Ui.rMd)
-            .background(scheme.surfaceContainerHigh)
-            .border(BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.6f)), Ui.rMd)
+            .clip(RexMd)
+            .background(s.surfaceContainerHigh)
+            .border(hairline(), RexMd)
             .semantics { contentDescription = desc }
             .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
     ) {
         if (item.type == MediaType.UNKNOWN) {
             Column(
-                Modifier.fillMaxSize().padding(Ui.s16),
+                Modifier.fillMaxSize().padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(scheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Link, contentDescription = null, tint = scheme.onPrimaryContainer)
-                }
-                Spacer(Modifier.height(Ui.s12))
+                RexIconTile(Icons.Default.Link, size = 48.dp)
+                Spacer(Modifier.height(12.dp))
                 Text(
                     item.fileName,
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
-                    color = scheme.onSurfaceVariant
+                    color = s.onSurfaceVariant
                 )
             }
         } else {
@@ -528,25 +298,16 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 loading = {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = scheme.primary
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = s.primary)
                     }
                 },
                 error = {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.BrokenImage,
-                            contentDescription = "Gagal memuat",
-                            tint = scheme.onSurfaceVariant
-                        )
+                        Icon(Icons.Default.BrokenImage, contentDescription = "Gagal memuat", tint = s.onSurfaceVariant)
                     }
                 }
             )
 
-            // Scrim bawah agar teks selalu terbaca
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -559,7 +320,7 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
                 Box(
                     Modifier
                         .align(Alignment.Center)
-                        .size(48.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.22f))
                         .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
@@ -575,17 +336,14 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(horizontal = Ui.s12, vertical = Ui.s8)
+                modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
 
-        // Badge tipe (ikon + teks)
         Row(
             Modifier
                 .align(Alignment.TopStart)
-                .padding(Ui.s8)
+                .padding(8.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.55f))
                 .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -615,18 +373,16 @@ private fun SingleView(
     onDownload: (String, MediaType) -> Unit
 ) {
     val ctx = LocalContext.current
-    val scheme = MaterialTheme.colorScheme
+    val s = MaterialTheme.colorScheme
     val clipboard = LocalClipboardManager.current
 
     Column(Modifier.fillMaxSize()) {
-
-        // Stage
         Box(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = Ui.s12)
-                .clip(Ui.rLg)
+                .padding(horizontal = 12.dp)
+                .clip(RexLg)
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
@@ -649,8 +405,12 @@ private fun SingleView(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.White.copy(alpha = 0.7f))
-                                Spacer(Modifier.height(Ui.s8))
-                                Text("Gambar tidak bisa dimuat", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Gambar tidak bisa dimuat",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     )
@@ -658,9 +418,9 @@ private fun SingleView(
                     MediaType.VIDEO -> ExoVideoPlayer(item.url)
 
                     MediaType.UNKNOWN -> Column(
-                        Modifier.padding(Ui.s24),
+                        Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(Ui.s12)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(Icons.Default.Link, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
                         Text(
@@ -672,7 +432,6 @@ private fun SingleView(
                 }
             }
 
-            // Penghitung
             Text(
                 "${index + 1} / $total",
                 color = Color.White,
@@ -680,17 +439,16 @@ private fun SingleView(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = Ui.s12)
+                    .padding(top = 12.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             )
         }
 
-        // Panel kontrol
         Surface(
-            color = scheme.surface,
-            shape = Ui.rSheet,
+            color = s.surface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             tonalElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -698,41 +456,36 @@ private fun SingleView(
                 Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = Ui.s20, vertical = Ui.s16),
-                verticalArrangement = Arrangement.spacedBy(Ui.s16)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Navigasi
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Ui.s12)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FilledTonalIconButton(onClick = onPrev) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "Sebelumnya")
                     }
                     LinearProgressIndicator(
                         progress = { if (total > 0) (index + 1f) / total else 0f },
-                        modifier = Modifier.weight(1f).height(6.dp).clip(CircleShape),
-                        trackColor = scheme.surfaceContainerHighest
+                        modifier = Modifier.weight(1f).height(5.dp).clip(CircleShape),
+                        trackColor = s.surfaceContainerHighest
                     )
                     FilledTonalIconButton(onClick = onNext) {
                         Icon(Icons.Default.ChevronRight, contentDescription = "Berikutnya")
                     }
                 }
 
-                // URL
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(Ui.rSm)
-                        .background(scheme.surfaceContainerHigh)
-                        .padding(start = Ui.s12),
+                        .clip(RexSm)
+                        .background(s.surfaceContainerHigh)
+                        .padding(start = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         item.url,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
-                        color = scheme.onSurfaceVariant,
+                        color = s.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -745,18 +498,13 @@ private fun SingleView(
                     }
                 }
 
-                // Aksi
-                Row(horizontalArrangement = Arrangement.spacedBy(Ui.s12), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url))) },
-                        shape = Ui.rMd,
-                        modifier = Modifier.weight(1f).height(Ui.button)
-                    ) {
-                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Buka")
-                    }
-                    GradientButton(
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    RexOutlinedButton(
+                        "Buka", Icons.Default.OpenInNew,
+                        { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url))) },
+                        Modifier.weight(1f).height(52.dp)
+                    )
+                    RexPrimaryButton(
                         text = "Simpan",
                         icon = Icons.Default.Download,
                         onClick = { onDownload(item.url, item.type) },
@@ -781,11 +529,7 @@ private fun ExoVideoPlayer(url: String) {
         }
     }
 
-    DisposableEffect(url) {
-        onDispose {
-            exoPlayer.release()
-        }
-    }
+    DisposableEffect(url) { onDispose { exoPlayer.release() } }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
