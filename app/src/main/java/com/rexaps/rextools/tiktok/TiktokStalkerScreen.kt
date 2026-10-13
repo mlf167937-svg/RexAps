@@ -3,14 +3,14 @@ package com.rexaps.rextools.tiktok
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -18,9 +18,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.heading
@@ -31,7 +31,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.rexaps.rextools.ui.*
 
 @Composable
@@ -41,54 +40,78 @@ fun TiktokStalkerScreen(
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
-    val focusManager = LocalFocusManager.current
+    val focus = LocalFocusManager.current
+    val clipboard = LocalClipboardManager.current
+    val toast = rememberRexToast()
 
-    RexScreen(title = "TikTok Stalker", onBack = onBack) {
+    val phase = when {
+        state.loading -> RexPhase.Loading
+        state.result != null -> RexPhase.Result
+        state.error != null -> RexPhase.Hidden
+        else -> RexPhase.Idle
+    }
+
+    RexScreen(title = "TikTok Stalker", onBack = onBack, toast = toast) {
         RexHero(
             icon = Icons.Default.Person,
             title = "Cari profil TikTok",
-            description = "Masukkan username untuk melihat info profil publik."
+            description = "Masukkan username untuk melihat info profil publik.",
+            modifier = Modifier.entrance(0)
         )
 
-        RexField(
-            value = state.username,
-            onChange = vm::onUsernameChange,
-            label = "Username (tanpa @)",
-            placeholder = "contoh: MrBeast",
-            icon = Icons.Default.Search,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = {
-                focusManager.clearFocus()
-                if (!state.loading) vm.stalk()
+        Column(Modifier.entrance(1), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            RexField(
+                value = state.username,
+                onChange = vm::onUsernameChange,
+                label = "Username (tanpa @)",
+                placeholder = "contoh: MrBeast",
+                icon = Icons.Default.Search,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    focus.clearFocus()
+                    if (!state.loading) vm.stalk()
+                })
+            )
+            RexQuickAction("Tempel", Icons.Default.ContentPaste, {
+                clipboard.getText()?.text?.trim()?.removePrefix("@")
+                    ?.takeIf { it.isNotEmpty() }?.let(vm::onUsernameChange)
             })
-        )
+        }
 
         RexPrimaryButton(
             text = "Stalk",
             icon = Icons.Default.Search,
             loading = state.loading,
             loadingText = "Mencari…",
+            modifier = Modifier.entrance(2),
             onClick = {
-                focusManager.clearFocus()
+                focus.clearFocus()
                 vm.stalk()
             }
         )
 
         RexErrorSlot(state.error, "Terjadi kesalahan")
 
-        state.result?.let { r ->
-            ProfileCard(r) {
-                r.link?.let { link -> ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+        RexPhaseSwitch(
+            phase = phase,
+            idle = {
+                RexEmptyState(
+                    Icons.Default.Search, "Belum ada hasil",
+                    "Ketik username lalu tekan Stalk untuk menampilkan profil."
+                )
+            },
+            loading = { RexSkeletonPanel(media = false) },
+            result = {
+                state.result?.let { r ->
+                    ProfileCard(r) {
+                        r.link?.let { link ->
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+                                .onFailure { toast.show("Tidak bisa membuka link", true) }
+                        }
+                    }
+                }
             }
-        }
-
-        if (state.result == null && state.error == null && !state.loading) {
-            RexEmptyState(
-                icon = Icons.Default.Search,
-                title = "Belum ada hasil",
-                message = "Ketik username lalu tekan Stalk untuk menampilkan profil."
-            )
-        }
+        )
 
         Spacer(Modifier.height(24.dp))
     }
@@ -97,71 +120,73 @@ fun TiktokStalkerScreen(
 @Composable
 private fun ProfileCard(r: com.rexaps.rextools.TiktokStalkResult, onOpen: () -> Unit) {
     val s = MaterialTheme.colorScheme
-    val ring = Brush.sweepGradient(listOf(s.primary, s.tertiary, s.primary))
+    val badge = rememberInfiniteTransition(label = "badge")
+        .animateFloat(1f, 1.18f, infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
 
-    RexPanel(padding = 22.dp) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            AsyncImage(
-                model = r.avatar,
-                contentDescription = r.name?.let { "Foto profil $it" } ?: "Foto profil",
-                modifier = Modifier
-                    .size(104.dp)
-                    .border(2.dp, ring, CircleShape)
-                    .padding(6.dp)
-                    .clip(CircleShape)
-                    .background(s.surfaceVariant),
-                contentScale = ContentScale.Crop
-            )
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        r.name ?: "-",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f, fill = false).semantics { heading() }
+    RexPanel(padding = 0.dp, spacing = 0.dp, glow = true) {
+        Box(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.fillMaxWidth().height(104.dp).background(
+                    Brush.linearGradient(
+                        listOf(s.primary.copy(alpha = 0.40f), s.tertiary.copy(alpha = 0.28f), s.secondary.copy(alpha = 0.22f))
                     )
-                    if (r.verified?.equals("Verified", ignoreCase = true) == true) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Verified",
-                            tint = s.primary,
-                            modifier = Modifier.size(20.dp)
+                )
+            )
+            Column(
+                Modifier.fillMaxWidth().padding(top = 52.dp).padding(horizontal = 20.dp).padding(bottom = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                RexAvatar(
+                    model = r.avatar,
+                    contentDescription = r.name?.let { "Foto profil $it" } ?: "Foto profil",
+                    size = 108.dp
+                )
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            r.name ?: "-",
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f, fill = false).semantics { heading() }
                         )
+                        if (r.verified?.equals("Verified", ignoreCase = true) == true) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Verified",
+                                tint = s.primary,
+                                modifier = Modifier.size(20.dp).graphicsLayer { scaleX = badge.value; scaleY = badge.value }
+                            )
+                        }
+                    }
+                    Text("@${r.username ?: "-"}", style = MaterialTheme.typography.bodyMedium, color = s.onSurfaceVariant)
+                }
+
+                r.bio?.takeIf { it.isNotBlank() && it != "-" }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                }
+                r.region?.takeIf { it.isNotBlank() && it != "-" }?.let { RexPill("Region: $it") }
+
+                r.stats?.let { st ->
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RexStat("Followers", st.followers ?: "-", Modifier.weight(1f), index = 0)
+                            RexStat("Following", st.following ?: "-", Modifier.weight(1f), index = 1)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RexStat("Likes", st.likes ?: "-", Modifier.weight(1f), index = 2)
+                            RexStat("Videos", st.videos ?: "-", Modifier.weight(1f), index = 3)
+                        }
                     }
                 }
-                Text("@${r.username ?: "-"}", style = MaterialTheme.typography.bodyMedium, color = s.onSurfaceVariant)
-            }
 
-            r.bio?.takeIf { it.isNotBlank() && it != "-" }?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-            }
-
-            r.region?.takeIf { it.isNotBlank() && it != "-" }?.let { RexPill("Region: $it") }
-        }
-
-        r.stats?.let { st ->
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    RexStat("Followers", st.followers ?: "-", Modifier.weight(1f))
-                    RexStat("Following", st.following ?: "-", Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    RexStat("Likes", st.likes ?: "-", Modifier.weight(1f))
-                    RexStat("Videos", st.videos ?: "-", Modifier.weight(1f))
+                r.link?.takeIf { it.isNotBlank() }?.let {
+                    RexTonalButton("Buka di TikTok", Icons.Default.OpenInNew, onOpen, Modifier.fillMaxWidth())
                 }
             }
-        }
-
-        r.link?.takeIf { it.isNotBlank() }?.let {
-            RexTonalButton("Buka di TikTok", Icons.Default.OpenInNew, onOpen, Modifier.fillMaxWidth())
         }
     }
 }

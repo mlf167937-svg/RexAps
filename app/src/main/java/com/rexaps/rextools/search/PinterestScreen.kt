@@ -1,8 +1,9 @@
 // PinterestScreen.kt
 package com.rexaps.rextools.search
 
-import android.widget.Toast
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,19 +20,25 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.rexaps.rextools.downloader.ImageDownloader
 import com.rexaps.rextools.ui.*
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun PinterestScreen(
@@ -41,10 +48,19 @@ fun PinterestScreen(
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
+    val focus = LocalFocusManager.current
+    val toast = rememberRexToast()
     var query by rememberSaveable { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
 
-    RexScreen(title = "Pinterest", onBack = onBack, scroll = false) {
+    val phase = when {
+        state.loading -> RexPhase.Loading
+        state.images.isNotEmpty() -> RexPhase.Result
+        state.error != null -> RexPhase.Hidden
+        else -> RexPhase.Idle
+    }
+
+    RexScreen(title = "Pinterest", onBack = onBack, scroll = false, toast = toast) {
         RexField(
             value = query,
             onChange = { query = it },
@@ -52,9 +68,10 @@ fun PinterestScreen(
             icon = Icons.Default.Search,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = {
-                focusManager.clearFocus()
+                focus.clearFocus()
                 if (!state.loading) vm.search(query)
-            })
+            }),
+            modifier = Modifier.entrance(0)
         )
 
         RexPrimaryButton(
@@ -62,95 +79,184 @@ fun PinterestScreen(
             icon = Icons.Default.Search,
             loading = state.loading,
             loadingText = "Mencari…",
+            modifier = Modifier.entrance(1),
             onClick = {
-                focusManager.clearFocus()
+                focus.clearFocus()
                 vm.search(query)
             }
         )
 
         RexErrorSlot(state.error, "Gagal memuat gambar")
 
-        if (state.images.isNotEmpty()) {
-            val currentUrl = state.images[state.currentIndex]
-            val total = state.images.size
-            var drag by remember { mutableFloatStateOf(0f) }
+        RexPhaseSwitch(
+            phase = phase,
+            modifier = Modifier.weight(1f),
+            idle = {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    RexEmptyState(
+                        Icons.Default.Image, "Belum ada gambar",
+                        "Ketik kata kunci lalu tekan Cari, hasilnya muncul di sini."
+                    )
+                }
+            },
+            loading = {
+                Box(
+                    Modifier.fillMaxSize().padding(bottom = 8.dp)
+                        .clip(RexLg)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .shimmer()
+                )
+            },
+            result = {
+                if (state.images.isNotEmpty()) {
+                    Deck(
+                        images = state.images,
+                        index = state.currentIndex,
+                        saving = saving,
+                        onPrev = { vm.prev() },
+                        onNext = { vm.next() },
+                        onSave = { url ->
+                            if (!saving) {
+                                saving = true
+                                scope.launch {
+                                    ImageDownloader.download(context, url)
+                                        .onSuccess { toast.show("Gambar tersimpan") }
+                                        .onFailure { toast.show("Gagal: ${it.message}", true) }
+                                    saving = false
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        )
+    }
+}
 
-            RexPanel(
-                modifier = Modifier.weight(1f),
-                padding = 0.dp,
-                spacing = 0.dp
-            ) {
+@Composable
+private fun Deck(
+    images: List<String>,
+    index: Int,
+    saving: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    val s = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val offsetX = remember { Animatable(0f) }
+    val prevCb by rememberUpdatedState(onPrev)
+    val nextCb by rememberUpdatedState(onNext)
+
+    val total = images.size
+    val safeIndex = index.coerceIn(0, images.lastIndex)
+    val currentUrl = images[safeIndex]
+    val progress by animateFloatAsState((safeIndex + 1f) / total, spring(stiffness = Spring.StiffnessMediumLow), label = "progress")
+
+    Column(Modifier.fillMaxSize().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth().padding(bottom = 10.dp)) {
+            // Kartu bayangan di belakang
+            listOf(0.90f to 0.35f, 0.95f to 0.6f).forEachIndexed { i, (sc, a) ->
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragEnd = {
-                                    if (drag > 80f) vm.prev() else if (drag < -80f) vm.next()
-                                    drag = 0f
-                                },
-                                onDragCancel = { drag = 0f }
-                            ) { _, delta -> drag += delta }
+                        .graphicsLayer {
+                            scaleX = sc
+                            scaleY = sc
+                            translationY = (2 - i) * 14f
+                            alpha = a
                         }
-                ) {
-                    Crossfade(targetState = currentUrl, label = "pin") { url ->
-                        AsyncImage(
-                            model = url,
-                            contentDescription = "Gambar ${state.currentIndex + 1} dari $total",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.6f),
-                        contentColor = Color.White,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)
-                    ) {
-                        Text(
-                            "${state.currentIndex + 1} / $total",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                    }
-                }
+                        .clip(RexLg)
+                        .background(s.surfaceContainerHigh)
+                        .border(hairline(), RexLg)
+                )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                FilledTonalIconButton(onClick = { vm.prev() }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Gambar sebelumnya")
-                }
-                RexPrimaryButton(
-                    text = "Download",
-                    icon = Icons.Default.Download,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        scope.launch {
-                            ImageDownloader.download(context, currentUrl)
-                                .onSuccess { Toast.makeText(context, "Tersimpan", Toast.LENGTH_SHORT).show() }
-                                .onFailure { Toast.makeText(context, "Gagal: ${it.message}", Toast.LENGTH_SHORT).show() }
-                        }
+            // Kartu utama
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = offsetX.value
+                        rotationZ = (offsetX.value / 60f).coerceIn(-12f, 12f)
+                        alpha = 1f - (abs(offsetX.value) / (size.width * 1.4f)).coerceIn(0f, 0.6f)
                     }
+                    .shadow(22.dp, RexLg, ambientColor = s.primary.copy(alpha = 0.4f), spotColor = s.primary.copy(alpha = 0.4f))
+                    .clip(RexLg)
+                    .border(hairline(), RexLg)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { scope.launch { offsetX.stop() } },
+                            onDragEnd = {
+                                scope.launch {
+                                    val x = offsetX.value
+                                    val w = size.width.toFloat()
+                                    if (abs(x) > w * 0.28f) {
+                                        val dir = if (x > 0) 1 else -1
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        offsetX.animateTo(dir * w * 1.15f, tween(200, easing = FastOutLinearInEasing))
+                                        if (dir > 0) prevCb() else nextCb()
+                                        withFrameNanos { }
+                                        offsetX.snapTo(-dir * w * 0.3f)
+                                        offsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
+                                    } else {
+                                        offsetX.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium))
+                                    }
+                                }
+                            },
+                            onDragCancel = { scope.launch { offsetX.animateTo(0f) } },
+                            onHorizontalDrag = { change, amount ->
+                                change.consume()
+                                scope.launch { offsetX.snapTo(offsetX.value + amount * 0.9f) }
+                            }
+                        )
+                    }
+            ) {
+                RexImage(currentUrl, "Gambar ${safeIndex + 1} dari $total", Modifier.fillMaxSize(), ContentScale.Crop)
+                Box(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(110.dp)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))))
                 )
-                FilledTonalIconButton(onClick = { vm.next() }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = "Gambar berikutnya")
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.55f),
+                    contentColor = Color.White,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        "${safeIndex + 1} / $total",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
                 }
             }
-        } else if (!state.loading) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                RexEmptyState(
-                    icon = Icons.Default.Image,
-                    title = "Belum ada gambar",
-                    message = "Ketik kata kunci lalu tekan Cari, hasilnya muncul di sini."
-                )
-            }
-        } else {
-            Spacer(Modifier.weight(1f))
+        }
+
+        // Progress tipis
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(s.surfaceContainerHighest)) {
+            Box(
+                Modifier.fillMaxWidth(progress).fillMaxHeight().clip(CircleShape)
+                    .background(Brush.horizontalGradient(listOf(s.primary, s.tertiary)))
+            )
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            RexRoundButton(Icons.AutoMirrored.Outlined.ArrowBack, "Gambar sebelumnya", { onPrev() })
+            RexPrimaryButton(
+                text = "Download",
+                icon = Icons.Default.Download,
+                loading = saving,
+                loadingText = "Menyimpan…",
+                modifier = Modifier.weight(1f),
+                onClick = { onSave(currentUrl) }
+            )
+            RexRoundButton(Icons.AutoMirrored.Outlined.ArrowForward, "Gambar berikutnya", { onNext() })
         }
     }
 }

@@ -5,28 +5,31 @@ import android.content.Intent
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -35,9 +38,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -53,9 +59,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import coil.compose.SubcomposeAsyncImage
 import com.rexaps.rextools.downloader.MediaDownloader
 import com.rexaps.rextools.ui.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -66,6 +72,8 @@ fun PreviewScreen(
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val toast = rememberRexToast()
+    var saving by remember { mutableStateOf(false) }
 
     val goBack: () -> Unit = {
         when (state.mode) {
@@ -87,12 +95,22 @@ fun PreviewScreen(
         PreviewMode.SINGLE -> "Media ${state.currentIndex + 1} dari ${state.items.size}"
     }
 
-    RexScreen(title = title, subtitle = subtitle, onBack = goBack, scroll = false, padded = false) {
+    RexScreen(title = title, subtitle = subtitle, onBack = goBack, scroll = false, padded = false, toast = toast) {
         AnimatedContent(
             targetState = state.mode,
             modifier = Modifier.fillMaxSize(),
             transitionSpec = {
-                (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 24 }) togetherWith fadeOut(tween(160))
+                val forward = targetState.ordinal > initialState.ordinal
+                if (targetState == PreviewMode.SINGLE || initialState == PreviewMode.SINGLE) {
+                    (fadeIn(tween(320, delayMillis = 60)) +
+                        scaleIn(tween(420, easing = RexEase), initialScale = if (forward) 0.92f else 1.06f)) togetherWith
+                        (fadeOut(tween(180)) + scaleOut(tween(280), targetScale = if (forward) 1.06f else 0.92f))
+                } else {
+                    (fadeIn(tween(320, delayMillis = 60)) +
+                        slideInHorizontally(tween(420, easing = RexEase)) { if (forward) it / 5 else -it / 5 }) togetherWith
+                        (fadeOut(tween(180)) +
+                            slideOutHorizontally(tween(300)) { if (forward) -it / 6 else it / 6 })
+                }
             },
             label = "preview-mode"
         ) { mode ->
@@ -114,16 +132,20 @@ fun PreviewScreen(
                             item = item,
                             index = state.currentIndex,
                             total = state.items.size,
+                            saving = saving,
                             onPrev = vm::prev,
                             onNext = vm::next,
+                            onCopied = { toast.show("Link disalin") },
+                            onOpenFail = { toast.show("Tidak bisa membuka link", true) },
                             onDownload = { url, type ->
-                                scope.launch {
-                                    val res = if (type == MediaType.VIDEO) MediaDownloader.downloadVideo(ctx, url)
-                                    else MediaDownloader.downloadImage(ctx, url)
-                                    res.onSuccess {
-                                        Toast.makeText(ctx, "Tersimpan ke perangkat", Toast.LENGTH_SHORT).show()
-                                    }.onFailure {
-                                        Toast.makeText(ctx, "Gagal menyimpan: ${it.message}", Toast.LENGTH_SHORT).show()
+                                if (!saving) {
+                                    saving = true
+                                    scope.launch {
+                                        val res = if (type == MediaType.VIDEO) MediaDownloader.downloadVideo(ctx, url)
+                                        else MediaDownloader.downloadImage(ctx, url)
+                                        res.onSuccess { toast.show("Tersimpan ke perangkat") }
+                                            .onFailure { toast.show("Gagal menyimpan: ${it.message}", true) }
+                                        saving = false
                                     }
                                 }
                             }
@@ -135,7 +157,7 @@ fun PreviewScreen(
     }
 }
 
-/* ───────────────────────── INPUT ───────────────────────── */
+/* ═════════════════════ INPUT ═════════════════════ */
 
 @Composable
 private fun InputView(
@@ -147,6 +169,9 @@ private fun InputView(
 ) {
     val s = MaterialTheme.colorScheme
     val clipboard = LocalClipboardManager.current
+    var focused by remember { mutableStateOf(false) }
+    val borderColor by animateColorAsState(if (focused) s.primary.copy(alpha = 0.8f) else s.outlineVariant, tween(300), label = "bd")
+    val links = remember(input) { Regex("""https?://[^\s"'<>\\]+""").findAll(input).count() }
 
     Column(
         Modifier
@@ -159,22 +184,31 @@ private fun InputView(
         RexHero(
             icon = Icons.Default.Link,
             title = "Ekstrak media dari mana saja",
-            description = "URL tunggal, JSON, atau teks apa pun yang berisi link."
+            description = "URL tunggal, JSON, atau teks apa pun yang berisi link.",
+            modifier = Modifier.entrance(0)
         )
 
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .entrance(1)
                 .clip(RexLg)
                 .background(s.surfaceContainerLow.copy(alpha = 0.85f))
-                .border(hairline(), RexLg)
+                .border(1.dp, borderColor, RexLg)
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RexOverline("Input", Modifier.weight(1f))
+                RexOverline("Input")
+                Spacer(Modifier.width(10.dp))
+                AnimatedVisibility(
+                    visible = links > 0,
+                    enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                    exit = fadeOut() + scaleOut(targetScale = 0.8f)
+                ) { RexPill("$links link terdeteksi", icon = Icons.Default.Link) }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     clipboard.getText()?.text?.takeIf { it.isNotBlank() }?.let(onInput)
                 }) {
@@ -195,7 +229,7 @@ private fun InputView(
                     )
                 },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onFocusChanged { focused = it.isFocused },
                 minLines = 6,
                 keyboardOptions = KeyboardOptions.Default,
                 colors = TextFieldDefaults.colors(
@@ -210,11 +244,11 @@ private fun InputView(
 
         RexErrorSlot(error, "Tidak bisa mengekstrak")
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            RexOutlinedButton("Bersihkan", null, onClear, Modifier.weight(1f).height(52.dp), enabled = input.isNotBlank())
+        Row(Modifier.fillMaxWidth().entrance(2), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RexOutlinedButton("Bersihkan", null, onClear, Modifier.weight(1f), enabled = input.isNotBlank())
             RexPrimaryButton(
                 text = "Extract & Preview",
-                icon = Icons.Default.Search,
+                icon = Icons.Default.Bolt,
                 onClick = onExtract,
                 enabled = input.isNotBlank(),
                 modifier = Modifier.weight(2f)
@@ -223,7 +257,7 @@ private fun InputView(
     }
 }
 
-/* ───────────────────────── GRID ───────────────────────── */
+/* ═════════════════════ GRID ═════════════════════ */
 
 @Composable
 private fun GridView(items: List<PreviewItem>, onOpen: (Int) -> Unit) {
@@ -234,29 +268,27 @@ private fun GridView(items: List<PreviewItem>, onOpen: (Int) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(bottom = 4.dp).entrance(0), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (images > 0) RexPill("$images foto", icon = Icons.Default.Image)
                 if (videos > 0) RexPill("$videos video", icon = Icons.Default.Videocam)
                 if (others > 0) RexPill("$others link", icon = Icons.Default.Link)
             }
         }
         itemsIndexed(items, key = { _, it -> it.id }) { idx, item ->
-            GridTile(item, number = idx + 1, onClick = { onOpen(idx) })
+            GridTile(item, number = idx + 1, index = idx, onClick = { onOpen(idx) })
         }
     }
 }
 
 @Composable
-private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
+private fun GridTile(item: PreviewItem, number: Int, index: Int, onClick: () -> Unit) {
     val s = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(120), label = "tile-press")
     val desc = when (item.type) {
         MediaType.IMAGE -> "Gambar $number"
         MediaType.VIDEO -> "Video $number"
@@ -267,7 +299,8 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .aspectRatio(0.85f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .entrance(index.coerceAtMost(12), 45, 18.dp)
+            .pressScale(interaction, 0.95f)
             .clip(RexMd)
             .background(s.surfaceContainerHigh)
             .border(hairline(), RexMd)
@@ -285,34 +318,15 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
                 Text(
                     item.fileName,
                     style = MaterialTheme.typography.labelMedium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
                     color = s.onSurfaceVariant
                 )
             }
         } else {
-            SubcomposeAsyncImage(
-                model = item.url,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                loading = {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = s.primary)
-                    }
-                },
-                error = {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.BrokenImage, contentDescription = "Gagal memuat", tint = s.onSurfaceVariant)
-                    }
-                }
-            )
+            RexImage(item.url, null, Modifier.fillMaxSize(), ContentScale.Crop)
 
             Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(64.dp)
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(64.dp)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
             )
 
@@ -334,8 +348,7 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
                 item.fileName,
                 color = Color.White,
                 style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
@@ -361,20 +374,34 @@ private fun GridTile(item: PreviewItem, number: Int, onClick: () -> Unit) {
     }
 }
 
-/* ───────────────────────── SINGLE VIEWER ───────────────────────── */
+/* ═════════════════════ SINGLE VIEWER ═════════════════════ */
 
 @Composable
 private fun SingleView(
     item: PreviewItem,
     index: Int,
     total: Int,
+    saving: Boolean,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onCopied: () -> Unit,
+    onOpenFail: () -> Unit,
     onDownload: (String, MediaType) -> Unit
 ) {
     val ctx = LocalContext.current
     val s = MaterialTheme.colorScheme
     val clipboard = LocalClipboardManager.current
+    var copied by remember(item.url) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1600)
+            copied = false
+        }
+    }
+    val progress by animateFloatAsState(
+        if (total > 0) (index + 1f) / total else 0f,
+        spring(stiffness = Spring.StiffnessMediumLow), label = "progress"
+    )
 
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -383,51 +410,36 @@ private fun SingleView(
                 .weight(1f)
                 .padding(horizontal = 12.dp)
                 .clip(RexLg)
-                .background(Color.Black),
+                .background(Color.Black)
+                .border(hairline(0.5f), RexLg),
             contentAlignment = Alignment.Center
         ) {
-            Crossfade(targetState = item.id, label = "stage") { _ ->
-                when (item.type) {
-                    MediaType.IMAGE -> SubcomposeAsyncImage(
-                        model = item.url,
-                        contentDescription = "Gambar ${index + 1} dari $total",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        loading = {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
-                            }
-                        },
-                        error = {
-                            Column(
-                                Modifier.fillMaxSize(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.White.copy(alpha = 0.7f))
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    "Gambar tidak bisa dimuat",
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+            AnimatedContent(
+                targetState = index to item,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    val fwd = targetState.first >= initialState.first
+                    (slideInHorizontally(tween(400, easing = RexEase)) { if (fwd) it / 3 else -it / 3 } + fadeIn(tween(300))) togetherWith
+                        (slideOutHorizontally(tween(300)) { if (fwd) -it / 3 else it / 3 } + fadeOut(tween(200)))
+                },
+                label = "stage"
+            ) { (i, current) ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (current.type) {
+                        MediaType.IMAGE -> ZoomableImage(current.url, "Gambar ${i + 1} dari $total")
+                        MediaType.VIDEO -> ExoVideoPlayer(current.url)
+                        MediaType.UNKNOWN -> Column(
+                            Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Link, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+                            Text(
+                                "Format tidak dikenali. Buka di browser untuk melihatnya.",
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
-                    )
-
-                    MediaType.VIDEO -> ExoVideoPlayer(item.url)
-
-                    MediaType.UNKNOWN -> Column(
-                        Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Link, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
-                        Text(
-                            "Format tidak dikenali. Buka di browser untuk melihatnya.",
-                            color = Color.White.copy(alpha = 0.8f),
-                            style = MaterialTheme.typography.bodySmall
-                        )
                     }
                 }
             }
@@ -447,38 +459,31 @@ private fun SingleView(
         }
 
         Surface(
-            color = s.surface,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
+            color = s.surfaceContainerLow,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            border = hairline(0.8f),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
         ) {
             Column(
                 Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FilledTonalIconButton(onClick = onPrev) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Sebelumnya")
+                    RexRoundButton(Icons.Default.ChevronLeft, "Sebelumnya", onPrev, size = 44.dp)
+                    Box(Modifier.weight(1f).height(5.dp).clip(CircleShape).background(s.surfaceContainerHighest)) {
+                        Box(
+                            Modifier.fillMaxWidth(progress).fillMaxHeight().clip(CircleShape)
+                                .background(Brush.horizontalGradient(listOf(s.primary, s.tertiary)))
+                        )
                     }
-                    LinearProgressIndicator(
-                        progress = { if (total > 0) (index + 1f) / total else 0f },
-                        modifier = Modifier.weight(1f).height(5.dp).clip(CircleShape),
-                        trackColor = s.surfaceContainerHighest
-                    )
-                    FilledTonalIconButton(onClick = onNext) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Berikutnya")
-                    }
+                    RexRoundButton(Icons.Default.ChevronRight, "Berikutnya", onNext, size = 44.dp)
                 }
 
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RexSm)
-                        .background(s.surfaceContainerHigh)
-                        .padding(start = 12.dp),
+                    Modifier.fillMaxWidth().clip(RexSm).background(s.surfaceContainerHigh).padding(start = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -486,27 +491,39 @@ private fun SingleView(
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         color = s.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {
                         clipboard.setText(AnnotatedString(item.url))
-                        Toast.makeText(ctx, "Link disalin", Toast.LENGTH_SHORT).show()
+                        copied = true
+                        onCopied()
                     }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Salin link", modifier = Modifier.size(20.dp))
+                        AnimatedContent(
+                            targetState = copied,
+                            transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.5f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.5f)) },
+                            label = "copy"
+                        ) { done ->
+                            if (done) Icon(Icons.Default.Check, contentDescription = "Tersalin", tint = s.secondary, modifier = Modifier.size(20.dp))
+                            else Icon(Icons.Default.ContentCopy, contentDescription = "Salin link", modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     RexOutlinedButton(
                         "Buka", Icons.Default.OpenInNew,
-                        { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url))) },
-                        Modifier.weight(1f).height(52.dp)
+                        {
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url))) }
+                                .onFailure { onOpenFail() }
+                        },
+                        Modifier.weight(1f)
                     )
                     RexPrimaryButton(
                         text = "Simpan",
                         icon = Icons.Default.Download,
+                        loading = saving,
+                        loadingText = "Menyimpan…",
                         onClick = { onDownload(item.url, item.type) },
                         modifier = Modifier.weight(1.4f)
                     )
@@ -516,7 +533,60 @@ private fun SingleView(
     }
 }
 
-/* ───────────────────────── EXOPLAYER ───────────────────────── */
+/** Pinch untuk zoom, geser saat diperbesar, ketuk dua kali untuk zoom cepat / reset. */
+@Composable
+private fun ZoomableImage(url: String, description: String) {
+    val scope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    val offX = remember { Animatable(0f) }
+    val offY = remember { Animatable(0f) }
+
+    RexImage(
+        model = url,
+        contentDescription = description,
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val ns = (scale.value * zoom).coerceIn(1f, 5f)
+                    val maxX = size.width * (ns - 1f) / 2f
+                    val maxY = size.height * (ns - 1f) / 2f
+                    scope.launch {
+                        scale.snapTo(ns)
+                        if (ns > 1f) {
+                            offX.snapTo((offX.value + pan.x).coerceIn(-maxX, maxX))
+                            offY.snapTo((offY.value + pan.y).coerceIn(-maxY, maxY))
+                        } else {
+                            offX.snapTo(0f)
+                            offY.snapTo(0f)
+                        }
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    scope.launch {
+                        if (scale.value > 1f) {
+                            launch { scale.animateTo(1f, spring(0.8f)) }
+                            launch { offX.animateTo(0f, spring(0.8f)) }
+                            launch { offY.animateTo(0f, spring(0.8f)) }
+                        } else {
+                            scale.animateTo(2.5f, spring(0.8f))
+                        }
+                    }
+                })
+            }
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                translationX = offX.value
+                translationY = offY.value
+            },
+        contentScale = ContentScale.Fit
+    )
+}
+
+/* ═════════════════════ EXOPLAYER ═════════════════════ */
 
 @Composable
 private fun ExoVideoPlayer(url: String) {
