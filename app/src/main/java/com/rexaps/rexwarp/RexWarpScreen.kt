@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,6 +37,7 @@ private enum class Dest(val title: String, val navLabel: String, val icon: Image
     USAGE("Usage", "Usage", Icons.Filled.DateRange),
     HISTORY("Usage History", "History", Icons.AutoMirrored.Filled.List),
     SETTINGS("Settings", "Settings", Icons.Filled.Settings),
+    SPEED_TEST("Cloudflare Speed Test", "Speed Test", Icons.Filled.Speed),
     DETAILS("Connection Details", "Details", null),
     ABOUT("About & Privacy", "About", null)
 }
@@ -97,7 +99,7 @@ fun RexWarpScreen(
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(viewModel::importUsage) }
 
     val navSelected = when (dest) { Dest.DETAILS -> Dest.HOME; Dest.ABOUT -> Dest.SETTINGS; else -> dest }
-    val navItems = listOf(Dest.HOME, Dest.USAGE, Dest.HISTORY, Dest.SETTINGS)
+    val navItems = listOf(Dest.HOME, Dest.USAGE, Dest.HISTORY, Dest.SPEED_TEST, Dest.SETTINGS)
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
@@ -151,6 +153,7 @@ fun RexWarpScreen(
                                 onCustomRange = viewModel::setCustomRange
                             )
                             Dest.HISTORY -> RexWarpHistoryScreen(rows = history)
+                            Dest.SPEED_TEST -> RexWarpSpeedTestScreen()
                             Dest.SETTINGS -> RexWarpSettingsScreen(
                                 settings = settings, capabilities = viewModel.capabilities,
                                 engineReason = state.engineUnavailableReason,
