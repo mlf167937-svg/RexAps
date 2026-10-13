@@ -3,42 +3,51 @@ package com.rexaps.rexwarp.speedtest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.rexaps.rexwarp.RexWarpSpeedTestViewModel
 
-/** WebView hanya menjadi runtime mesin JS; antarmuka yang terlihat tetap Compose native. */
+/** WebView tersembunyi menjadi runtime JS. Semua UI yang dilihat pengguna dibuat dengan Compose. */
 object CloudflareSpeedTestWebView {
+    private const val BASE_HOST = "appassets.androidplatform.net"
+
     @SuppressLint("SetJavaScriptEnabled")
     fun create(context: Context, viewModel: RexWarpSpeedTestViewModel): WebView {
         return WebView(context).apply {
             layoutParams = ViewGroup.LayoutParams(1, 1)
             setBackgroundColor(Color.TRANSPARENT)
             alpha = 0f
-            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = false
-            settings.allowFileAccess = false
-            settings.allowContentAccess = false
-            settings.javaScriptCanOpenWindowsAutomatically = false
-            settings.setSupportMultipleWindows(false)
-            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = false
+                allowFileAccess = false
+                allowContentAccess = false
+                javaScriptCanOpenWindowsAutomatically = false
+                setSupportMultipleWindows(false)
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                cacheMode = WebSettings.LOAD_DEFAULT
+            }
             addJavascriptInterface(CloudflareSpeedTestBridge(viewModel), "RexWarpBridge")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    // Dokumen pengukuran tidak boleh menavigasi ke situs eksternal.
-                    return request.url.host != "appassets.androidplatform.net"
+                    // Dokumen utama hanya boleh berada pada origin internal; CDN tetap dapat dimuat sebagai module.
+                    return request.url.host != BASE_HOST
+                }
+
+                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                    super.onReceivedError(view, request, error)
+                    if (request.isForMainFrame) {
+                        viewModel.onEngineError("Dokumen mesin pengukuran gagal dimuat. Periksa koneksi internet.")
+                    }
                 }
             }
-            loadDataWithBaseURL(
-                "https://appassets.androidplatform.net/",
-                HTML,
-                "text/html",
-                "UTF-8",
-                null
-            )
+            loadDataWithBaseURL("https://$BASE_HOST/", HTML, "text/html", "UTF-8", null)
         }
     }
 
@@ -71,23 +80,24 @@ object CloudflareSpeedTestWebView {
             } catch (_) {}
           };
           let engine = null;
-          let phaseIndex = 0;
           const phaseNames = {
             latency: 'Mengukur latency', download: 'Mengukur download', upload: 'Mengukur upload',
             packetLoss: 'Mengukur packet loss', latencyUnderLoad: 'Mengukur latency saat beban'
           };
           const safeCall = (obj, name) => {
-            try { return typeof obj[name] === 'function' ? obj[name]() : undefined; }
+            try { return obj && typeof obj[name] === 'function' ? obj[name]() : undefined; }
             catch (_) { return undefined; }
           };
           const toPayload = (results) => {
+            const downloadBps = safeCall(results, 'getDownloadBandwidth');
+            const uploadBps = safeCall(results, 'getUploadBandwidth');
             const summary = safeCall(results, 'getSummary') || {};
             const latency = safeCall(results, 'getUnloadedLatency');
             const jitter = safeCall(results, 'getUnloadedJitter');
             const duration = safeCall(results, 'getTotalDurationMs');
             return {
-              downloadBps: Number.isFinite(summary.download) ? summary.download : null,
-              uploadBps: Number.isFinite(summary.upload) ? summary.upload : null,
+              downloadBps: Number.isFinite(downloadBps) ? downloadBps : (Number.isFinite(summary.download) ? summary.download * 1000000 : null),
+              uploadBps: Number.isFinite(uploadBps) ? uploadBps : (Number.isFinite(summary.upload) ? summary.upload * 1000000 : null),
               latencyMs: Number.isFinite(latency) ? latency : (Number.isFinite(summary.latency) ? summary.latency : null),
               jitterMs: Number.isFinite(jitter) ? jitter : (Number.isFinite(summary.jitter) ? summary.jitter : null),
               durationMs: Number.isFinite(duration) ? duration : null
@@ -100,8 +110,6 @@ object CloudflareSpeedTestWebView {
               if (typeof SpeedTest !== 'function') throw new Error('Modul Speed Test Cloudflare tidak tersedia.');
               engine = new SpeedTest({
                 autoStart: false,
-                // Profil mobile yang lebih hemat data dibanding konfigurasi default.
-                // Packet loss tidak diaktifkan karena layanan TURN publik Cloudflare telah ditandai deprecated.
                 measurements: [
                   { type: 'latency', numPackets: 1 },
                   { type: 'download', bytes: 100000, count: 1, bypassMinDuration: true },
@@ -114,12 +122,12 @@ object CloudflareSpeedTestWebView {
                 ]
               });
               engine.onRunningChange = running => send('onRunning', running);
-              engine.onPhaseChange = payload => {
-                phaseIndex = Number(payload.measurementId || 0) + 1;
-                const type = payload.measurement && payload.measurement.type;
-                send('onPhase', { index: phaseIndex, count: 8, phase: phaseNames[type] || 'Mengukur kualitas koneksi…' });
+              engine.onResultsChange = ({ type } = {}) => {
+                const order = ['latency', 'download', 'latency', 'download', 'upload', 'upload', 'download', 'upload'];
+                const index = Math.max(0, order.indexOf(type));
+                send('onPhase', { index: index + 1, count: order.length, phase: phaseNames[type] || 'Mengukur kualitas koneksi…' });
+                send('onResults', toPayload(engine.results));
               };
-              engine.onResultsChange = () => send('onResults', toPayload(engine.results));
               engine.onFinish = results => send('onFinished', toPayload(results));
               engine.onError = error => send('onTestError', String(error || 'Pengukuran gagal.'));
               send('onEngineReady');

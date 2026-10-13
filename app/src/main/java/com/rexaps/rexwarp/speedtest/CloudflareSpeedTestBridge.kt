@@ -3,10 +3,8 @@ package com.rexaps.rexwarp.speedtest
 import android.webkit.JavascriptInterface
 import com.rexaps.rexwarp.RexWarpSpeedTestViewModel
 
-/** Jembatan callback yang sengaja hanya menerima event/payload; tidak menyediakan eksekusi kode native. */
-class CloudflareSpeedTestBridge(
-    private val viewModel: RexWarpSpeedTestViewModel
-) {
+/** Bridge terbatas pada callback pengukuran; tidak mengekspos API native umum ke JavaScript. */
+class CloudflareSpeedTestBridge(private val viewModel: RexWarpSpeedTestViewModel) {
     @JavascriptInterface fun onEngineReady() = viewModel.onEngineReady()
     @JavascriptInterface fun onEngineError(message: String) = viewModel.onEngineError(message)
     @JavascriptInterface fun onRunning(running: Boolean) = viewModel.onRunning(running)
