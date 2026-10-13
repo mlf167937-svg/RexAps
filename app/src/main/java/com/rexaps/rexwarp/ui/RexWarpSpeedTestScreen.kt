@@ -2,7 +2,7 @@ package com.rexaps.rexwarp.ui
 
 import android.webkit.WebView
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
