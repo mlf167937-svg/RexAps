@@ -1,20 +1,13 @@
 
-<resources>
+<style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowActionModeOverlay">true</item>
+    <item name="android:windowBackground">@android:color/white</item>
+</style>
 
-    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">@drawable/splash_background</item>
-        <item name="android:statusBarColor">#1748FF</item>
-        <item name="android:navigationBarColor">#1238D4</item>
-        <item name="android:windowLightStatusBar">false</item>
-    </style>
-
-    <style name="Theme.RexAps.Starting" parent="AppTheme">
-        <item name="android:windowBackground">@drawable/splash_background</item>
-        <item name="android:statusBarColor">#1748FF</item>
-        <item name="android:navigationBarColor">#1238D4</item>
-        <item name="android:windowLightStatusBar">false</item>
-    </style>
-
-</resources>
+<style name="Theme.RexAps.Starting" parent="AppTheme">
+    <item name="android:windowBackground">@drawable/splash_background</item>
+    <item name="android:statusBarColor">#1748FF</item>
+    <item name="android:navigationBarColor">#1748FF</item>
+    <item name="android:windowLightStatusBar">false</item>
+</style>
