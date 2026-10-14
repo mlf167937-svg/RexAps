@@ -1,8 +1,6 @@
 
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Tema utama aplikasi -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
@@ -12,7 +10,6 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <!-- Tema awal sebelum MainActivity tampil -->
     <style name="Theme.RexAps.Starting" parent="AppTheme">
         <item name="android:windowBackground">@drawable/splash_background</item>
         <item name="android:statusBarColor">#1748FF</item>
