@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 26202
-        versionName = "27.29"
+        versionCode = 26203
+        versionName = "27.30"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
@@ -133,4 +133,7 @@ dependencies {
 
     // Test
     testImplementation("junit:junit:4.13.2")
+
+    // splash screen andro 12+
+    implementation("androidx.core:core-splashscreen:1.0.1")
 }

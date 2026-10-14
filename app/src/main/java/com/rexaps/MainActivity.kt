@@ -1,6 +1,6 @@
+
 package com.rexaps
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -11,23 +11,28 @@ import com.rexaps.ui.SplashScreen
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Terapkan theme sebelum Activity dibuat.
+        // Background awal diatur melalui styles.xml.
         super.onCreate(savedInstanceState)
 
-        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val hasSeenSplash = prefs.getBoolean("has_seen_splash", false)
-
         setContent {
-            // Splash cuma muncul kalau belum pernah lihat
-            var showSplash by remember { mutableStateOf(!hasSeenSplash) }
+            // Splash selalu muncul setiap MainActivity dibuat.
+            var showSplash by remember {
+                mutableStateOf(true)
+            }
 
             if (showSplash) {
-                SplashScreen(onFinished = {
-                    // Tandai splash sudah pernah dilihat
-                    prefs.edit().putBoolean("has_seen_splash", true).apply()
-                    showSplash = false
-                })
+                SplashScreen(
+                    onFinished = {
+                        showSplash = false
+                    }
+                )
             } else {
-                RexApsApp(activity = this@MainActivity)
+                // Logika dan halaman utama tetap menggunakan
+                // implementasi RexAps yang sudah ada.
+                RexApsApp(
+                    activity = this@MainActivity
+                )
             }
         }
     }
