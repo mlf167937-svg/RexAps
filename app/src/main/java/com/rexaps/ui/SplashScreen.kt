@@ -1,7 +1,9 @@
+
 package com.rexaps.ui
 
 import android.net.Uri
 import android.os.Build
+import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,11 +16,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import android.widget.VideoView
 import com.rexaps.R
 
 @Composable
@@ -35,19 +37,20 @@ fun SplashScreen(onFinished: () -> Unit) {
             factory = { ctx ->
                 VideoView(ctx).apply {
                     val uri = Uri.parse(
-                        "android.resource://${context.packageName}/${R.raw.splash_video}"
+                        "android.resource://${ctx.packageName}/${R.raw.splash_video}"
                     )
+
                     setVideoURI(uri)
 
                     setOnPreparedListener { mp ->
                         mp.isLooping = false
 
-                        // Percepat 1.5x (butuh API 23+)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             try {
-                                mp.playbackParams = mp.playbackParams.setSpeed(1.5f)
-                            } catch (e: Exception) {
-                                // Kalau gagal, jalan normal aja
+                                mp.playbackParams =
+                                    mp.playbackParams.setSpeed(1.5f)
+                            } catch (_: Exception) {
+                                // Gunakan kecepatan normal jika gagal.
                             }
                         }
 
@@ -59,18 +62,21 @@ fun SplashScreen(onFinished: () -> Unit) {
                     }
 
                     setOnErrorListener { _, _, _ ->
-                        // Kalau video error, langsung lanjut
                         onFinished()
                         true
                     }
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Lebar bertambah 8%, tinggi tetap.
+                    scaleX = 1.08f
+                }
         )
 
-        // Tombol Skip di pojok kanan bawah
         Button(
-            onClick = { onFinished() },
+            onClick = onFinished,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(24.dp),
