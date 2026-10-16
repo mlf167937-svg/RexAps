@@ -51,6 +51,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -112,7 +114,9 @@ private data class BottomTab(
 private val bottomTabs = listOf(
     BottomTab("Home", Icons.Default.Home),
     BottomTab("Profile", Icons.Default.Person),
-    BottomTab("Settings", Icons.Default.Settings)
+    BottomTab("Theme", Icons.Default.ColorLens),
+    BottomTab("Settings", Icons.Default.Settings),
+    BottomTab("Account", Icons.Default.AccountCircle)
 )
 
 private const val THEME_COLUMNS = 3
@@ -349,12 +353,20 @@ fun RexApsApp(activity: Activity) {
                             isActive = selectedTab.intValue == 1
                         )
 
-                        else -> RexSettingsScreen(
+                        2 -> ThemeTabContent(
+                            padding = padding,
+                            selectedTheme = themeOption,
+                            onOpenTheme = { showThemeSheet = true }
+                        )
+
+                        3 -> RexSettingsScreen(
                             padding = padding,
                             selectedTheme = themeOption,
                             onOpenTheme = { showThemeSheet = true },
                             onBackHome = { selectedTab.intValue = 0 }
                         )
+
+                        else -> RexLocalAccountScreen(padding = padding)
                     }
                 }
             }
