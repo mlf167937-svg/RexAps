@@ -28,6 +28,7 @@
 
     <!-- ================================ MEDIA ============================== -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <!-- ========================== FOREGROUND SERVICE ======================= -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -48,7 +49,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ============================== QUERIES ============================== -->
-    <!-- RexChat: deteksi aplikasi WhatsApp -->
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
@@ -72,35 +72,27 @@
         android:largeHeap="true">
 
         <!-- =========================== FILE PROVIDER ====================== -->
-
-        <!-- Existing FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
             android:exported="false"
             android:grantUriPermissions="true">
-
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
-
         </provider>
 
-        <!-- RexManager FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.rexmanager.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/rexmanager_file_paths" />
-
         </provider>
 
         <!-- =========================== REX MUSIC =========================== -->
-
         <service
             android:name="com.rexaps.rexmusic.RexMusicService"
             android:exported="false"
@@ -125,85 +117,64 @@
         </receiver>
 
         <!-- ============================ REX WARP ============================ -->
-
-        <!-- RexWarp VPN Service -->
         <service
             android:name="com.rexaps.rexwarp.RexWarpVpnService"
             android:exported="false"
             android:foregroundServiceType="systemExempted|specialUse"
             android:permission="android.permission.BIND_VPN_SERVICE">
-
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
-
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn" />
-
         </service>
 
-        <!-- RexWarp Recorder Service -->
         <service
             android:name="com.rexaps.rexwarp.RexWarpRecorderService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
-
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="usage_recorder" />
-
         </service>
 
-        <!-- RexWarp Boot Receiver -->
         <receiver
             android:name="com.rexaps.rexwarp.RexWarpBootReceiver"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
-
         </receiver>
 
         <!-- =========================== REX MONITOR ========================= -->
-
         <service
             android:name="com.rexaps.rexmonitor.monitoring.RexMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
-
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="device_monitoring_notification" />
-
         </service>
 
         <!-- =========================== MAIN ACTIVITY ======================= -->
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.RexAps.Starting">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
 
-
         <!-- ============================ REX CHAT =========================== -->
-
-        <!-- RexChat: mode normal -->
         <activity
             android:name="com.rexaps.rexchat.WaActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 
-        <!-- RexChat: fallback WebView lama -->
         <activity
             android:name="com.rexaps.rexchat.WaLegacyActivity"
             android:exported="false"
@@ -211,8 +182,7 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 
-
-        <!-- RexADM downloader entry point; existing RexAps launcher remains unchanged. -->
+        <!-- ============================ REX ADM ============================ -->
         <activity
             android:name="com.rexaps.rexadm.MainActivity"
             android:exported="true"

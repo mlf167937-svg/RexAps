@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 26219
-        versionName = "27.46"
+        versionCode = 26220
+        versionName = "27.47"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
@@ -123,6 +123,10 @@ dependencies {
 
     // Image loader
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // editor
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     // JGit
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
