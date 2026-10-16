@@ -13,8 +13,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 26212
-        versionName = "27.39"
+        versionCode = 26213
+        versionName = "27.40"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {

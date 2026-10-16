@@ -115,7 +115,7 @@ private val bottomTabs = listOf(
     BottomTab("Settings", Icons.Default.Settings)
 )
 
-private const val THEME_COLUMNS = 4
+private const val THEME_COLUMNS = 3
 
 /* ---------------------------------- ROOT ---------------------------------- */
 
