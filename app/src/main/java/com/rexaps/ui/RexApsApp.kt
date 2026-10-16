@@ -336,6 +336,9 @@ fun RexApsApp(activity: Activity) {
                             },
                             onOpenTheme = {
                                 showThemeSheet = true
+                            },
+                            onOpenSettings = {
+                                selectedTab.intValue = 2
                             }
                         )
 
@@ -346,10 +349,11 @@ fun RexApsApp(activity: Activity) {
                             isActive = selectedTab.intValue == 1
                         )
 
-                        else -> SettingsContent(
+                        else -> RexSettingsScreen(
                             padding = padding,
                             selectedTheme = themeOption,
-                            onThemeSelected = onThemeChange
+                            onOpenTheme = { showThemeSheet = true },
+                            onBackHome = { selectedTab.intValue = 0 }
                         )
                     }
                 }
@@ -619,7 +623,8 @@ private fun HomeContent(
     themeLabel: String,
     isActive: Boolean,
     onAppClick: (RexModule) -> Unit,
-    onOpenTheme: () -> Unit
+    onOpenTheme: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val apps = RexAppRegistry.modules
     val featured = apps.firstOrNull { it.id == "rexfox" }
@@ -656,8 +661,14 @@ private fun HomeContent(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
-                onOpenTheme = onOpenTheme,
+                onOpenSettings = onOpenSettings,
                 modifier = Modifier.entrance(0)
+            )
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            RexBannerCarousel(
+                modifier = Modifier.entrance(1)
             )
         }
 
@@ -800,7 +811,7 @@ private fun HomeContent(
 
 @Composable
 private fun HomeHeader(
-    onOpenTheme: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
 
@@ -859,7 +870,7 @@ private fun HomeHeader(
                         colors.primary.copy(alpha = 0.4f)
                 )
                 .pressable(
-                    onClick = onOpenTheme
+                    onClick = onOpenSettings
                 )
                 .clip(CircleShape)
                 .background(colors.surfaceVariant)
@@ -869,30 +880,17 @@ private fun HomeHeader(
                     CircleShape
                 )
                 .semantics {
-                    contentDescription = "Ubah tema"
+                    contentDescription = "Buka pengaturan"
                 },
             contentAlignment = Alignment.Center
         ) {
 
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(
-                        accentBrush(),
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-
-                Box(
-                    modifier = Modifier
-                        .size(11.dp)
-                        .background(
-                            colors.surfaceVariant,
-                            CircleShape
-                        )
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Pengaturan",
+                tint = colors.primary,
+                modifier = Modifier.size(25.dp)
+            )
         }
     }
 }
