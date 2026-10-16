@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Tautan sosial resmi Rex Studio.
  */
-private data class SocialLink(
+private data class SettingSocialLink(
     val title: String,
     val subtitle: String,
     val symbol: String,
@@ -51,28 +51,28 @@ private data class SocialLink(
 )
 
 private val socialLinks = listOf(
-    SocialLink(
+    SettingSocialLink(
         title = "YouTube",
         subtitle = "@RexRuinCraft",
         symbol = "▶",
         color = androidx.compose.ui.graphics.Color(0xFFFF0000),
         url = "https://www.youtube.com/@RexRuinCraft"
     ),
-    SocialLink(
+    SettingSocialLink(
         title = "TikTok",
         subtitle = "@rexstudio4",
         symbol = "♪",
         color = androidx.compose.ui.graphics.Color(0xFF111111),
         url = "https://www.tiktok.com/@rexstudio4"
     ),
-    SocialLink(
+    SettingSocialLink(
         title = "Saweria",
         subtitle = "Dukung lewat donasi",
         symbol = "☕",
         color = androidx.compose.ui.graphics.Color(0xFFF5A623),
         url = "https://saweria.co/rexruincraft"
     ),
-    SocialLink(
+    SettingSocialLink(
         title = "Saluran WhatsApp",
         subtitle = "Gabung untuk update terbaru",
         symbol = "✆",
