@@ -646,13 +646,13 @@ private fun HomeContent(
             .fillMaxSize()
             .padding(padding),
         contentPadding = PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            top = 20.dp,
-            bottom = 36.dp
+            start = 18.dp,
+            end = 18.dp,
+            top = 18.dp,
+            bottom = 32.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             HomeHeader(
@@ -690,7 +690,7 @@ private fun HomeContent(
                     .fillMaxWidth()
                     .entrance(3),
                 singleLine = true,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 placeholder = { Text("Cari aplikasi atau fitur...") },
                 leadingIcon = {
                     Icon(
@@ -934,7 +934,7 @@ private fun HeroCard(
             .fillMaxWidth()
             .shadow(
                 elevation = 20.dp,
-                shape = RoundedCornerShape(32.dp),
+                shape = RoundedCornerShape(28.dp),
                 ambientColor =
                     MaterialTheme.colorScheme.primary.copy(
                         alpha = 0.35f
@@ -944,7 +944,7 @@ private fun HeroCard(
                         alpha = 0.35f
                     )
             )
-            .clip(RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(28.dp))
             .background(accentBrush())
             .drawBehind {
 
@@ -980,7 +980,7 @@ private fun HeroCard(
     ) {
 
         Column(
-            modifier = Modifier.padding(26.dp),
+            modifier = Modifier.padding(24.dp),
             verticalArrangement =
                 Arrangement.spacedBy(16.dp)
         ) {
@@ -1183,7 +1183,7 @@ private fun FeaturedCard(
     val colors = MaterialTheme.colorScheme
 
     val shape =
-        RoundedCornerShape(32.dp)
+        RoundedCornerShape(28.dp)
 
     val primary = colors.primary
     val outline = colors.outlineVariant
@@ -2156,7 +2156,7 @@ private fun SettingsContent(
                 ) {
 
                     Text(
-                        text = "Tema",
+                        text = "Pilih tema",
                         style =
                             MaterialTheme.typography.titleLarge
                     )
@@ -2301,7 +2301,7 @@ private fun ThemeSheet(
                 ) {
 
                     Text(
-                        text = "Tema",
+                        text = "Pilih tema",
                         style =
                             MaterialTheme.typography.titleLarge
                     )
@@ -2330,7 +2330,7 @@ private fun ThemeSheet(
 
                 Text(
                     text =
-                        "Pilih tampilan yang paling nyaman untukmu.",
+                        "30 tampilan premium. Pilih yang paling nyaman untukmu.",
                     style =
                         MaterialTheme.typography.bodyMedium,
                     color =
