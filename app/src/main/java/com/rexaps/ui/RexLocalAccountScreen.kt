@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*

@@ -40,13 +40,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Pengaturan utama RexAps. Ganti URL sosial di SOCIAL_LINKS dengan tautan akun resmi
- * sebelum rilis; tautan default hanya membuka halaman platform.
+ * Tautan sosial resmi Rex Studio.
  */
-private val SOCIAL_LINKS = listOf(
-    Triple("GitHub", "Kode & proyek", "https://github.com/"),
-    Triple("Instagram", "Kabar dan visual", "https://www.instagram.com/"),
-    Triple("YouTube", "Video dan update", "https://www.youtube.com/")
+private data class SocialLink(
+    val title: String,
+    val subtitle: String,
+    val symbol: String,
+    val color: androidx.compose.ui.graphics.Color,
+    val url: String
+)
+
+private val socialLinks = listOf(
+    SocialLink(
+        title = "YouTube",
+        subtitle = "@RexRuinCraft",
+        symbol = "▶",
+        color = androidx.compose.ui.graphics.Color(0xFFFF0000),
+        url = "https://www.youtube.com/@RexRuinCraft"
+    ),
+    SocialLink(
+        title = "TikTok",
+        subtitle = "@rexstudio4",
+        symbol = "♪",
+        color = androidx.compose.ui.graphics.Color(0xFF111111),
+        url = "https://www.tiktok.com/@rexstudio4"
+    ),
+    SocialLink(
+        title = "Saweria",
+        subtitle = "Dukung lewat donasi",
+        symbol = "☕",
+        color = androidx.compose.ui.graphics.Color(0xFFF5A623),
+        url = "https://saweria.co/rexruincraft"
+    ),
+    SocialLink(
+        title = "Saluran WhatsApp",
+        subtitle = "Gabung untuk update terbaru",
+        symbol = "✆",
+        color = androidx.compose.ui.graphics.Color(0xFF25D366),
+        url = "https://whatsapp.com/channel/0029Vb8oqCTDOQIYrRuWic33"
+    )
 )
 
 @Composable
@@ -134,10 +166,10 @@ fun RexSettingsScreen(
         Text("Sosial media", style = MaterialTheme.typography.titleLarge)
         Text("Ikuti kabar, karya, dan pengembangan RexAps.", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
 
-        SOCIAL_LINKS.forEach { (name, description, url) ->
+        socialLinks.forEach { link ->
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    runCatching { uriHandler.openUri(url) }
+                    runCatching { uriHandler.openUri(link.url) }
                 },
                 shape = RoundedCornerShape(18.dp),
                 color = colors.surface,
@@ -148,18 +180,23 @@ fun RexSettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = colors.primaryContainer, modifier = Modifier.size(42.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = link.color,
+                        modifier = Modifier.size(42.dp)
+                    ) {
                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (name == "GitHub") Icons.Default.Code else Icons.Default.Language,
-                                contentDescription = null,
-                                tint = colors.onPrimaryContainer
+                            Text(
+                                text = link.symbol,
+                                color = androidx.compose.ui.graphics.Color.White,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(name, style = MaterialTheme.typography.titleMedium)
-                        Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        Text(link.title, style = MaterialTheme.typography.titleMedium)
+                        Text(link.subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                     }
                     Text("↗", style = MaterialTheme.typography.titleLarge, color = colors.primary)
                 }
