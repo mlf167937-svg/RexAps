@@ -320,51 +320,112 @@ private fun iconFor(f: File): Pair<ImageVector, Color> {
 @Composable
 private fun HomeScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
     val root = Environment.getExternalStorageDirectory()
-    val stat = remember { StatFs(root.path) }
-    val total = stat.totalBytes
-    val used = total - stat.availableBytes
-    val fraction = if (total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
+    val stat = remember(root.path) { StatFs(root.path) }
+    val total = stat.totalBytes.coerceAtLeast(1L)
+    val free = stat.availableBytes.coerceAtLeast(0L)
+    val used = (total - free).coerceAtLeast(0L)
+    val fraction = (used.toFloat() / total).coerceIn(0f, 1f)
+    val shortcuts = listOf(
+        Triple("Download", File(root, "Download"), Icons.Filled.Inventory2),
+        Triple("Gambar", File(root, "Pictures"), Icons.Filled.ImageIcon),
+        Triple("Video", File(root, "Movies"), Icons.Filled.Movie),
+        Triple("Musik", File(root, "Music"), Icons.Filled.MusicNote),
+        Triple("Dokumen", File(root, "Documents"), Icons.Filled.InsertDriveFile),
+        Triple("Kamera", File(root, "DCIM"), Icons.Filled.ImageIcon)
+    )
 
-    Column(Modifier.fillMaxSize()) {
-        RexTopBar("RexManager", onBack = onBack)
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Rex.bg)) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("RexManager", color = Rex.onSurface, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                Text("File manager untuk semua kebutuhanmu", color = Rex.muted, fontSize = 12.sp)
+            }
+            IconButton(onClick = onBack) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Kembali ke RexAps", tint = Rex.muted)
+            }
+        }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Rex.surface),
-                shape = RoundedCornerShape(16.dp)
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Rex.surface)
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Penyimpanan Internal", color = Rex.onSurface, fontWeight = FontWeight.SemiBold)
-                    Text("${formatSize(used)} / ${formatSize(total)}", color = Rex.muted, fontSize = 12.sp)
-                    Spacer(Modifier.height(12.dp))
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(Rex.surfaceHigh), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.FolderOpen, null, tint = Rex.primary, modifier = Modifier.size(25.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Penyimpanan internal", color = Rex.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            Text("${formatSize(free)} tersedia dari ${formatSize(total)}", color = Rex.muted, fontSize = 12.sp)
+                        }
+                    }
                     LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
-                        color = Rex.primary,
-                        trackColor = Rex.surfaceHigh
+                        progress = { fraction }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(8.dp)),
+                        color = if (fraction > .9f) Rex.danger else Rex.primary, trackColor = Rex.surfaceHigh
                     )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${formatSize(used)} digunakan", color = Rex.muted, fontSize = 11.sp)
+                        Text("${(fraction * 100).toInt()}%", color = Rex.onSurface, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Button(
+                        onClick = { onOpen(root.path) }, modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Rex.primary)
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp)); Text("Jelajahi semua file")
+                    }
                 }
             }
-            Text("Lokasi", color = Rex.muted, fontSize = 13.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Akses cepat", color = Rex.onSurface, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text("6 lokasi", color = Rex.muted, fontSize = 11.sp)
+                }
+                shortcuts.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        pair.forEach { (label, file, icon) ->
+                            val count = remember(file.path) { file.list()?.size ?: 0 }
+                            Row(
+                                Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(Rex.surface)
+                                    .clickable { onOpen(file.path) }.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(Rex.surfaceHigh), contentAlignment = Alignment.Center) {
+                                    Icon(icon, null, tint = Rex.primary, modifier = Modifier.size(21.dp))
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(label, color = Rex.onSurface, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (file.exists()) "$count item" else "Belum ada", color = Rex.muted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Rex.surface)
-                    .clickable { onOpen(root.path) }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Rex.surfaceHigh)
+                    .clickable { onOpen(root.path) }.padding(15.dp), verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Filled.Folder, null, tint = Rex.folder)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Penyimpanan Internal", color = Rex.onSurface)
+                    Text("Lokasi perangkat", color = Rex.onSurface, fontWeight = FontWeight.Medium)
                     Text(root.path, color = Rex.muted, fontSize = 11.sp)
                 }
                 Icon(Icons.Filled.ChevronRight, null, tint = Rex.muted)
             }
-            Text("Cloud akan hadir di versi berikutnya.", color = Rex.muted, fontSize = 12.sp)
+            Text("RexManager • Kelola file dengan lebih mudah", color = Rex.muted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 18.dp))
         }
     }
 }
@@ -380,11 +441,15 @@ private fun FolderScreen(
 ) {
     val ctx = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
+    var query by rememberSaveable(path) { mutableStateOf("") }
     val dir = File(path)
     val files = remember(path, refresh) {
         dir.listFiles()
             ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
             ?: emptyList()
+    }
+    val visibleFiles = remember(files, query) {
+        if (query.isBlank()) files else files.filter { it.name.contains(query.trim(), ignoreCase = true) }
     }
     val selected = remember(path) { mutableStateListOf<String>() }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -396,16 +461,39 @@ private fun FolderScreen(
             subtitle = path,
             onBack = onBack
         )
-        if (files.isEmpty()) {
+        Box(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(14.dp)).background(Rex.surface).padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.FolderOpen, null, tint = Rex.muted, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.width(10.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Rex.onSurface, fontSize = 14.sp),
+                    cursorBrush = SolidColor(Rex.primary),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box {
+                            if (query.isEmpty()) Text("Cari file atau folder...", color = Rex.muted, fontSize = 14.sp)
+                            inner()
+                        }
+                    }
+                )
+            }
+        }
+        if (visibleFiles.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Filled.FolderOpen, null, tint = Rex.muted, modifier = Modifier.size(48.dp))
-                    Text("Folder ini kosong", color = Rex.muted)
+                    Text(if (query.isBlank()) "Folder ini kosong" else "Tidak ada hasil untuk ‘$query’", color = Rex.muted)
                 }
             }
         } else {
             LazyColumn(Modifier.weight(1f)) {
-                items(files, key = { it.path }) { f ->
+                items(visibleFiles, key = { it.path }) { f ->
                     val (icon, tint) = iconFor(f)
                     val isSel = f.path in selected
                     Row(
