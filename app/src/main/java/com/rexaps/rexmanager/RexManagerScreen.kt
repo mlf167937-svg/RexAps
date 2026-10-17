@@ -405,6 +405,7 @@ private fun iconFor(f: File): Pair<ImageVector, Color> {
     }
 }
 
+@Composable
 private fun drawerItemColors() = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
     selectedContainerColor = Rex.primary.copy(alpha = 0.18f),
     selectedIconColor = Color(0xFF83A5FF),
