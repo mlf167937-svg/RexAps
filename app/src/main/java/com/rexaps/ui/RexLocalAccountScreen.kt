@@ -6,7 +6,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -15,39 +20,58 @@ import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -59,6 +83,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -68,6 +95,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -79,12 +107,17 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.nio.ByteBuffer
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
-/* ───────────────────────── Konstanta & model ───────────────────────── */
+/* ═════════════════════ Konstanta & model ═════════════════════ */
 
 private const val DAY_MS = 24L * 60 * 60 * 1000
 private const val BANNER_ASPECT = 16f / 9f
+private const val MAX_CLIP_MS = 4000L
 
 private object RexPaths {
     val base get() = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "RexAps/.config")
@@ -98,18 +131,30 @@ private data class RexLocalAccount(
     val name: String = "Rex User",
     val username: String = "@rexuser",
     val bio: String = "Halo! Aku menggunakan RexAps.",
-    val bannerType: String = "none", // none | image | video
-    val bannerPath: String = "",
+    val bannerPath: String = "",      // PNG hasil crop (juga jadi poster video)
+    val bannerVideo: String = "",     // mp4 maks 4 detik (opsional)
     val bannerScale: Float = 1f,
     val bannerX: Float = 0f,
     val bannerY: Float = 0f,
-    val picturePath: String = ""
+    val picturePath: String = "",
+    val pictureVideo: String = "",
+    val pictureScale: Float = 1f,
+    val pictureX: Float = 0f,
+    val pictureY: Float = 0f
 )
 
 private data class RexStory(val file: File, val time: Long, val isVideo: Boolean, val text: String, val gradient: Int)
 
-private enum class CropTarget { AVATAR, BANNER_IMAGE, BANNER_VIDEO }
-private class CropReq(val target: CropTarget, val bitmap: Bitmap, val uri: Uri)
+private enum class CropTarget { AVATAR, BANNER }
+
+/** Sumber video: Uri (dari picker) atau File (mis. hasil ekstrak live photo). */
+private class VSrc(val uri: Uri?, val file: File?) {
+    fun bind(r: MediaMetadataRetriever, c: Context) { if (uri != null) r.setDataSource(c, uri) else r.setDataSource(file!!.absolutePath) }
+    fun bind(e: MediaExtractor, c: Context) { if (uri != null) e.setDataSource(c, uri, null) else e.setDataSource(file!!.absolutePath) }
+    fun open(c: Context): InputStream? = if (uri != null) c.contentResolver.openInputStream(uri) else file?.inputStream()
+}
+
+private class CropReq(val target: CropTarget, val bitmap: Bitmap, val video: VSrc?, val durationMs: Long, val live: Boolean)
 
 private val storyGradients = listOf(
     listOf(Color(0xFFFF512F), Color(0xFFDD2476)),
@@ -120,7 +165,7 @@ private val storyGradients = listOf(
     listOf(Color(0xFFEE0979), Color(0xFFFF6A00))
 )
 
-/* ───────────────────────── File helpers ───────────────────────── */
+/* ═════════════════════ File & media helpers ═════════════════════ */
 
 private fun hasStorageAccess(ctx: Context): Boolean =
     if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
@@ -129,11 +174,15 @@ private fun hasStorageAccess(ctx: Context): Boolean =
 private fun readAccount(): RexLocalAccount? = try {
     val f = RexPaths.config
     if (!f.exists()) null else JSONObject(f.readText()).let { j ->
+        var bp = j.optString("banner", "")
+        var bv = j.optString("bannerVideo", "")
+        if (bp.endsWith(".mp4")) { bv = bp; bp = "" } // kompatibel dengan versi lama
         RexLocalAccount(
             j.optString("name", "Rex User"), j.optString("username", "@rexuser"), j.optString("bio", ""),
-            j.optString("bannerType", "none"), j.optString("banner", ""),
-            j.optDouble("bannerScale", 1.0).toFloat(), j.optDouble("bannerX", 0.0).toFloat(),
-            j.optDouble("bannerY", 0.0).toFloat(), j.optString("profilePicture", "")
+            bp, bv,
+            j.optDouble("bannerScale", 1.0).toFloat(), j.optDouble("bannerX", 0.0).toFloat(), j.optDouble("bannerY", 0.0).toFloat(),
+            j.optString("profilePicture", ""), j.optString("profileVideo", ""),
+            j.optDouble("pictureScale", 1.0).toFloat(), j.optDouble("pictureX", 0.0).toFloat(), j.optDouble("pictureY", 0.0).toFloat()
         )
     }
 } catch (e: Exception) { null }
@@ -141,14 +190,15 @@ private fun readAccount(): RexLocalAccount? = try {
 private fun writeAccount(a: RexLocalAccount) {
     RexPaths.config.parentFile?.mkdirs()
     val j = JSONObject().put("name", a.name).put("username", a.username).put("bio", a.bio)
-        .put("bannerType", a.bannerType).put("banner", a.bannerPath)
-        .put("bannerScale", a.bannerScale.toDouble()).put("bannerX", a.bannerX.toDouble())
-        .put("bannerY", a.bannerY.toDouble()).put("profilePicture", a.picturePath)
+        .put("banner", a.bannerPath).put("bannerVideo", a.bannerVideo)
+        .put("bannerScale", a.bannerScale.toDouble()).put("bannerX", a.bannerX.toDouble()).put("bannerY", a.bannerY.toDouble())
+        .put("profilePicture", a.picturePath).put("profileVideo", a.pictureVideo)
+        .put("pictureScale", a.pictureScale.toDouble()).put("pictureX", a.pictureX.toDouble()).put("pictureY", a.pictureY.toDouble())
         .put("updatedAt", System.currentTimeMillis())
     RexPaths.config.writeText(j.toString(2))
 }
 
-/** Hapus otomatis story > 24 jam (berdasarkan timestamp di nama file). */
+/** Story > 24 jam dihapus otomatis (berdasarkan timestamp di nama file). */
 private fun loadStories(): List<RexStory> {
     val now = System.currentTimeMillis()
     val files = RexPaths.story.listFiles() ?: return emptyList()
@@ -169,14 +219,15 @@ private fun loadVideos(): List<File> =
     RexPaths.video.listFiles()?.filter { it.extension.lowercase() in setOf("mp4", "png", "jpg", "jpeg") }
         ?.sortedByDescending { it.lastModified() } ?: emptyList()
 
-private fun decodeSampled(ctx: Context, uri: Uri, maxDim: Int = 2048): Bitmap? = try {
+private fun decodeSampled(ctx: Context, uri: Uri, maxDim: Int = 2400): Bitmap? = try {
     val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
     var s = 1
     while (max(o.outWidth, o.outHeight) / s > maxDim) s *= 2
-    ctx.contentResolver.openInputStream(uri)?.use {
+    val raw = ctx.contentResolver.openInputStream(uri)?.use {
         BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = s })
     }
+    raw?.let { applyExif(ctx, uri, it) }
 } catch (e: Exception) { null }
 
 private fun decodeFileSampled(path: String, maxDim: Int): Bitmap? = try {
@@ -187,30 +238,161 @@ private fun decodeFileSampled(path: String, maxDim: Int): Bitmap? = try {
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
 } catch (e: Exception) { null }
 
-private fun videoFrame(setup: MediaMetadataRetriever.() -> Unit): Bitmap? {
-    val r = MediaMetadataRetriever()
-    return try { r.setup(); r.getFrameAtTime(0) } catch (e: Exception) { null }
-    finally { try { r.release() } catch (_: Exception) {} }
+/** Tegakkan foto sesuai EXIF supaya tidak miring. */
+private fun applyExif(ctx: Context, uri: Uri, b: Bitmap): Bitmap {
+    val o = try {
+        ctx.contentResolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        }
+    } catch (e: Exception) { null } ?: ExifInterface.ORIENTATION_NORMAL
+    val m = android.graphics.Matrix()
+    when (o) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> m.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> m.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.postScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.postScale(1f, -1f)
+        else -> return b
+    }
+    return try { Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true) } catch (e: Exception) { b }
 }
 
-private fun videoDuration(path: String): Long {
+private fun rotate90(b: Bitmap): Bitmap {
+    val m = android.graphics.Matrix().apply { postRotate(90f) }
+    return Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true)
+}
+
+private fun downscale(b: Bitmap, maxDim: Int): Bitmap {
+    val m = max(b.width, b.height)
+    if (m <= maxDim) return b
+    val k = maxDim.toFloat() / m
+    return Bitmap.createScaledBitmap(b, (b.width * k).toInt().coerceAtLeast(1), (b.height * k).toInt().coerceAtLeast(1), true)
+}
+
+private fun videoFrameAt(ctx: Context, src: VSrc, ms: Long): Bitmap? {
     val r = MediaMetadataRetriever()
     return try {
-        r.setDataSource(path); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 15000L
-    } catch (e: Exception) { 15000L } finally { try { r.release() } catch (_: Exception) {} }
+        src.bind(r, ctx)
+        val f = r.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_PREVIOUS_SYNC) ?: r.getFrameAtTime(0)
+        f?.let { downscale(it, 1600) }
+    } catch (e: Exception) { null } finally { try { r.release() } catch (_: Exception) {} }
 }
 
-/* ───────────────────────── Engine crop ───────────────────────── */
-
-/** Batasi geseran supaya frame crop selalu penuh (tidak ada area kosong). */
-private fun clampOffset(bw: Int, bh: Int, fw: Float, fh: Float, s: Float, ox: Float, oy: Float): Pair<Float, Float> {
-    val base = max(fw / bw, fh / bh) * s
-    val mx = max(0f, (bw * base - fw) / 2f) / fw
-    val my = max(0f, (bh * base - fh) / 2f) / fh
-    return ox.coerceIn(-mx, mx) to oy.coerceIn(-my, my)
+private fun videoDurationOf(ctx: Context, src: VSrc): Long {
+    val r = MediaMetadataRetriever()
+    return try {
+        src.bind(r, ctx); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+    } catch (e: Exception) { 0L } finally { try { r.release() } catch (_: Exception) {} }
 }
 
-/** Hasil crop gambar sebenarnya (disimpan sebagai PNG). */
+/**
+ * Ekstrak video dari Motion Photo / Live Photo Android (JPEG + mp4 di ujung file).
+ * Mencari box "ftyp" mp4 setelah data JPEG.
+ */
+private fun extractMotionVideo(ctx: Context, uri: Uri, out: File): Boolean = try {
+    val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+    var start = -1
+    if (bytes.size > 4096 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) {
+        var i = 2048
+        while (i < bytes.size - 16) {
+            if (bytes[i] == 'f'.code.toByte() && bytes[i + 1] == 't'.code.toByte() &&
+                bytes[i + 2] == 'y'.code.toByte() && bytes[i + 3] == 'p'.code.toByte()) {
+                val boxSize = ((bytes[i - 4].toInt() and 0xFF) shl 24) or ((bytes[i - 3].toInt() and 0xFF) shl 16) or
+                    ((bytes[i - 2].toInt() and 0xFF) shl 8) or (bytes[i - 1].toInt() and 0xFF)
+                if (boxSize in 16..64) { start = i - 4; break }
+            }
+            i++
+        }
+    }
+    if (start > 0 && bytes.size - start > 2048) {
+        FileOutputStream(out).use { it.write(bytes, start, bytes.size - start) }
+        true
+    } else false
+} catch (e: Exception) { false }
+
+/**
+ * Potong video jadi maksimal 4 detik tanpa re-encode (remux).
+ * Mulai dari keyframe terdekat sebelum waktu yang dipilih. Audio dibuang.
+ */
+private fun trimVideo(ctx: Context, src: VSrc, startMs: Long, out: File): Boolean {
+    val dur = videoDurationOf(ctx, src)
+    if (dur in 1..(MAX_CLIP_MS + 300)) { // sudah cukup pendek -> salin apa adanya
+        return try { src.open(ctx)?.use { i -> FileOutputStream(out).use { i.copyTo(it) } }; true } catch (e: Exception) { false }
+    }
+    val ex = MediaExtractor()
+    var mux: MediaMuxer? = null
+    return try {
+        src.bind(ex, ctx)
+        var vt = -1
+        for (i in 0 until ex.trackCount) {
+            if (ex.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) { vt = i; break }
+        }
+        if (vt < 0) return false
+        ex.selectTrack(vt)
+        val fmt = ex.getTrackFormat(vt)
+        val maxIn = if (fmt.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) fmt.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE) else 0
+        val buf = ByteBuffer.allocate(max(maxIn, 8 * 1024 * 1024))
+        var rot = 0
+        val r = MediaMetadataRetriever()
+        try { src.bind(r, ctx); rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0 }
+        catch (_: Exception) {} finally { try { r.release() } catch (_: Exception) {} }
+
+        out.delete()
+        mux = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val mt = mux.addTrack(fmt)
+        mux.setOrientationHint(rot)
+        mux.start()
+        ex.seekTo(startMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        val info = MediaCodec.BufferInfo()
+        var first = -1L
+        while (true) {
+            buf.clear()
+            val size = ex.readSampleData(buf, 0)
+            if (size < 0) break
+            val t = ex.sampleTime
+            if (first < 0) first = t
+            if (t - first > MAX_CLIP_MS * 1000) break
+            val flags = if (ex.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+            info.set(0, size, t - first, flags)
+            mux.writeSampleData(mt, buf, info)
+            ex.advance()
+        }
+        mux.stop()
+        true
+    } catch (e: Exception) { false }
+    finally {
+        try { mux?.release() } catch (_: Exception) {}
+        try { ex.release() } catch (_: Exception) {}
+    }
+}
+
+/** Siapkan data crop dari file yang dipilih (foto / video / live photo). */
+private fun buildCropReq(ctx: Context, uri: Uri, target: CropTarget): CropReq? {
+    val mime = ctx.contentResolver.getType(uri) ?: ""
+    if (mime.startsWith("video")) {
+        val src = VSrc(uri, null)
+        val dur = videoDurationOf(ctx, src)
+        val frame = videoFrameAt(ctx, src, 0) ?: return null
+        return CropReq(target, frame, src, dur, false)
+    }
+    val photo = decodeSampled(ctx, uri) ?: return null
+    if (mime == "image/jpeg") {
+        val f = File(ctx.cacheDir, "live_${System.currentTimeMillis()}.mp4")
+        if (extractMotionVideo(ctx, uri, f)) {
+            val src = VSrc(null, f)
+            val dur = videoDurationOf(ctx, src)
+            val frame = videoFrameAt(ctx, src, 0)
+            if (dur > 0 && frame != null) {
+                val sameAspect = Math.abs(photo.width.toFloat() / photo.height - frame.width.toFloat() / frame.height) < 0.02f
+                return CropReq(target, if (sameAspect) photo else frame, src, dur, true)
+            }
+        }
+        f.delete()
+    }
+    return CropReq(target, photo, null, 0, false)
+}
+
+/** Hasil crop sebenarnya (PNG). ox/oy dinormalisasi terhadap ukuran frame. */
 private fun renderCrop(src: Bitmap, aspect: Float, outW: Int, s: Float, ox: Float, oy: Float): Bitmap {
     val outH = (outW / aspect).toInt()
     val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
@@ -220,69 +402,67 @@ private fun renderCrop(src: Bitmap, aspect: Float, outW: Int, s: Float, ox: Floa
         postScale(base, base)
         postTranslate(outW / 2f + ox * outW, outH / 2f + oy * outH)
     }
-    android.graphics.Canvas(out).drawBitmap(src, m, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+    android.graphics.Canvas(out).drawBitmap(
+        src, m, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.DITHER_FLAG)
+    )
     return out
 }
 
+private fun secs(ms: Long) = String.format("%.1fs", ms / 1000f)
+
+/* ═════════════════════ Util UI ═════════════════════ */
+
+/** Efek tekan (membal) untuk semua elemen yang bisa diketuk. */
+private fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by animateFloatAsState(if (pressed) .93f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium), label = "press")
+    this.graphicsLayer { scaleX = sc; scaleY = sc }.clickable(interactionSource = src, indication = null, onClick = onClick)
+}
+
 @Composable
-private fun CropDialog(
-    bitmap: Bitmap, aspect: Float, circle: Boolean, title: String,
-    onCancel: () -> Unit, onConfirm: (Float, Float, Float) -> Unit
-) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var ox by remember { mutableFloatStateOf(0f) }
-    var oy by remember { mutableFloatStateOf(0f) }
-    var fw by remember { mutableFloatStateOf(1f) }
-    var fh by remember { mutableFloatStateOf(1f) }
-    val img = remember(bitmap) { bitmap.asImageBitmap() }
-    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = Color.Black) {
-            Column(
-                Modifier.fillMaxSize().padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-            ) {
-                Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Cubit untuk zoom, geser untuk atur posisi", color = Color.White.copy(.7f), style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(22.dp))
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(aspect)
-                        .clip(if (circle) CircleShape else RoundedCornerShape(16.dp))
-                        .background(Color.DarkGray)
-                        .onSizeChanged { fw = it.width.toFloat(); fh = it.height.toFloat() }
-                        .pointerInput(bitmap) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(1f, 6f)
-                                val (cx, cy) = clampOffset(bitmap.width, bitmap.height, fw, fh, scale, ox + pan.x / fw, oy + pan.y / fh)
-                                ox = cx; oy = cy
-                            }
-                        }
-                ) {
-                    Image(
-                        img, null,
-                        Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = scale; scaleY = scale; translationX = ox * fw; translationY = oy * fh
-                        },
-                        contentScale = ContentScale.Crop
-                    )
-                }
-                Slider(
-                    value = scale, valueRange = 1f..6f,
-                    onValueChange = {
-                        scale = it
-                        val (cx, cy) = clampOffset(bitmap.width, bitmap.height, fw, fh, scale, ox, oy); ox = cx; oy = cy
-                    }
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onCancel, Modifier.weight(1f)) { Text("Batal") }
-                    Button(onClick = { onConfirm(scale, ox, oy) }, Modifier.weight(1f)) { Text("Terapkan") }
-                }
-            }
-        }
+private fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Surface(
+        modifier, shape = RoundedCornerShape(22.dp), color = c.surface.copy(alpha = .55f),
+        border = BorderStroke(1.dp, c.outlineVariant.copy(alpha = .5f))
+    ) { Column(content = content) }
+}
+
+@Composable
+private fun Reveal(visible: Boolean, delayMs: Int, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible,
+        enter = fadeIn(tween(550, delayMs)) + slideInVertically(tween(550, delayMs)) { it / 4 }
+    ) { content() }
+}
+
+@Composable
+private fun Aurora(modifier: Modifier) {
+    val c = MaterialTheme.colorScheme
+    val inf = rememberInfiniteTransition(label = "aurora")
+    val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "t")
+    Box(modifier.drawBehind {
+        drawRect(Brush.radialGradient(
+            listOf(c.primary.copy(.26f), Color.Transparent),
+            center = Offset(size.width * (.15f + .6f * t), size.height * .30f), radius = size.width * .95f))
+        drawRect(Brush.radialGradient(
+            listOf(c.tertiary.copy(.22f), Color.Transparent),
+            center = Offset(size.width * (.9f - .6f * t), size.height * .75f), radius = size.width * .9f))
+    })
+}
+
+@Composable
+private fun GlowBadge(text: String) {
+    Surface(shape = CircleShape, color = Color.White.copy(.16f)) {
+        Text(text, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = Color.White,
+            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 
-/* ───────────────────────── Player video ───────────────────────── */
+/* ═════════════════════ Player video ═════════════════════ */
 
+@OptIn(UnstableApi::class)
 @Composable
 private fun RexVideo(
     path: String, modifier: Modifier = Modifier, key: Any = path,
@@ -302,7 +482,10 @@ private fun RexVideo(
     AndroidView(
         modifier = modifier,
         factory = { c ->
-            (LayoutInflater.from(c).inflate(R.layout.rex_player_texture, null) as PlayerView).apply { this.player = player }
+            (LayoutInflater.from(c).inflate(R.layout.rex_player_texture, null) as PlayerView).apply {
+                this.player = player
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
         },
         update = {
             it.player = player
@@ -311,7 +494,146 @@ private fun RexVideo(
     )
 }
 
-/* ───────────────────────── Entry point + izin ───────────────────────── */
+/* ═════════════════════ Engine crop ═════════════════════ */
+
+@Composable
+private fun CropDialog(
+    req: CropReq, aspect: Float, circle: Boolean, title: String,
+    onCancel: () -> Unit, onConfirm: (Bitmap, Float, Float, Float, Long) -> Unit
+) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var bmp by remember { mutableStateOf(req.bitmap) }
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var off by remember { mutableStateOf(Offset.Zero) }
+    var vw by remember { mutableFloatStateOf(1f) }
+    var vh by remember { mutableFloatStateOf(1f) }
+    var startMs by remember { mutableFloatStateOf(0f) }
+
+    val canTrim = req.video != null && req.durationMs > MAX_CLIP_MS
+    val maxStart = (req.durationMs - MAX_CLIP_MS).coerceAtLeast(0L).toFloat()
+    val fw = min(vw * .9f, vh * .9f * aspect)
+    val fh = fw / aspect
+
+    fun clamp(z: Float, o: Offset): Offset {
+        val base = max(fw / bmp.width, fh / bmp.height)
+        val mx = max(0f, (bmp.width * base * z - fw) / 2f)
+        val my = max(0f, (bmp.height * base * z - fh) / 2f)
+        return Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
+    }
+
+    if (canTrim) {
+        LaunchedEffect(startMs) {
+            if (startMs > 0f) delay(220)
+            val f = withContext(Dispatchers.IO) { videoFrameAt(ctx, req.video!!, startMs.toLong()) }
+            if (f != null && f.width == bmp.width && f.height == bmp.height) bmp = f
+        }
+    }
+
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = Color(0xFF09090D)) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onCancel) { Icon(Icons.Default.Close, null, tint = Color.White) }
+                    Column(Modifier.weight(1f)) {
+                        Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Cubit & geser • ketuk 2x untuk zoom", color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (req.live) GlowBadge("LIVE") else if (req.video != null) GlowBadge("VIDEO")
+                    Spacer(Modifier.width(8.dp))
+                }
+
+                val img = remember(bmp) { bmp.asImageBitmap() }
+                Canvas(
+                    Modifier.weight(1f).fillMaxWidth()
+                        .onSizeChanged { vw = it.width.toFloat(); vh = it.height.toFloat() }
+                        .pointerInput(fw, fh, bmp) {
+                            detectTransformGestures { centroid, pan, gz, _ ->
+                                val nz = (zoom * gz).coerceIn(1f, 8f)
+                                val c = centroid - Offset(size.width / 2f, size.height / 2f)
+                                val q = (c - off) / zoom
+                                off = clamp(nz, c - q * nz + pan)
+                                zoom = nz
+                            }
+                        }
+                        .pointerInput(fw, fh, bmp) {
+                            detectTapGestures(onDoubleTap = {
+                                scope.launch {
+                                    val from = zoom
+                                    val to = if (from > 1.05f) 1f else 2.5f
+                                    animate(from, to, animationSpec = tween(280)) { v, _ ->
+                                        zoom = v; off = clamp(v, off)
+                                    }
+                                }
+                            })
+                        }
+                ) {
+                    val base = max(fw / img.width, fh / img.height)
+                    val s = base * zoom
+                    val dw = img.width * s
+                    val dh = img.height * s
+                    val cx = size.width / 2f + off.x
+                    val cy = size.height / 2f + off.y
+                    drawImage(
+                        img,
+                        dstOffset = IntOffset((cx - dw / 2f).roundToInt(), (cy - dh / 2f).roundToInt()),
+                        dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
+                        filterQuality = FilterQuality.High
+                    )
+                    val left = (size.width - fw) / 2f
+                    val top = (size.height - fh) / 2f
+                    val frame = Rect(left, top, left + fw, top + fh)
+                    val corner = CornerRadius(18.dp.toPx())
+                    val hole = Path().apply {
+                        fillType = PathFillType.EvenOdd
+                        addRect(Rect(0f, 0f, size.width, size.height))
+                        if (circle) addOval(frame) else addRoundRect(RoundRect(frame, corner))
+                    }
+                    drawPath(hole, Color.Black.copy(.72f))
+                    if (circle) {
+                        drawOval(Color.White, frame.topLeft, frame.size, style = Stroke(2.dp.toPx()))
+                    } else {
+                        drawRoundRect(Color.White, frame.topLeft, frame.size, corner, style = Stroke(2.dp.toPx()))
+                        val gl = Color.White.copy(.28f)
+                        for (k in 1..2) {
+                            drawLine(gl, Offset(left + fw * k / 3f, top), Offset(left + fw * k / 3f, top + fh), 1.dp.toPx())
+                            drawLine(gl, Offset(left, top + fh * k / 3f), Offset(left + fw, top + fh * k / 3f), 1.dp.toPx())
+                        }
+                    }
+                }
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (canTrim) {
+                        Text(
+                            "Pilih 4 detik: ${secs(startMs.toLong())} – ${secs(startMs.toLong() + MAX_CLIP_MS)}  (total ${secs(req.durationMs)})",
+                            color = Color.White, style = MaterialTheme.typography.labelLarge
+                        )
+                        Slider(value = startMs, onValueChange = { startMs = it }, valueRange = 0f..maxStart)
+                    } else if (req.video != null) {
+                        Text(
+                            if (req.live) "Live photo • gerakan ${secs(req.durationMs)} ikut disimpan"
+                            else "Video ${secs(req.durationMs)} • sudah ≤ 4 detik",
+                            color = Color.White.copy(.8f), style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    Text("Zoom", color = Color.White.copy(.7f), style = MaterialTheme.typography.labelMedium)
+                    Slider(value = zoom, valueRange = 1f..8f, onValueChange = { zoom = it; off = clamp(it, off) })
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconButton(enabled = req.video == null, onClick = { bmp = rotate90(bmp); zoom = 1f; off = Offset.Zero }) {
+                            Icon(Icons.Default.RotateRight, null, tint = Color.White.copy(if (req.video == null) 1f else .3f))
+                        }
+                        IconButton(onClick = { zoom = 1f; off = Offset.Zero }) { Icon(Icons.Default.Refresh, null, tint = Color.White) }
+                        Spacer(Modifier.weight(1f))
+                        OutlinedButton(onClick = onCancel) { Text("Batal") }
+                        Button(onClick = { onConfirm(bmp, zoom, off.x / fw, off.y / fh, startMs.toLong()) }) { Text("Terapkan") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ═════════════════════ Entry point + izin ═════════════════════ */
 
 @Composable
 fun RexLocalAccountScreen(padding: PaddingValues) {
@@ -348,34 +670,37 @@ private fun PermissionGate(padding: PaddingValues, onAllow: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val inf = rememberInfiniteTransition(label = "gate")
     val pulse by inf.animateFloat(1f, 1.12f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "pulse")
-    Column(
-        Modifier.fillMaxSize().padding(padding).padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            Modifier.size(110.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }.clip(CircleShape)
-                .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Lock, null, tint = colors.onPrimary, modifier = Modifier.size(48.dp)) }
-        Spacer(Modifier.height(24.dp))
-        Text("Izin penyimpanan diperlukan", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "RexAps menyimpan profil, story, dan video kamu langsung di folder Download/RexAps/.config/ agar tetap lokal tanpa server. " +
-                "Tanpa izin ini, aplikasi tidak bisa membaca atau menyimpan file tersebut.",
-            color = colors.onSurfaceVariant, textAlign = TextAlign.Center
-        )
-        if (Build.VERSION.SDK_INT >= 30) {
-            Spacer(Modifier.height(8.dp))
-            Text("Kamu akan dibawa ke Pengaturan. Aktifkan \"Izinkan akses ke semua file\", lalu kembali ke aplikasi.",
-                style = MaterialTheme.typography.bodySmall, color = colors.primary, textAlign = TextAlign.Center)
+    Box(Modifier.fillMaxSize().padding(padding)) {
+        Aurora(Modifier.fillMaxSize())
+        Column(
+            Modifier.fillMaxSize().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                Modifier.size(110.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }.clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Default.Lock, null, tint = colors.onPrimary, modifier = Modifier.size(48.dp)) }
+            Spacer(Modifier.height(24.dp))
+            Text("Izin penyimpanan diperlukan", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Profil, story, dan video kamu disimpan langsung di Download/RexAps/.config/ — 100% lokal, tanpa server. " +
+                    "Tanpa izin ini aplikasi tidak bisa membaca atau menyimpan file tersebut.",
+                color = colors.onSurfaceVariant, textAlign = TextAlign.Center
+            )
+            if (Build.VERSION.SDK_INT >= 30) {
+                Spacer(Modifier.height(10.dp))
+                Text("Kamu akan dibawa ke Pengaturan. Aktifkan \"Izinkan akses ke semua file\", lalu kembali ke aplikasi.",
+                    style = MaterialTheme.typography.bodySmall, color = colors.primary, textAlign = TextAlign.Center)
+            }
+            Spacer(Modifier.height(26.dp))
+            Button(onClick = onAllow, Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("Izinkan akses") }
         }
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onAllow, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) { Text("Izinkan akses") }
     }
 }
 
-/* ───────────────────────── Halaman utama (aesthetic) ───────────────────────── */
+/* ═════════════════════ Halaman utama ═════════════════════ */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -389,15 +714,14 @@ private fun RexProfileHome(padding: PaddingValues) {
     var rev by remember { mutableIntStateOf(0) }
     var stories by remember { mutableStateOf(listOf<RexStory>()) }
     var videos by remember { mutableStateOf(listOf<File>()) }
+    var tab by remember { mutableIntStateOf(0) }
     var showEdit by remember { mutableStateOf(false) }
     var showStoryCompose by remember { mutableStateOf(false) }
     var storyIndex by remember { mutableStateOf<Int?>(null) }
     var feedIndex by remember { mutableStateOf<Int?>(null) }
     var crop by remember { mutableStateOf<CropReq?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
     var visible by remember { mutableStateOf(false) }
-
-    fun refreshStories() { scope.launch { stories = withContext(Dispatchers.IO) { loadStories() } } }
-    fun refreshVideos() { scope.launch { videos = withContext(Dispatchers.IO) { loadVideos() } } }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { RexPaths.story.mkdirs(); RexPaths.video.mkdirs() }
@@ -407,23 +731,18 @@ private fun RexProfileHome(padding: PaddingValues) {
         while (true) { stories = withContext(Dispatchers.IO) { loadStories() }; delay(60_000) }
     }
 
-    /* ── pickers ── */
-    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            val isVid = (context.contentResolver.getType(uri) ?: "").startsWith("video")
-            val bmp = withContext(Dispatchers.IO) {
-                if (isVid) videoFrame { setDataSource(context, uri) } else decodeSampled(context, uri)
-            }
-            if (bmp == null) toast("Media tidak bisa dibaca")
-            else crop = CropReq(if (isVid) CropTarget.BANNER_VIDEO else CropTarget.BANNER_IMAGE, bmp, uri)
+    fun handlePick(uri: Uri?, target: CropTarget) {
+        if (uri == null) return
+        scope.launch {
+            busy = "Membaca media…"
+            val req = withContext(Dispatchers.IO) { buildCropReq(context, uri, target) }
+            busy = null
+            if (req == null) toast("Media tidak bisa dibaca") else crop = req
         }
     }
-    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            val bmp = withContext(Dispatchers.IO) { decodeSampled(context, uri) }
-            if (bmp == null) toast("Gambar tidak bisa dibaca") else crop = CropReq(CropTarget.AVATAR, bmp, uri)
-        }
-    }
+
+    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { handlePick(it, CropTarget.BANNER) }
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { handlePick(it, CropTarget.AVATAR) }
     val storyVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch(Dispatchers.IO) {
             try {
@@ -448,127 +767,140 @@ private fun RexProfileHome(padding: PaddingValues) {
         }
     }
 
-    fun applyCrop(req: CropReq, s: Float, ox: Float, oy: Float) {
+    fun applyCrop(req: CropReq, bmp: Bitmap, s: Float, ox: Float, oy: Float, startMs: Long) {
         crop = null
-        scope.launch(Dispatchers.IO) {
-            try {
-                RexPaths.account.mkdirs()
-                var a = acct
-                when (req.target) {
-                    CropTarget.AVATAR -> {
-                        val out = renderCrop(req.bitmap, 1f, 768, s, ox, oy)
-                        val f = File(RexPaths.account, "profile-pictures.png")
-                        FileOutputStream(f).use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                        a = a.copy(picturePath = f.absolutePath)
-                    }
-                    CropTarget.BANNER_IMAGE -> {
-                        val out = renderCrop(req.bitmap, BANNER_ASPECT, 1600, s, ox, oy)
-                        val f = File(RexPaths.account, "banner.png")
-                        FileOutputStream(f).use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                        File(RexPaths.account, "banner.mp4").delete()
-                        a = a.copy(bannerType = "image", bannerPath = f.absolutePath, bannerScale = 1f, bannerX = 0f, bannerY = 0f)
-                    }
-                    CropTarget.BANNER_VIDEO -> {
-                        val f = File(RexPaths.account, "banner.mp4")
-                        context.contentResolver.openInputStream(req.uri)?.use { i -> FileOutputStream(f).use { i.copyTo(it) } }
-                        File(RexPaths.account, "banner.png").delete()
-                        a = a.copy(bannerType = "video", bannerPath = f.absolutePath, bannerScale = s, bannerX = ox, bannerY = oy)
-                    }
-                }
-                writeAccount(a)
-                withContext(Dispatchers.Main) { acct = a; rev++ }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { toast("Gagal menyimpan: ${e.message ?: "izin ditolak"}") }
+        scope.launch {
+            busy = "Memproses…"
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    RexPaths.account.mkdirs()
+                    val isAvatar = req.target == CropTarget.AVATAR
+                    val still = if (isAvatar) renderCrop(bmp, 1f, 768, s, ox, oy) else renderCrop(bmp, BANNER_ASPECT, 1600, s, ox, oy)
+                    val png = File(RexPaths.account, if (isAvatar) "profile-pictures.png" else "banner.png")
+                    FileOutputStream(png).use { still.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    val vf = File(RexPaths.account, if (isAvatar) "profile-video.mp4" else "banner.mp4")
+                    var vpath = ""
+                    var videoFailed = false
+                    if (req.video != null) {
+                        if (trimVideo(context, req.video, startMs, vf)) vpath = vf.absolutePath else { vf.delete(); videoFailed = true }
+                    } else vf.delete()
+                    val a = if (isAvatar)
+                        acct.copy(picturePath = png.absolutePath, pictureVideo = vpath, pictureScale = s, pictureX = ox, pictureY = oy)
+                    else
+                        acct.copy(bannerPath = png.absolutePath, bannerVideo = vpath, bannerScale = s, bannerX = ox, bannerY = oy)
+                    writeAccount(a)
+                    req.video?.file?.delete()
+                    a to videoFailed
+                } catch (e: Exception) { null }
+            }
+            busy = null
+            if (result == null) toast("Gagal menyimpan (cek izin)")
+            else {
+                acct = result.first; rev++
+                if (result.second) toast("Video tidak bisa diproses, dipakai sebagai foto")
             }
         }
     }
 
-    /* ── konten ── */
     val scroll = rememberScrollState()
-    Column(Modifier.fillMaxSize().padding(padding).verticalScroll(scroll)) {
-        // Banner + avatar (avatar menempel di banner)
-        Box(Modifier.fillMaxWidth()) {
-            BannerView(acct, rev, Modifier.fillMaxWidth().aspectRatio(BANNER_ASPECT)) { scroll.value * 0.5f }
-            AnimatedAvatar(
-                acct.picturePath, rev,
-                Modifier.align(Alignment.BottomStart).offset(x = 20.dp, y = 52.dp)
-            ) { showEdit = true }
+    Box(Modifier.fillMaxSize().padding(padding).background(colors.background)) {
+        Aurora(Modifier.fillMaxSize())
+
+        Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+            Box(Modifier.fillMaxWidth()) {
+                BannerView(acct, rev, Modifier.fillMaxWidth().aspectRatio(BANNER_ASPECT)) { scroll.value * 0.5f }
+                StoryRingAvatar(
+                    acct, rev, stories.size, 112.dp,
+                    Modifier.align(Alignment.BottomStart).offset(x = 20.dp, y = 56.dp),
+                    onClick = { if (stories.isNotEmpty()) storyIndex = 0 else showEdit = true },
+                    onAdd = { showStoryCompose = true }
+                )
+            }
+
+            Column(
+                Modifier.padding(horizontal = 20.dp).padding(top = 68.dp, bottom = 110.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                Reveal(visible, 0) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(acct.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                        Surface(shape = CircleShape, color = colors.primary.copy(.14f)) {
+                            Text(acct.username, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = colors.primary,
+                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (acct.bio.isNotBlank()) Text(acct.bio, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+
+                Reveal(visible, 120) {
+                    GlassCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            StatItem(stories.size, "Story", Modifier.weight(1f))
+                            Box(Modifier.width(1.dp).height(28.dp).background(colors.outlineVariant))
+                            StatItem(videos.size, "Video", Modifier.weight(1f))
+                            Box(Modifier.width(1.dp).height(28.dp).background(colors.outlineVariant))
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Lock, null, tint = colors.primary, modifier = Modifier.size(22.dp))
+                                Text("100% Lokal", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+
+                Reveal(visible, 220) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = { showEdit = true }, Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(16.dp)) {
+                            Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Edit profil")
+                        }
+                        FilledTonalButton(onClick = { showStoryCompose = true }, Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(16.dp)) {
+                            Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Buat story")
+                        }
+                    }
+                }
+
+                Reveal(visible, 320) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SegTabs(listOf("Video saya", "Story 24 jam"), tab) { tab = it }
+                        AnimatedContent(tab, transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(140)) }, label = "tab") { t ->
+                            if (t == 0) {
+                                Grid3(videos.size + 1) { i, m ->
+                                    if (i == 0) AddTile(m, "Tambah", "mp4 • png • jpg") {
+                                        videoPicker.launch(arrayOf("video/mp4", "image/png", "image/jpeg"))
+                                    } else {
+                                        val f = videos[i - 1]
+                                        Box(m.pressable { feedIndex = i - 1 }.clip(RoundedCornerShape(16.dp))) {
+                                            MediaThumb(f, Modifier.fillMaxSize())
+                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                                                colorStops = arrayOf(0f to Color.Transparent, .65f to Color.Transparent, 1f to Color.Black.copy(.55f)))))
+                                            Icon(
+                                                if (f.extension.lowercase() == "mp4") Icons.Default.Movie else Icons.Default.Image, null,
+                                                tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Grid3(stories.size + 1) { i, m ->
+                                    if (i == 0) AddTile(m, "Story baru", "teks • mp4") { showStoryCompose = true }
+                                    else StoryTile(stories[i - 1], acct, rev, m) { storyIndex = i - 1 }
+                                }
+                            }
+                        }
+                        Text("Data: ${RexPaths.base.absolutePath}", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant.copy(.7f))
+                    }
+                }
+            }
         }
 
-        Column(Modifier.padding(horizontal = 20.dp).padding(top = 62.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            AnimatedVisibility(visible, enter = fadeIn(tween(700)) + slideInVertically(tween(700)) { it / 3 }) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(acct.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text(acct.username, color = colors.primary)
-                        }
-                        FilledTonalButton(onClick = { showEdit = true }) {
-                            Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit")
-                        }
-                    }
-                    if (acct.bio.isNotBlank()) Text(acct.bio, color = colors.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                        AssistChip(onClick = {}, label = { Text("${stories.size} story aktif") })
-                        AssistChip(onClick = {}, label = { Text("${videos.size} video") })
-                    }
-                }
-            }
-
-            // Story
-            Text("Story • hilang dalam 24 jam", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                item {
-                    Box(
-                        Modifier.size(72.dp).clip(CircleShape).background(colors.surfaceVariant)
-                            .border(2.dp, colors.outline, CircleShape).clickable { showStoryCompose = true },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Add, null, tint = colors.primary) }
-                }
-                items(stories.size) { i ->
-                    val st = stories[i]
-                    Box(
-                        Modifier.size(72.dp)
-                            .border(3.dp, Brush.sweepGradient(listOf(colors.primary, colors.tertiary, colors.primary)), CircleShape)
-                            .padding(5.dp).clip(CircleShape).clickable { storyIndex = i },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (st.isVideo) MediaThumb(st.file, Modifier.fillMaxSize())
-                        else Box(
-                            Modifier.fillMaxSize().background(Brush.linearGradient(storyGradients[st.gradient.mod(storyGradients.size)])),
-                            contentAlignment = Alignment.Center
-                        ) { Text("Aa", color = Color.White, fontWeight = FontWeight.Bold) }
-                    }
-                }
-            }
-
-            // Video saya
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Video saya", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { videoPicker.launch(arrayOf("video/mp4", "image/png", "image/jpeg")) }) {
-                    Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Tambah")
-                }
-            }
-            if (videos.isEmpty()) {
-                Text("Belum ada. Tambahkan .mp4, .png, atau .jpg lalu geser seperti TikTok.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            } else {
-                videos.chunked(3).forEachIndexed { rowIdx, row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        row.forEachIndexed { colIdx, f ->
-                            MediaThumb(
-                                f, Modifier.weight(1f).aspectRatio(9f / 16f).clip(RoundedCornerShape(14.dp))
-                                    .clickable { feedIndex = rowIdx * 3 + colIdx }
-                            )
-                        }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
-            Text("Data: ${RexPaths.base.absolutePath}", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+        // tombol melayang di atas banner
+        Surface(
+            Modifier.align(Alignment.TopEnd).padding(14.dp), shape = CircleShape, color = Color.Black.copy(.35f)
+        ) {
+            IconButton(onClick = { showEdit = true }) { Icon(Icons.Default.PhotoCamera, null, tint = Color.White) }
         }
     }
 
-    /* ── overlay / dialog ── */
+    /* ── Edit profil ── */
     if (showEdit) {
         var n by remember { mutableStateOf(acct.name) }
         var u by remember { mutableStateOf(acct.username) }
@@ -579,25 +911,28 @@ private fun RexProfileHome(padding: PaddingValues) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("Edit profil", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                OutlinedTextField(n, { n = it }, label = { Text("Nama") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(u, { u = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(b, { b = it }, label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 5)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { bannerPicker.launch(arrayOf("image/*", "video/*")) }, Modifier.weight(1f)) {
-                        Icon(Icons.Default.AddAPhoto, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Banner")
+                    MediaOption(Icons.Default.AddAPhoto, "Banner", "Foto • video 4 dtk • live", Modifier.weight(1f)) {
+                        showEdit = false; bannerPicker.launch(arrayOf("image/*", "video/*"))
                     }
-                    OutlinedButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }, Modifier.weight(1f)) {
-                        Icon(Icons.Default.AccountCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Foto profil")
+                    MediaOption(Icons.Default.AccountCircle, "Foto profil", "Foto • video 4 dtk • live", Modifier.weight(1f)) {
+                        showEdit = false; avatarPicker.launch(arrayOf("image/*", "video/*"))
                     }
                 }
-                if (acct.bannerType != "none") {
-                    TextButton(onClick = {
-                        val a = acct.copy(bannerType = "none", bannerPath = "")
+                OutlinedTextField(n, { n = it }, label = { Text("Nama") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(u, { u = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(b, { b = it }, label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 5, shape = RoundedCornerShape(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (acct.bannerPath.isNotBlank() || acct.bannerVideo.isNotBlank()) TextButton(onClick = {
+                        val a = acct.copy(bannerPath = "", bannerVideo = "")
                         acct = a; rev++
-                        scope.launch(Dispatchers.IO) {
-                            File(RexPaths.account, "banner.png").delete(); File(RexPaths.account, "banner.mp4").delete(); writeAccount(a)
-                        }
+                        scope.launch(Dispatchers.IO) { File(RexPaths.account, "banner.png").delete(); File(RexPaths.account, "banner.mp4").delete(); writeAccount(a) }
                     }) { Text("Hapus banner") }
+                    if (acct.picturePath.isNotBlank()) TextButton(onClick = {
+                        val a = acct.copy(picturePath = "", pictureVideo = "")
+                        acct = a; rev++
+                        scope.launch(Dispatchers.IO) { File(RexPaths.account, "profile-pictures.png").delete(); File(RexPaths.account, "profile-video.mp4").delete(); writeAccount(a) }
+                    }) { Text("Hapus foto profil") }
                 }
                 Button(
                     onClick = {
@@ -609,7 +944,7 @@ private fun RexProfileHome(padding: PaddingValues) {
                         }
                         showEdit = false
                     },
-                    Modifier.fillMaxWidth()
+                    Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)
                 ) { Text("Simpan profil") }
             }
         }
@@ -633,7 +968,7 @@ private fun RexProfileHome(padding: PaddingValues) {
 
     storyIndex?.let { idx ->
         StoryViewer(
-            stories, idx,
+            acct, rev, stories, idx,
             onDelete = { s -> scope.launch(Dispatchers.IO) { s.file.delete(); stories = loadStories() } },
             onClose = { storyIndex = null }
         )
@@ -641,7 +976,7 @@ private fun RexProfileHome(padding: PaddingValues) {
 
     feedIndex?.let { idx ->
         VideoFeed(
-            videos, idx,
+            acct, rev, videos, idx,
             onDelete = { f -> scope.launch(Dispatchers.IO) { f.delete(); videos = loadVideos() } },
             onClose = { feedIndex = null }
         )
@@ -649,107 +984,257 @@ private fun RexProfileHome(padding: PaddingValues) {
 
     crop?.let { req ->
         CropDialog(
-            bitmap = req.bitmap,
+            req = req,
             aspect = if (req.target == CropTarget.AVATAR) 1f else BANNER_ASPECT,
             circle = req.target == CropTarget.AVATAR,
             title = if (req.target == CropTarget.AVATAR) "Crop foto profil" else "Crop banner",
-            onCancel = { crop = null },
-            onConfirm = { s, ox, oy -> applyCrop(req, s, ox, oy) }
+            onCancel = { crop = null; req.video?.file?.delete() },
+            onConfirm = { bmp, s, ox, oy, st -> applyCrop(req, bmp, s, ox, oy, st) }
         )
+    }
+
+    busy?.let { msg ->
+        Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+            Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp) {
+                Row(Modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+                    Text(msg)
+                }
+            }
+        }
     }
 }
 
-/* ───────────────────────── Komponen visual ───────────────────────── */
+/* ═════════════════════ Komponen visual ═════════════════════ */
+
+@Composable
+private fun StatItem(value: Int, label: String, modifier: Modifier) {
+    val v by animateIntAsState(value, tween(900), label = "stat")
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$v", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SegTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = c.surfaceVariant.copy(.55f)) {
+        Row(Modifier.padding(4.dp)) {
+            labels.forEachIndexed { i, l ->
+                val sel = i == selected
+                val bg by animateColorAsState(if (sel) c.primary else Color.Transparent, label = "tabbg")
+                val fg by animateColorAsState(if (sel) c.onPrimary else c.onSurfaceVariant, label = "tabfg")
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(bg).clickable { onSelect(i) }.padding(vertical = 11.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text(l, color = fg, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Grid3(count: Int, gap: Dp = 8.dp, cell: @Composable (Int, Modifier) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+        for (r in 0 until (count + 2) / 3) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                for (cIdx in 0 until 3) {
+                    val i = r * 3 + cIdx
+                    if (i < count) cell(i, Modifier.weight(1f).aspectRatio(9f / 16f)) else Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddTile(modifier: Modifier, title: String, sub: String, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Box(
+        modifier.pressable(onClick).clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(c.primary.copy(.18f), c.tertiary.copy(.18f))))
+            .border(1.dp, c.primary.copy(.4f), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Default.Add, null, tint = c.primary, modifier = Modifier.size(28.dp))
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MediaOption(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Surface(modifier.pressable(onClick), shape = RoundedCornerShape(18.dp), color = c.surfaceVariant) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, null, tint = c.primary)
+            Text(title, fontWeight = FontWeight.Bold)
+            Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
+        }
+    }
+}
 
 @Composable
 private fun BannerView(acct: RexLocalAccount, rev: Int, modifier: Modifier, parallax: () -> Float) {
     val colors = MaterialTheme.colorScheme
+    val bg = colors.background
     val inf = rememberInfiniteTransition(label = "banner")
     val kb by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "kb")
     val shift by inf.animateFloat(0f, 900f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Reverse), label = "shift")
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
-    val bmp by produceState<Bitmap?>(null, acct.bannerPath, acct.bannerType, rev) {
-        value = if (acct.bannerType == "image") withContext(Dispatchers.IO) { decodeFileSampled(acct.bannerPath, 2048) } else null
+    val bmp by produceState<Bitmap?>(null, acct.bannerPath, rev) {
+        value = if (acct.bannerPath.isNotBlank()) withContext(Dispatchers.IO) { decodeFileSampled(acct.bannerPath, 2048) } else null
     }
+    val hasVideo = acct.bannerVideo.isNotBlank() && File(acct.bannerVideo).exists()
     Box(modifier.clipToBounds().onSizeChanged { w = it.width.toFloat(); h = it.height.toFloat() }) {
         Box(Modifier.fillMaxSize().graphicsLayer { translationY = parallax() }) {
             val b = bmp
-            when {
-                acct.bannerType == "video" && File(acct.bannerPath).exists() -> RexVideo(
-                    acct.bannerPath, Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = acct.bannerScale; scaleY = acct.bannerScale
-                        translationX = acct.bannerX * w; translationY = acct.bannerY * h
-                    }, key = rev
-                )
-                b != null -> Image(
+            if (b != null) {
+                Image(
                     b.asImageBitmap(), null,
                     Modifier.fillMaxSize().graphicsLayer {
-                        val z = 1.06f + 0.08f * kb          // efek Ken Burns pelan
-                        scaleX = z; scaleY = z
-                        translationX = (kb - .5f) * 24f; translationY = (.5f - kb) * 12f
+                        if (!hasVideo) {
+                            val z = 1.08f + 0.08f * kb
+                            scaleX = z; scaleY = z
+                            translationX = (kb - .5f) * 24f; translationY = (.5f - kb) * 12f
+                        }
                     },
                     contentScale = ContentScale.Crop
                 )
-                else -> Box(Modifier.fillMaxSize().drawBehind {
+            } else if (!hasVideo) {
+                Box(Modifier.fillMaxSize().drawBehind {
                     drawRect(Brush.linearGradient(
                         listOf(colors.primary, colors.tertiary, colors.secondary),
                         start = Offset(shift, 0f), end = Offset(shift + 900f, 900f), tileMode = TileMode.Mirror
                     ))
                 })
             }
+            if (hasVideo) {
+                RexVideo(
+                    acct.bannerVideo,
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = acct.bannerScale; scaleY = acct.bannerScale
+                        translationX = acct.bannerX * w; translationY = acct.bannerY * h
+                    }, key = rev
+                )
+            }
         }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.35f)))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+            colorStops = arrayOf(0f to Color.Black.copy(.25f), .25f to Color.Transparent, .6f to Color.Transparent, 1f to bg))))
     }
 }
 
+/** Isi lingkaran PP: foto, atau video loop jika PP berupa video/live. */
 @Composable
-private fun AnimatedAvatar(path: String, rev: Int, modifier: Modifier, onClick: () -> Unit) {
+private fun AvatarContent(acct: RexLocalAccount, rev: Int, animate: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    val inf = rememberInfiniteTransition(label = "avatar")
-    val angle by inf.animateFloat(0f, 360f, infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "ring")
-    val bob by inf.animateFloat(-4f, 4f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob")
-    var appear by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appear = true }
-    val pop by animateFloatAsState(if (appear) 1f else 0.2f, spring(Spring.DampingRatioMediumBouncy), label = "pop")
-    val bmp by produceState<Bitmap?>(null, path, rev) {
-        value = if (path.isBlank()) null else withContext(Dispatchers.IO) { decodeFileSampled(path, 768) }
+    var sz by remember { mutableStateOf(IntSize.Zero) }
+    val bmp by produceState<Bitmap?>(null, acct.picturePath, rev) {
+        value = if (acct.picturePath.isBlank()) null else withContext(Dispatchers.IO) { decodeFileSampled(acct.picturePath, 768) }
     }
-    Box(
-        modifier.size(104.dp)
-            .graphicsLayer { translationY = bob * density; scaleX = pop; scaleY = pop }
-            .drawBehind {
-                rotate(angle) {
-                    drawCircle(
-                        Brush.sweepGradient(listOf(colors.primary, colors.tertiary, colors.secondary, colors.primary)),
-                        radius = size.minDimension / 2 - 2.dp.toPx(), style = Stroke(width = 4.dp.toPx())
-                    )
-                }
-            }
-            .padding(7.dp).clip(CircleShape).background(colors.surfaceVariant).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
+    val hasVideo = animate && acct.pictureVideo.isNotBlank() && File(acct.pictureVideo).exists()
+    Box(modifier.clip(CircleShape).background(colors.surfaceVariant).onSizeChanged { sz = it }, contentAlignment = Alignment.Center) {
         val b = bmp
         if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Icon(Icons.Default.AccountCircle, null, Modifier.size(72.dp), tint = colors.primary)
+        else Icon(Icons.Default.AccountCircle, null, Modifier.fillMaxSize(0.8f), tint = colors.primary)
+        if (hasVideo) {
+            RexVideo(
+                acct.pictureVideo,
+                Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = acct.pictureScale; scaleY = acct.pictureScale
+                    translationX = acct.pictureX * sz.width; translationY = acct.pictureY * sz.height
+                }, key = rev
+            )
+        }
+    }
+}
+
+/** PP dengan ring story bersegmen (jumlah segmen = jumlah story aktif). */
+@Composable
+private fun StoryRingAvatar(
+    acct: RexLocalAccount, rev: Int, storyCount: Int, dia: Dp, modifier: Modifier,
+    animate: Boolean = true, onClick: () -> Unit, onAdd: (() -> Unit)? = null
+) {
+    val c = MaterialTheme.colorScheme
+    val inf = rememberInfiniteTransition(label = "ring")
+    val angle by inf.animateFloat(0f, 360f, infiniteRepeatable(tween(7000, easing = LinearEasing)), label = "angle")
+    val bob by inf.animateFloat(-3f, 3f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob")
+    var appear by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { appear = true }
+    val pop by animateFloatAsState(if (appear) 1f else .2f, spring(Spring.DampingRatioMediumBouncy), label = "pop")
+    val ringColors = listOf(c.primary, c.tertiary, c.secondary, c.primary)
+
+    Box(
+        modifier.size(dia)
+            .graphicsLayer { translationY = if (animate) bob * density else 0f; scaleX = pop; scaleY = pop }
+            .drawBehind {
+                val sw = 3.5.dp.toPx()
+                val d = this.size.minDimension
+                rotate(angle) {
+                    val brush = Brush.sweepGradient(ringColors)
+                    if (storyCount in 2..12) {
+                        val seg = 360f / storyCount
+                        for (i in 0 until storyCount) {
+                            drawArc(brush, -90f + i * seg + 5f, seg - 10f, false,
+                                Offset(sw / 2, sw / 2), Size(d - sw, d - sw), style = Stroke(sw, cap = StrokeCap.Round))
+                        }
+                    } else {
+                        drawCircle(brush, radius = d / 2 - sw / 2, style = Stroke(sw), alpha = if (storyCount == 0) .5f else 1f)
+                    }
+                }
+            }
+    ) {
+        AvatarContent(acct, rev, animate, Modifier.fillMaxSize().padding(7.dp).pressable(onClick))
+        if (onAdd != null) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(30.dp).clip(CircleShape).background(c.primary)
+                    .border(3.dp, c.background, CircleShape).pressable(onAdd),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Default.Add, null, tint = c.onPrimary, modifier = Modifier.size(16.dp)) }
+        }
     }
 }
 
 @Composable
 private fun MediaThumb(file: File, modifier: Modifier) {
+    val ctx = LocalContext.current
     val isVideo = file.extension.lowercase() == "mp4"
     val bmp by produceState<Bitmap?>(null, file.path) {
         value = withContext(Dispatchers.IO) {
-            if (isVideo) videoFrame { setDataSource(file.path) } else decodeFileSampled(file.path, 480)
+            if (isVideo) videoFrameAt(ctx, VSrc(null, file), 0) else decodeFileSampled(file.path, 600)
         }
     }
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-        if (isVideo) Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(.9f))
+        if (isVideo) Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(.9f), modifier = Modifier.size(34.dp))
     }
 }
 
-/* ───────────────────────── Story ───────────────────────── */
+/* ═════════════════════ Story ═════════════════════ */
+
+@Composable
+private fun StoryTile(st: RexStory, acct: RexLocalAccount, rev: Int, modifier: Modifier, onClick: () -> Unit) {
+    val left = (DAY_MS - (System.currentTimeMillis() - st.time)).coerceAtLeast(0)
+    Box(modifier.pressable(onClick).clip(RoundedCornerShape(16.dp))) {
+        if (st.isVideo) MediaThumb(st.file, Modifier.fillMaxSize())
+        else Box(
+            Modifier.fillMaxSize().background(Brush.linearGradient(storyGradients[st.gradient.mod(storyGradients.size)])),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(st.text, color = Color.White, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodyMedium)
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+            colorStops = arrayOf(0f to Color.Black.copy(.35f), .3f to Color.Transparent, .7f to Color.Transparent, 1f to Color.Black.copy(.6f)))))
+        AvatarContent(acct, rev, false, Modifier.align(Alignment.TopStart).padding(8.dp).size(28.dp).border(2.dp, Color.White, CircleShape))
+        Text("${left / 3_600_000}j lagi", color = Color.White, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+    }
+}
 
 @Composable
 private fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> Unit, onVideo: () -> Unit) {
@@ -757,27 +1242,30 @@ private fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> U
     var g by remember { mutableIntStateOf(0) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Buat story") },
+        shape = RoundedCornerShape(26.dp),
+        title = { Text("Buat story", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
-                    Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(18.dp))
-                        .background(Brush.linearGradient(storyGradients[g])),
+                    Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(20.dp)).background(Brush.linearGradient(storyGradients[g])),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text.ifBlank { "Tulis sesuatu…" }, color = Color.White, fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center, modifier = Modifier.padding(12.dp), maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        textAlign = TextAlign.Center, modifier = Modifier.padding(14.dp), maxLines = 4, overflow = TextOverflow.Ellipsis)
                 }
-                OutlinedTextField(text, { if (it.length <= 200) text = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Teks story") })
+                OutlinedTextField(text, { if (it.length <= 200) text = it }, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Teks story") }, shape = RoundedCornerShape(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    storyGradients.forEachIndexed { i, c ->
+                    storyGradients.forEachIndexed { i, cols ->
                         Box(
-                            Modifier.size(32.dp).clip(CircleShape).background(Brush.linearGradient(c))
+                            Modifier.size(32.dp).clip(CircleShape).background(Brush.linearGradient(cols))
                                 .border(if (i == g) 3.dp else 0.dp, Color.White, CircleShape).clickable { g = i }
                         )
                     }
                 }
-                TextButton(onClick = onVideo) { Text("Atau pilih video .mp4") }
+                OutlinedButton(onClick = onVideo, Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Default.Videocam, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pilih video .mp4")
+                }
             }
         },
         confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onText(text.trim(), g) }) { Text("Posting teks") } },
@@ -786,27 +1274,50 @@ private fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> U
 }
 
 @Composable
-private fun StoryViewer(stories: List<RexStory>, start: Int, onDelete: (RexStory) -> Unit, onClose: () -> Unit) {
+private fun StoryViewer(
+    acct: RexLocalAccount, rev: Int, stories: List<RexStory>, start: Int,
+    onDelete: (RexStory) -> Unit, onClose: () -> Unit
+) {
+    val ctx = LocalContext.current
     var index by remember { mutableIntStateOf(start) }
     val progress = remember { Animatable(0f) }
+    var paused by remember { mutableStateOf(false) }
+    var dur by remember(index) { mutableLongStateOf(0L) }
     val story = stories.getOrNull(index)
     if (story == null) { LaunchedEffect(Unit) { onClose() }; return }
 
-    val next = { if (index < stories.lastIndex) index++ else onClose() }
     LaunchedEffect(index) {
-        val d = if (story.isVideo) withContext(Dispatchers.IO) { videoDuration(story.file.path) } else 5000L
         progress.snapTo(0f)
-        progress.animateTo(1f, tween(d.toInt().coerceIn(2000, 60000), easing = LinearEasing))
-        next()
+        dur = if (story.isVideo)
+            (withContext(Dispatchers.IO) { videoDurationOf(ctx, VSrc(null, story.file)) }).takeIf { it > 0 } ?: 15000L
+        else 5000L
+    }
+    LaunchedEffect(index, paused, dur) {
+        if (dur > 0 && !paused) {
+            val remaining = ((1f - progress.value) * dur).toInt().coerceAtLeast(200)
+            progress.animateTo(1f, tween(remaining, easing = LinearEasing))
+            if (index < stories.lastIndex) index++ else onClose()
+        }
     }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
-            Modifier.fillMaxSize().background(Color.Black).pointerInput(index) {
-                detectTapGestures { o -> if (o.x < size.width / 3f) { if (index > 0) index-- } else next() }
-            }
+            Modifier.fillMaxSize().background(Color.Black)
+                .pointerInput(index) {
+                    detectTapGestures(
+                        onPress = { paused = true; tryAwaitRelease(); paused = false },
+                        onTap = { o ->
+                            if (o.x < size.width / 3f) { if (index > 0) index-- }
+                            else if (index < stories.lastIndex) index++ else onClose()
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    var total = 0f
+                    detectVerticalDragGestures(onDragStart = { total = 0f }, onDragEnd = { if (total > 160f) onClose() }) { _, d -> total += d }
+                }
         ) {
-            if (story.isVideo) RexVideo(story.file.path, Modifier.fillMaxSize(), loop = false, muted = false, fit = true)
+            if (story.isVideo) RexVideo(story.file.path, Modifier.fillMaxSize(), key = index, loop = false, muted = false, playing = !paused, fit = true)
             else Box(
                 Modifier.fillMaxSize().background(Brush.linearGradient(storyGradients[story.gradient.mod(storyGradients.size)])),
                 contentAlignment = Alignment.Center
@@ -814,6 +1325,7 @@ private fun StoryViewer(stories: List<RexStory>, start: Int, onDelete: (RexStory
                 Text(story.text, color = Color.White, style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(32.dp))
             }
+            Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(.55f), Color.Transparent))))
             Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     stories.forEachIndexed { i, _ ->
@@ -823,9 +1335,14 @@ private fun StoryViewer(stories: List<RexStory>, start: Int, onDelete: (RexStory
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val left = DAY_MS - (System.currentTimeMillis() - story.time)
-                    Text("Hilang ${left / 3_600_000}j ${left / 60_000 % 60}m lagi", color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AvatarContent(acct, rev, false, Modifier.size(38.dp).border(1.5.dp, Color.White, CircleShape))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        val left = (DAY_MS - (System.currentTimeMillis() - story.time)).coerceAtLeast(0)
+                        Text(acct.name, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                        Text("Hilang ${left / 3_600_000}j ${left / 60_000 % 60}m lagi", color = Color.White.copy(.75f), style = MaterialTheme.typography.labelSmall)
+                    }
                     IconButton(onClick = { onDelete(story); onClose() }) { Icon(Icons.Default.Delete, null, tint = Color.White) }
                     IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color.White) }
                 }
@@ -834,19 +1351,23 @@ private fun StoryViewer(stories: List<RexStory>, start: Int, onDelete: (RexStory
     }
 }
 
-/* ───────────────────────── Feed ala TikTok ───────────────────────── */
+/* ═════════════════════ Feed ala TikTok ═════════════════════ */
 
 @Composable
-private fun VideoFeed(files: List<File>, start: Int, onDelete: (File) -> Unit, onClose: () -> Unit) {
+private fun VideoFeed(acct: RexLocalAccount, rev: Int, files: List<File>, start: Int, onDelete: (File) -> Unit, onClose: () -> Unit) {
     if (files.isEmpty()) { LaunchedEffect(Unit) { onClose() }; return }
     val pager = rememberPagerState(initialPage = start.coerceIn(0, files.lastIndex)) { files.size }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             VerticalPager(pager, Modifier.fillMaxSize()) { page ->
-                FeedItem(files[page], active = pager.currentPage == page)
+                FeedItem(files[page], acct, rev, active = pager.currentPage == page)
             }
-            Row(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${pager.currentPage + 1}/${files.size}", color = Color.White, modifier = Modifier.weight(1f))
+            Box(Modifier.fillMaxWidth().height(120.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(.5f), Color.Transparent))))
+            Row(
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${pager.currentPage + 1} / ${files.size}", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 IconButton(onClick = { onDelete(files[pager.currentPage]) }) { Icon(Icons.Default.Delete, null, tint = Color.White) }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color.White) }
             }
@@ -855,11 +1376,11 @@ private fun VideoFeed(files: List<File>, start: Int, onDelete: (File) -> Unit, o
 }
 
 @Composable
-private fun FeedItem(file: File, active: Boolean) {
+private fun FeedItem(file: File, acct: RexLocalAccount, rev: Int, active: Boolean) {
     val isVideo = file.extension.lowercase() == "mp4"
     var userPlaying by remember(active) { mutableStateOf(true) }
     Box(
-        Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { userPlaying = !userPlaying },
+        Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { userPlaying = !userPlaying },
         contentAlignment = Alignment.Center
     ) {
         if (isVideo) {
@@ -869,12 +1390,21 @@ private fun FeedItem(file: File, active: Boolean) {
             val bmp by produceState<Bitmap?>(null, file.path) { value = withContext(Dispatchers.IO) { decodeFileSampled(file.path, 2000) } }
             bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
         }
-        Text(file.name, color = Color.White.copy(.8f), style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(16.dp))
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.6f)))))
+        Row(
+            Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            AvatarContent(acct, rev, false, Modifier.size(42.dp).border(2.dp, Color.White, CircleShape))
+            Column {
+                Text(acct.username, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(file.name, color = Color.White.copy(.75f), style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 
-/* ───────────────────────── Tab tema (tidak berubah) ───────────────────────── */
+/* ═════════════════════ Tab tema (tidak berubah) ═════════════════════ */
 
 @Composable
 fun ThemeTabContent(
