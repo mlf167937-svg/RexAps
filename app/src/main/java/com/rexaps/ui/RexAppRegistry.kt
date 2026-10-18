@@ -40,6 +40,13 @@ object RexAppRegistry {
         ),
 
         RexModule(
+            id = "rexmusicsync",
+            name = "RexMusicSync",
+            description = "Dengarkan musik bersama lewat Wi-Fi lokal",
+            available = true
+        ),
+
+        RexModule(
             id = "rexgit",
             name = "RexGit",
             description = "Git manager & repo",
