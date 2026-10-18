@@ -50,6 +50,7 @@ private const val TAB_HOME = 0
 private const val TAB_SEARCH = 1
 private const val TAB_PLAYLIST = 2
 private const val TAB_LIBRARY = 3
+private const val TAB_SYNC = 4
 
 @Composable
 fun RexMusicScreen(
@@ -347,7 +348,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                 Column {
                     val now = state.nowPlaying
 
-                    if (now != null) {
+                    if (now != null && tab != TAB_SYNC) {
                         MiniPlayer(
                             track = now,
                             state = state,
@@ -364,7 +365,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                         )
                     }
 
-                    NavigationBar {
+                    if (tab != TAB_SYNC) NavigationBar {
                         NavigationBarItem(
                             selected = tab == TAB_HOME,
                             onClick = {
@@ -428,6 +429,13 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                                 Text("Koleksi")
                             }
                         )
+
+                        NavigationBarItem(
+                            selected = tab == TAB_SYNC,
+                            onClick = { tab = TAB_SYNC },
+                            icon = { Icon(Icons.Default.Groups, contentDescription = null) },
+                            label = { Text("Sync") }
+                        )
                     }
                 }
             }
@@ -446,6 +454,10 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                             homeList,
                             onBack
                         )
+                    }
+
+                    TAB_SYNC -> {
+                        RexMusicSyncScreen(onBack = { tab = TAB_HOME })
                     }
 
                     TAB_SEARCH -> {

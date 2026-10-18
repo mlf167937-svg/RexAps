@@ -1,0 +1,19 @@
+RexMusicSync integration notes
+==============================
+
+Included in this project update:
+- RexMusic internal navigation item: Sync / RexMusicSync.
+- Local Wi-Fi control room over TCP 38741 and file transfer over TCP 38742.
+- Room name/password join validation and member presence heartbeat.
+- Shared queue metadata; any connected member can add a track only if it exists in that member's offline library.
+- Song bundle transfer (music.mp3, meta.json, lyrics.json, thumbnail files) is initiated immediately when a track is queued, not when playback begins.
+- Cache destination: Download/RexAps/.cache/rexmusicsync/<title-artist>/.
+- Imported copies are also indexed by RexMusic's existing offline library so the existing player can play them.
+- Host can adjust each connected member's RexMusic player gain independently; this is app playback gain, not Android system volume.
+- Remaining members keep playback when another member disconnects; a reconnecting client receives the current playback state and shared queue.
+
+Important verification status:
+- Build has NOT been verified. The Gradle wrapper could not download Gradle 8.11.1 because this environment could not resolve services.gradle.org (UnknownHostException).
+- This build was not tested on multiple physical Android devices. Wi-Fi client isolation, firewall behavior, storage permissions, and background restrictions can affect transfer.
+- Android's public Downloads directory access depends on the project's existing storage permissions. If access is not granted, cache creation/import may fail and the UI should show a transfer/storage status.
+- Local Wi-Fi peers must be able to connect to TCP ports 38741 and 38742. No internet or SSH is used by the sync protocol.

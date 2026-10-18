@@ -144,6 +144,26 @@ object RexOfflineManager {
 
     fun isDownloaded(track: RexTrack): Boolean = _state.value.isDownloaded(track)
 
+    /** Import lagu yang diterima lewat RexMusicSync ke library RexMusic, tanpa menghapus cache sync. */
+    fun importSyncTrack(track: RexTrack, sourceDir: File): Boolean {
+        if (!::appContext.isInitialized || !hasAccess(appContext)) return false
+        return runCatching {
+            val audio = File(sourceDir, "music.mp3")
+            require(audio.isFile && audio.length() > 0L) { "File audio tidak lengkap" }
+            val key = offlineKey(track)
+            val dest = File(root, key)
+            dest.mkdirs()
+            audio.copyTo(File(dest, AUDIO_NAME), overwrite = true)
+            listOf("meta.json", "lyrics.json", "thumbnail.jpg", "thumbnail.png", "thumbnail.jpeg", "thumbnail.webp").forEach { name ->
+                val src = File(sourceDir, name)
+                if (src.isFile && src.length() > 0L) src.copyTo(File(dest, name), overwrite = true)
+            }
+            writeMeta(dest, track)
+            refresh()
+            true
+        }.getOrDefault(false)
+    }
+
     /** File mp3 lokal untuk lagu ini, atau null kalau belum diunduh. */
     fun audioFile(track: RexTrack): File? {
         val key = _state.value.keyFor(track) ?: return null

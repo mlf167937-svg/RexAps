@@ -47,6 +47,7 @@ object RexPlayerController {
 
     // player
     private var player: MediaPlayer? = null
+    private var syncVolume: Float = 1f
     private var prepared = false
     private var progressJob: Job? = null
     private var seekJob: Job? = null
@@ -739,6 +740,7 @@ object RexPlayerController {
         try {
             val mp = MediaPlayer()
             player = mp
+            runCatching { mp.setVolume(syncVolume, syncVolume) }
             preparing = true
             publishLoading()
             mp.setAudioAttributes(audioAttrs)
@@ -900,6 +902,12 @@ object RexPlayerController {
 
     fun pause() {
         if (_state.value.isPlaying) togglePlay()
+    }
+
+    /** Local playback gain for RexMusicSync; does not change Android system volume. */
+    fun setSyncVolume(volume: Float) {
+        syncVolume = volume.coerceIn(0f, 1f)
+        runCatching { player?.setVolume(syncVolume, syncVolume) }
     }
 
     /** Posisi UI langsung update; seek asli didebounce supaya drag tidak membebani MediaPlayer. */

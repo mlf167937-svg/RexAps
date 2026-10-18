@@ -28,6 +28,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import android.os.Environment
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetAddress
@@ -38,17 +45,18 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.max
 
 private const val SYNC_PORT = 38741
+private const val TRANSFER_PORT = 38742
 private const val HEARTBEAT_MS = 800L
 private const val CLIENT_TIMEOUT_MS = 3500L
 private const val START_LEAD_MS = 1800L
 
-private data class SyncMember(val id: String, val name: String, val connectedAt: Long = System.currentTimeMillis())
+private data class SyncMember(val id: String, val name: String, val connectedAt: Long = System.currentTimeMillis(), val ip: String = "", val volume: Float = 1f)
 private data class SyncUiState(
     val hosting: Boolean = false, val connected: Boolean = false, val room: String = "RexSyncRoom1",
     val ip: String = "", val password: String = "rexsync", val name: String = "User",
     val status: String = "Belum terhubung", val members: List<SyncMember> = emptyList(),
     val trackId: String = "", val trackTitle: String = "Belum ada lagu", val positionMs: Long = 0L,
-    val playing: Boolean = false, val error: String? = null
+    val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap()
 )
 
 /** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
@@ -58,6 +66,9 @@ private object RexMusicSyncEngine {
     private val _state = MutableStateFlow(SyncUiState())
     val state = _state.asStateFlow()
     private var server: ServerSocket? = null
+    private var transferServer: ServerSocket? = null
+    private var transferJob: Job? = null
+    private val sharedQueue = mutableListOf<RexTrack>()
     private var roomJob: Job? = null
     private val peers = CopyOnWriteArrayList<Peer>()
     private var client: Socket? = null
@@ -73,7 +84,7 @@ private object RexMusicSyncEngine {
     private var resumeWhenMemberReturns = false
 
     private data class Peer(val socket: Socket, val reader: BufferedReader, val writer: BufferedWriter,
-                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = System.currentTimeMillis())
+                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = System.currentTimeMillis(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f)
 
     fun detectIp(context: Context): String = runCatching {
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -120,7 +131,7 @@ private object RexMusicSyncEngine {
             peers.add(p)
             send(p.writer, JSONObject().put("type", "welcome").put("id", p.id).put("room", roomName))
             broadcastMembers()
-            sendState(p)
+            sendState(p); sendQueue(p); broadcastMembers()
             while (true) {
                 val line = withContext(Dispatchers.IO) { p.reader.readLine() } ?: break
                 val msg = JSONObject(line)
@@ -128,17 +139,24 @@ private object RexMusicSyncEngine {
                     "ping" -> { p.lastSeen = System.currentTimeMillis(); send(p.writer, JSONObject().put("type", "pong").put("at", System.currentTimeMillis())) }
                     "ready" -> { p.lastSeen = System.currentTimeMillis() }
                     "request_track" -> { p.lastSeen = System.currentTimeMillis(); if (hostTrack != null) sendState(p) }
+                    "queue_add" -> {
+                        p.lastSeen = System.currentTimeMillis()
+                        val t = trackFromJson(msg.optJSONObject("track"))
+                        if (t != null && sharedQueue.none { it.id == t.id }) { sharedQueue += t; publishQueue() }
+                        _state.value = _state.value.copy(cacheStatus = "Menerima ${t?.title ?: "lagu"} dari ${p.name}…")
+                    }
+                    "queue_request" -> { p.lastSeen = System.currentTimeMillis(); sendQueue(p) }
+                    "volume" -> { p.lastSeen = System.currentTimeMillis(); p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f) }
+                    "play_request" -> { p.lastSeen = System.currentTimeMillis(); val id = msg.optString("trackId"); sharedQueue.firstOrNull { it.id == id }?.let { queued -> val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }; if (local != null) { sharedQueue.removeAll { it.id == id }; publishQueue(); playTrack(local.track) } } }
                 }
             }
         } catch (_: Exception) {
         } finally {
             peers.remove(p); runCatching { p.socket.close() }
             if (p.id.isNotBlank() && _state.value.hosting) {
-                // Strict room policy requested: if any member disappears, stop everybody.
-                val savedPosition = RexPlayerController.state.value.positionMs
-                resumeWhenMemberReturns = hostTrack != null
-                stopAll("${p.name} terputus · semua pemutaran dihentikan")
-                playAnchorPositionMs = savedPosition
+                // Keep playback running for remaining members. A returning member receives the latest state.
+                playAnchorPositionMs = RexPlayerController.state.value.positionMs.coerceAtLeast(playAnchorPositionMs)
+                resumeWhenMemberReturns = hostTrack != null && hostPlaying
                 broadcastMembers()
             }
         }
@@ -191,7 +209,7 @@ private object RexMusicSyncEngine {
             "members" -> {
                 val a = m.optJSONArray("members")
                 val list = mutableListOf<SyncMember>()
-                if (a != null) for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; list += SyncMember(o.optString("id"), o.optString("name")) }
+                if (a != null) for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; list += SyncMember(o.optString("id"), o.optString("name"), volume = o.optDouble("volume", 1.0).toFloat()) }
                 _state.value = _state.value.copy(members = list)
             }
             "sync" -> {
@@ -214,6 +232,13 @@ private object RexMusicSyncEngine {
                 if (id.isNotBlank()) playbackJob?.cancel(); if (id.isNotBlank()) playbackJob = scope.launch { syncLocalTrack(id, pos, playing, startAt) }
             }
             "stop" -> { playbackJob?.cancel(); stopLocalPlayback(); _state.value = _state.value.copy(playing = false, status = m.optString("reason", "Pemutaran dihentikan")) }
+            "queue" -> {
+                val arr = m.optJSONArray("items"); val list = mutableListOf<RexTrack>()
+                if (arr != null) for (i in 0 until arr.length()) trackFromJson(arr.optJSONObject(i))?.let { list += it }
+                _state.value = _state.value.copy(queue = list)
+            }
+            "queue_item" -> trackFromJson(m.optJSONObject("track"))?.let { t -> if (_state.value.queue.none { it.id == t.id }) _state.value = _state.value.copy(queue = _state.value.queue + t) }
+            "volume" -> { val v = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f); RexPlayerController.setSyncVolume(v) }
             "reject" -> _state.value = _state.value.copy(error = m.optString("reason"), status = "Akses ditolak")
         }
     }
@@ -222,7 +247,7 @@ private object RexMusicSyncEngine {
         RexPlayerController.init(appContextRef ?: return)
         val track = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }?.track
         if (track == null) {
-            _state.value = _state.value.copy(status = "Lagu belum ada di HP ini", error = "Lagu '$id' belum tersedia offline. Transfer cache lagu belum aktif di build ini.")
+            _state.value = _state.value.copy(status = "Lagu belum ada di HP ini", error = "Lagu '$id' belum diterima atau belum terindeks di library offline; tunggu transfer cache selesai.")
             return
         }
         withContext(Dispatchers.Main) { RexPlayerController.playFromOffline(track) }
@@ -269,7 +294,19 @@ private object RexMusicSyncEngine {
     }
 
     private var appContextRef: Context? = null
-    fun bindContext(context: Context) { appContextRef = context.applicationContext; RexMusicService.start(context.applicationContext); RexOfflineManager.init(context.applicationContext); RexPlayerController.init(context.applicationContext) }
+    fun bindContext(context: Context) {
+        appContextRef = context.applicationContext
+        RexMusicService.start(context.applicationContext); RexOfflineManager.init(context.applicationContext); RexPlayerController.init(context.applicationContext)
+        if (transferJob?.isActive != true) transferJob = scope.launch {
+            try {
+                val ss = ServerSocket(TRANSFER_PORT, 16, InetAddress.getByName("0.0.0.0")); transferServer = ss
+                while (isActive && !ss.isClosed) {
+                    val socket = ss.accept()
+                    launch(Dispatchers.IO) { receiveBundle(socket) }
+                }
+            } catch (e: Exception) { if (transferServer != null) _state.value = _state.value.copy(cacheStatus = "Transfer: ${e.message}") }
+        }
+    }
 
     fun playTrack(track: RexTrack) {
         if (!_state.value.hosting) return
@@ -340,11 +377,20 @@ private object RexMusicSyncEngine {
     private fun broadcastState() { peers.forEach { sendState(it) } }
     private fun broadcastTick() {
         val track = hostTrack ?: return
+        val current = RexPlayerController.state.value
+        // RexPlayerController has its own autoplay. If it advances away from the shared track,
+        // hand control back to the room queue so every member gets the same next track.
+        if (hostPlaying && System.currentTimeMillis() > playAnchorWallMs + 2500L &&
+            current.isPlaying && current.nowPlaying?.id != null && current.nowPlaying?.id != track.id) {
+            val next = sharedQueue.firstOrNull()
+            if (next != null) { playQueued(next); return }
+            stopAll("Lagu selesai · antrean bersama kosong")
+            return
+        }
         val position = if (hostPlaying) {
-            val current = RexPlayerController.state.value
             if (current.nowPlaying?.id == track.id && current.positionMs > 0L) current.positionMs
             else playAnchorPositionMs + max(0L, System.currentTimeMillis() - playAnchorWallMs)
-        } else RexPlayerController.state.value.positionMs
+        } else current.positionMs
         val msg = JSONObject().put("type", "sync").put("trackId", track.id).put("title", track.title)
             .put("position", position).put("playing", hostPlaying)
         peers.forEach { send(it.writer, msg) }
@@ -352,21 +398,123 @@ private object RexMusicSyncEngine {
     }
     private fun broadcastMembers() {
         val a = org.json.JSONArray().put(JSONObject().put("id", "host").put("name", "Host"))
-        peers.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name)) }
-        _state.value = _state.value.copy(members = listOf(SyncMember("host", "Host")) + peers.map { SyncMember(it.id, it.name) })
+        peers.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name).put("volume", it.volume)) }
+        _state.value = _state.value.copy(members = listOf(SyncMember("host", "Host")) + peers.map { SyncMember(it.id, it.name, ip = it.ip, volume = it.volume) }, volumes = peers.associate { it.id to it.volume })
         val msg = JSONObject().put("type", "members").put("members", a)
         peers.forEach { send(it.writer, msg) }
     }
+    fun addToQueue(track: RexTrack) {
+        val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
+        if (local == null) { _state.value = _state.value.copy(error = "Lagu ini belum tersedia offline di HP kamu.", cacheStatus = "Pilih lagu yang sudah diunduh."); return }
+        if (_state.value.hosting) {
+            if (sharedQueue.none { it.id == local.track.id }) sharedQueue += local.track
+            publishQueue()
+            _state.value = _state.value.copy(cacheStatus = "Menyalin ${track.title} ke cache anggota…")
+            scope.launch { distributeLocalTrack(local.track) }
+        } else if (_state.value.connected) {
+            runCatching { clientWriter?.let { send(it, JSONObject().put("type", "queue_add").put("track", trackJson(local.track))) } }
+            scope.launch { sendBundle(_state.value.ip, local.track) }
+            _state.value = _state.value.copy(cacheStatus = "Mengirim ${track.title} ke room…", error = null)
+        }
+    }
+
+    fun playQueued(track: RexTrack) {
+        if (_state.value.hosting) scope.launch {
+            delay(500L)
+            val offline = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
+            if (offline == null) { _state.value = _state.value.copy(error = "Transfer lagu belum selesai atau izin penyimpanan belum aktif."); return@launch }
+            sharedQueue.removeAll { it.id == track.id }; publishQueue(); playTrack(offline.track)
+        } else if (_state.value.connected) runCatching { clientWriter?.let { send(it, JSONObject().put("type", "play_request").put("trackId", track.id)) } }
+    }
+
+    fun setMemberVolume(id: String, value: Float) {
+        val v = value.coerceIn(0f, 1f)
+        if (!_state.value.hosting) return
+        peers.firstOrNull { it.id == id }?.let { p -> p.volume = v; runCatching { send(p.writer, JSONObject().put("type", "volume").put("value", v)) } }
+        _state.value = _state.value.copy(volumes = _state.value.volumes + (id to v), members = _state.value.members.map { if (it.id == id) it.copy(volume = v) else it })
+        broadcastMembers()
+    }
+
+    private fun trackJson(t: RexTrack) = JSONObject().put("id", t.id).put("title", t.title).put("artist", t.artist).put("album", t.album).put("cover", t.cover).put("spotifyUrl", t.spotifyUrl).put("durationText", t.durationText)
+    private fun trackFromJson(o: JSONObject?): RexTrack? = o?.let { RexTrack(it.optString("id"), it.optString("title"), it.optString("artist"), it.optString("album", "Single"), it.optString("cover"), spotifyUrl = it.optString("spotifyUrl"), durationText = it.optString("durationText")) }?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
+    private fun sendQueue(p: Peer) { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; send(p.writer, JSONObject().put("type", "queue").put("items", arr)) }
+    private fun publishQueue() { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; val msg = JSONObject().put("type", "queue").put("items", arr); peers.forEach { send(it.writer, msg) }; _state.value = _state.value.copy(queue = sharedQueue.toList()) }
+
+    private suspend fun distributeLocalTrack(track: RexTrack) {
+        val entry = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id } ?: return
+        val peersSnapshot = peers.toList()
+        for (p in peersSnapshot) {
+            val ok = sendBundle(p.ip, track)
+            if (!ok) _state.value = _state.value.copy(cacheStatus = "Gagal mengirim ke ${p.name}; cek Wi-Fi/firewall")
+        }
+        _state.value = _state.value.copy(cacheStatus = "Cache lagu siap untuk anggota yang terjangkau")
+    }
+
+    private suspend fun sendBundle(host: String, track: RexTrack): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val entry = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id } ?: return@withContext false
+            val root = RexOfflineManager.root
+            val dir = File(root, entry.key)
+            val files = listOf("music.mp3", "meta.json", "lyrics.json", "thumbnail.jpg", "thumbnail.png", "thumbnail.jpeg", "thumbnail.webp").map { File(dir, it) }.filter { it.isFile }
+            if (files.none { it.name == "music.mp3" }) return@withContext false
+            val temp = File.createTempFile("rexsync-", ".zip", appContextRef?.cacheDir)
+            try {
+                ZipOutputStream(temp.outputStream().buffered()).use { zip -> files.forEach { f -> zip.putNextEntry(ZipEntry(f.name)); f.inputStream().buffered().use { it.copyTo(zip) }; zip.closeEntry() } }
+                Socket().use { socket -> socket.connect(java.net.InetSocketAddress(host, TRANSFER_PORT), 4000); socket.soTimeout = 30000
+                    val out = DataOutputStream(socket.getOutputStream().buffered())
+                    out.writeUTF(trackJson(track).toString()); out.writeLong(temp.length()); temp.inputStream().buffered().use { it.copyTo(out) }; out.flush()
+                }
+            } finally { temp.delete() }
+            true
+        } catch (_: Exception) { false }
+    }
+
+    private fun receiveBundle(socket: Socket) {
+        socket.use { s ->
+            try {
+                s.soTimeout = 20000
+                val input = DataInputStream(s.getInputStream())
+                val track = trackFromJson(JSONObject(input.readUTF())) ?: return
+                val size = input.readLong(); if (size <= 0L || size > 600L * 1024L * 1024L) return
+                val tempZip = File.createTempFile("rexsync-in-", ".zip", appContextRef?.cacheDir)
+                try { tempZip.outputStream().buffered().use { out ->
+                    var remaining = size; val buffer = ByteArray(64 * 1024)
+                    while (remaining > 0L) { val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt()); if (n < 0) error("Transfer terputus"); out.write(buffer, 0, n); remaining -= n }
+                }
+                val base = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "RexAps/.cache/rexmusicsync/${offlineKey(track)}")
+                base.mkdirs()
+                ZipInputStream(tempZip.inputStream().buffered()).use { zip -> var e = zip.nextEntry; while (e != null) {
+                    val name = File(e.name).name
+                    if (name in setOf("music.mp3", "meta.json", "lyrics.json", "thumbnail.jpg", "thumbnail.png", "thumbnail.jpeg", "thumbnail.webp")) File(base, name).outputStream().use { zip.copyTo(it) }
+                    zip.closeEntry(); e = zip.nextEntry
+                } }
+                val audio = File(base, "music.mp3"); if (!audio.isFile || audio.length() == 0L) error("Cache audio kosong")
+                File(base, "meta.json").writeText(trackJson(track).toString())
+                val imported = RexOfflineManager.importSyncTrack(track, base)
+                _state.value = _state.value.copy(cacheStatus = if (imported) "Cache siap: ${track.title}" else "Cache tersimpan; beri izin penyimpanan agar RexMusic bisa memutarnya", error = null)
+                if (_state.value.hosting) {
+                    if (sharedQueue.none { it.id == track.id }) sharedQueue += track
+                    publishQueue()
+                    val senderIp = s.inetAddress?.hostAddress
+                    peers.filter { it.ip != senderIp }.forEach { peer -> scope.launch { delay(900L); sendBundle(peer.ip, track) } }
+                }
+                } finally { tempZip.delete() }
+            } catch (e: Exception) { _state.value = _state.value.copy(cacheStatus = "Transfer gagal: ${e.message}") }
+        }
+    }
+
     private fun send(w: BufferedWriter, m: JSONObject) { synchronized(w) { w.write(m.toString()); w.newLine(); w.flush() } }
     private suspend fun withContextMain(block: () -> Unit) { withContext(Dispatchers.Main) { block() } }
 
     fun disconnect() { closeAll(); _state.value = _state.value.copy(hosting = false, connected = false, playing = false, members = emptyList(), status = "Terputus", error = null) }
     private fun closeAll() {
         heartbeat?.cancel(); playbackJob?.cancel(); roomJob?.cancel(); roomJob = null
+        sharedQueue.clear()
         peers.forEach { runCatching { it.socket.close() } }; peers.clear()
         runCatching { client?.close() }; client = null; clientWriter = null
         runCatching { server?.close() }; server = null
         if (_state.value.hosting) stopLocalPlayback()
+        _state.value = _state.value.copy(queue = emptyList())
     }
     private fun stopLocalPlayback() { appContextRef?.let { c -> scope.launch(Dispatchers.Main) { runCatching { RexPlayerController.init(c); RexPlayerController.pause() } } } }
 }
@@ -391,6 +539,7 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)); Text("Dengarkan bareng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                         Text("Sinkronisasi melalui Wi-Fi lokal. Semua perangkat harus berada di jaringan yang sama.", style = MaterialTheme.typography.bodyMedium)
                         Text("Status: ${state.status}", style = MaterialTheme.typography.labelLarge)
+                        if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -414,17 +563,23 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                 item { HorizontalDivider(); Text("ANGGOTA (${state.members.size})", style = MaterialTheme.typography.labelLarge) }
                 items(state.members, key = { it.id }) { member -> ListItem(headlineContent = { Text(member.name) }, supportingContent = { Text(if (member.id == "host") "Host" else "Terhubung") }, leadingContent = { Icon(Icons.Default.MusicNote, null) }) }
             }
-            if (state.hosting) {
-                item {
-                    HorizontalDivider(); Text("LAGU OFFLINE HOST", style = MaterialTheme.typography.labelLarge)
-                    Text("Pilih lagu offline. Untuk sinkronisasi audio, lagu dengan ID sama harus sudah tersedia offline di setiap HP.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                items(offlineState.entries, key = { it.track.id }) { entry ->
-                    Card(onClick = { RexMusicSyncEngine.playTrack(entry.track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.MusicNote, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(entry.track.title, fontWeight = FontWeight.SemiBold); Text(entry.track.artist, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
+            if (state.hosting || state.connected) {
+                item { HorizontalDivider(); Text("ANTREAN BERSAMA (${state.queue.size})", style = MaterialTheme.typography.labelLarge); if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                items(state.queue, key = { "q-${it.id}" }) { track ->
+                    Card(onClick = { RexMusicSyncEngine.playQueued(track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.QueueMusic, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold); Text(track.artist, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
                     }
                 }
-                item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { OutlinedButton(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f)) { Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (state.playing) "Pause semua" else "Lanjutkan") }; OutlinedButton(onClick = { RexMusicSyncEngine.stopAll() }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop semua") } } }
+                if (state.hosting) items(state.members.filter { it.id != "host" }, key = { "vol-${it.id}" }) { member ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("Volume · ${member.name}", style = MaterialTheme.typography.labelMedium); Slider(value = state.volumes[member.id] ?: member.volume, onValueChange = { RexMusicSyncEngine.setMemberVolume(member.id, it) }, valueRange = 0f..1f) }
+                }
+                item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { OutlinedButton(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f), enabled = state.hosting) { Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (state.playing) "Pause semua" else "Lanjutkan") }; OutlinedButton(onClick = { RexMusicSyncEngine.stopAll() }, modifier = Modifier.weight(1f), enabled = state.hosting) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop semua") } } }
+            }
+            item { HorizontalDivider(); Text("LAGU OFFLINE DI HP INI", style = MaterialTheme.typography.labelLarge); Text("Tambah lagu akan langsung mengirim cache ke room, tidak menunggu lagu diputar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(offlineState.entries, key = { "offline-${it.track.id}" }) { entry ->
+                Card(onClick = { RexMusicSyncEngine.addToQueue(entry.track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.MusicNote, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(entry.track.title, fontWeight = FontWeight.SemiBold); Text(entry.track.artist, style = MaterialTheme.typography.bodySmall) }; Text("+", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineSmall) }
+                }
             }
             if (state.connected && !state.hosting) item { OutlinedButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Keluar dari room") } }
             if (state.hosting || state.connected) item { TextButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Tutup koneksi") } }
