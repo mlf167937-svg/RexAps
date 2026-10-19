@@ -756,7 +756,10 @@ object RexPlayerController {
             mp.setAudioAttributes(audioAttrs)
             runCatching { mp.setWakeMode(appContext, PowerManager.PARTIAL_WAKE_LOCK) }
             if (local) {
-                FileInputStream(File(source)).use { mp.setDataSource(it.fd) }
+                // Use the path overload for legacy Android (including Android 8).
+                // Keeping an FD open only until setDataSource returns can trigger
+                // vendor-specific native MediaPlayer failures during prepareAsync.
+                mp.setDataSource(File(source).absolutePath)
             } else {
                 mp.setDataSource(source)
             }
@@ -769,7 +772,10 @@ object RexPlayerController {
                 if (preparePaused) syncPrepareTrackId = null
                 _state.update { s -> s.copy(durationMs = mp.duration.toLong(), isPlaying = !preparePaused) }
                 publishLoading()
-                if (preparePaused) runCatching { mp.pause() } else mp.start()
+                // MediaPlayer is already stopped before its first start after onPrepared.
+                // Calling pause() in this state can raise MEDIA_ERROR_INVALID_OPERATION (-38).
+                // For sync preparation, leave it prepared and silent until startSyncPlayback().
+                if (!preparePaused) mp.start()
                 startProgressLoop(mp)
                 _state.value.nowPlaying?.let { pushHistory(it) }
             }
@@ -808,11 +814,15 @@ object RexPlayerController {
                     advance()
                 }
             }
-            mp.setOnErrorListener { _, what, _ ->
-                queue.getOrNull(queueIndex)?.let { RexMusicApi.invalidateAudio(it) }
-                _state.value.nowPlaying?.let { RexMusicApi.invalidateAudio(it) }
+            mp.setOnErrorListener { _, what, extra ->
+                // Only invalidate resolved network audio. A local MP3 error should
+                // not evict any cached API URL for the same track.
+                if (!local) {
+                    queue.getOrNull(queueIndex)?.let { RexMusicApi.invalidateAudio(it) }
+                    _state.value.nowPlaying?.let { RexMusicApi.invalidateAudio(it) }
+                }
                 stopPlayer() // supaya tombol play bisa mencoba ulang
-                fail("gagal memutar audio (kode $what)")
+                fail("gagal memutar audio (kode $what, detail $extra)")
                 true
             }
             mp.prepareAsync()
