@@ -104,13 +104,6 @@ data class TiktokStalkStats(
     val raw_friend: Long? = null
 )
 
-data class TiktokStalkUiState(
-    val loading: Boolean = false,
-    val username: String = "",
-    val result: TiktokStalkResult? = null,
-    val error: String? = null
-)
-
 // ───────────────────────── TikTok Downloader ─────────────────────────
 
 data class TiktokDownloadResponse(
