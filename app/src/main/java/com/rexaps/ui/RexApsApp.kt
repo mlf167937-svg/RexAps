@@ -218,11 +218,6 @@ fun RexApsApp(activity: Activity) {
                                 }
                             )
 
-                        RexRoute.REXMUSICSYNC ->
-                            com.rexaps.rexmusic.RexMusicSyncScreen(
-                                onBack = { route = RexRoute.NONE }
-                            )
-
                         RexRoute.REXMANAGER ->
                             RexManagerScreen(
                                 onExit = {

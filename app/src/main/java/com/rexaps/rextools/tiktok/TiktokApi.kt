@@ -6,7 +6,7 @@ import com.rexaps.rextools.utils.ApiClient
 
 object TiktokApi {
 
-    suspend fun stalk(username: String): Result<TiktokStalkResult> {
+    suspend fun stalkBasic(username: String): Result<TiktokStalkResult> {
         val clean = username.trim().trimStart('@')
         if (clean.isBlank()) return Result.failure(Exception("username kosong"))
         return try {
@@ -28,7 +28,8 @@ object TiktokApi {
         return try {
             val res = ApiClient.tiktok.downloadTiktok(clean)
             val r = res.result
-            if (res.status == true && r != null && !r.data.isNullOrEmpty()) {
+            // Cek data (List) atau cover (kalo cuma foto)
+            if (res.status == true && r != null && (!r.data.isNullOrEmpty() || !r.cover.isNullOrBlank())) {
                 Result.success(r)
             } else {
                 Result.failure(Exception("gagal mengambil media"))

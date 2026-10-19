@@ -201,3 +201,22 @@ data class PreviewUiState(
     val mode: PreviewMode = PreviewMode.INPUT,
     val error: String? = null
 )
+
+data class TiktokFullResult(
+    val name: String? = null,
+    val username: String? = null,
+    val bio: String? = null,
+    val avatar: String? = null,
+    val videos: Map<String, String> = emptyMap(),
+    val stories: Map<String, String> = emptyMap(),
+    val rawJson: String? = null
+)
+
+data class TiktokStalkUiState(
+    val loading: Boolean = false,
+    val loadingText: String = "",
+    val username: String = "",
+    val result: TiktokStalkResult? = null,   // Hasil Nexray
+    val fullResult: TiktokFullResult? = null, // Hasil WebView
+    val error: String? = null
+)

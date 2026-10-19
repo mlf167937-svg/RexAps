@@ -36,11 +36,6 @@ enum class RexRoute(
         "RexMusic"
     ),
 
-    REXMUSICSYNC(
-        "rexmusicsync",
-        "RexMusicSync"
-    ),
-
     REXMANAGER(
         "rexmanager",
         "RexManager"

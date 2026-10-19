@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -567,7 +568,7 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                 item { HorizontalDivider(); Text("ANTREAN BERSAMA (${state.queue.size})", style = MaterialTheme.typography.labelLarge); if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                 items(state.queue, key = { "q-${it.id}" }) { track ->
                     Card(onClick = { RexMusicSyncEngine.playQueued(track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.QueueMusic, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold); Text(track.artist, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Filled.QueueMusic, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold); Text(track.artist, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
                     }
                 }
                 if (state.hosting) items(state.members.filter { it.id != "host" }, key = { "vol-${it.id}" }) { member ->
