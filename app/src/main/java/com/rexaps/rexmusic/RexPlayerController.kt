@@ -48,6 +48,7 @@ object RexPlayerController {
     // player
     private var player: MediaPlayer? = null
     private var syncVolume: Float = 1f
+    private var syncPrepareTrackId: String? = null
     private var prepared = false
     private var progressJob: Job? = null
     private var seekJob: Job? = null
@@ -178,6 +179,15 @@ object RexPlayerController {
         val list = RexOfflineManager.state.value.entries.map { it.track }
         val index = list.indexOfFirst { it.id == track.id }
         if (index < 0) return
+        startQueue(list, index, follow = true)
+    }
+
+    /** Prepare a local track for synchronized playback without emitting audio before the room target time. */
+    fun prepareFromOfflineForSync(track: RexTrack) {
+        val list = RexOfflineManager.state.value.entries.map { it.track }
+        val index = list.indexOfFirst { it.id == track.id }
+        if (index < 0) return
+        syncPrepareTrackId = track.id
         startQueue(list, index, follow = true)
     }
 
@@ -755,9 +765,11 @@ object RexPlayerController {
                 prepared = true
                 preparing = false
                 buffering = false
-                _state.update { s -> s.copy(durationMs = mp.duration.toLong(), isPlaying = true) }
+                val preparePaused = syncPrepareTrackId == _state.value.nowPlaying?.id
+                if (preparePaused) syncPrepareTrackId = null
+                _state.update { s -> s.copy(durationMs = mp.duration.toLong(), isPlaying = !preparePaused) }
                 publishLoading()
-                mp.start()
+                if (preparePaused) runCatching { mp.pause() } else mp.start()
                 startProgressLoop(mp)
                 _state.value.nowPlaying?.let { pushHistory(it) }
             }
@@ -915,6 +927,46 @@ object RexPlayerController {
         val d = _state.value.durationMs
         if (d <= 0L) return
         seekToPosition((d * ratio.coerceIn(0f, 1f)).toLong())
+    }
+
+    /** Immediate seek for sync correction; unlike the UI drag path, this is not debounced. */
+    fun seekToPositionImmediate(positionMs: Long) {
+        val mp = player ?: return
+        val d = _state.value.durationMs
+        if (!prepared || d <= 0L) return
+        val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        seekJob?.cancel()
+        seekPending = false
+        runCatching { mp.seekTo(target) }
+        _state.update { it.copy(positionMs = target.toLong(), seekVersion = it.seekVersion + 1) }
+    }
+
+    /** Start the already-prepared player at the requested sync position. Must be called on main. */
+    fun startSyncPlayback(positionMs: Long) {
+        val mp = player ?: return
+        if (!prepared || !requestFocus()) return
+        val d = _state.value.durationMs
+        val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        seekJob?.cancel()
+        seekPending = false
+        if (kotlin.math.abs(_state.value.positionMs - target.toLong()) <= 25L) {
+            runCatching { if (!mp.isPlaying) mp.start() }
+            _state.update { it.copy(isPlaying = true) }
+            return
+        }
+        runCatching {
+            mp.setOnSeekCompleteListener { completed ->
+                if (player === completed) {
+                    runCatching { if (!completed.isPlaying) completed.start() }
+                    _state.update { it.copy(positionMs = target.toLong(), isPlaying = true) }
+                    completed.setOnSeekCompleteListener(null)
+                }
+            }
+            mp.seekTo(target)
+        }.onFailure {
+            runCatching { if (!mp.isPlaying) mp.start() }
+            _state.update { it.copy(isPlaying = true) }
+        }
     }
 
     /** Seek absolut, dipakai synced lyrics supaya baris yang diketuk tepat ke timestamp API. */

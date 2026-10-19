@@ -2,6 +2,7 @@ package com.rexaps.rexmusic
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.SystemClock
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.*
@@ -50,15 +51,16 @@ private const val SYNC_PORT = 38741
 private const val TRANSFER_PORT = 38742
 private const val HEARTBEAT_MS = 800L
 private const val CLIENT_TIMEOUT_MS = 3500L
-private const val START_LEAD_MS = 1800L
+private const val START_LEAD_MS = 3000L
+private const val DRIFT_CORRECTION_MS = 250L
 
-private data class SyncMember(val id: String, val name: String, val connectedAt: Long = System.currentTimeMillis(), val ip: String = "", val volume: Float = 1f, val deviceVolume: Float = -1f)
+private data class SyncMember(val id: String, val name: String, val connectedAt: Long = SystemClock.elapsedRealtime(), val ip: String = "", val volume: Float = 1f, val deviceVolume: Float = -1f)
 private data class SyncUiState(
     val hosting: Boolean = false, val connected: Boolean = false, val room: String = "RexSyncRoom1",
     val ip: String = "", val password: String = "rexsync", val name: String = "User",
     val status: String = "Belum terhubung", val members: List<SyncMember> = emptyList(),
     val trackId: String = "", val trackTitle: String = "Belum ada lagu", val positionMs: Long = 0L,
-    val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap()
+    val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap(), val hostVolume: Float = 1f, val roomElapsedMs: Long = 0L
 )
 
 /** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
@@ -82,23 +84,34 @@ private object RexMusicSyncEngine {
     private var roomPassword = "rexsync"
     private var roomName = "RexSyncRoom1"
     private var hostTrack: RexTrack? = null
-    private var playAnchorWallMs = 0L
+    private var playAnchorWallMs = 0L // host monotonic elapsedRealtime timestamp
+    private var roomStartedElapsedMs = 0L
+    @Volatile private var clockOffsetMs = 0L // host elapsedRealtime - client elapsedRealtime
+    @Volatile private var lastClockRttMs = -1L
     private var playAnchorPositionMs = 0L
     private var hostPlaying = false
+    private var hostPreparing = false
     private var resumeWhenMemberReturns = false
 
     private data class Peer(val socket: Socket, val reader: BufferedReader, val writer: BufferedWriter,
-                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = System.currentTimeMillis(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f, @Volatile var deviceVolume: Float = -1f)
+                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = SystemClock.elapsedRealtime(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f, @Volatile var deviceVolume: Float = -1f, @Volatile var clockSynced: Boolean = false)
 
     fun detectIp(context: Context): String = runCatching {
-        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val ip = wifi.connectionInfo.ipAddress
-        if (ip == 0) "" else Formatter.formatIpAddress(ip)
+        // Works for Wi-Fi client and many Android hotspot interfaces; avoid VPN/tunnel interfaces.
+        val interfaces = java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+        val candidates = interfaces.filter { ni ->
+            ni.isUp && !ni.isLoopback && !ni.name.lowercase().matches(Regex(".*(tun|tap|wg|warp|vpn|dummy).*"))
+        }.flatMap { ni -> ni.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>()
+            .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+            .map { ni.name.lowercase() to it.hostAddress.orEmpty() } }
+        candidates.firstOrNull { (name, ip) -> name.matches(Regex(".*(wlan|wifi|ap|swlan|p2p|eth).*")) && ip.isNotBlank() }?.second
+            ?: candidates.firstOrNull { it.second.isNotBlank() }?.second.orEmpty()
     }.getOrDefault("")
 
     fun createRoom(room: String, password: String, ip: String) {
         closeAll()
         roomName = room.trim().ifBlank { "RexSyncRoom1" }
+        roomStartedElapsedMs = SystemClock.elapsedRealtime()
         roomPassword = password
         _state.value = _state.value.copy(hosting = true, connected = true, room = roomName,
             password = password, ip = ip, status = "Membuka room…", error = null,
@@ -131,32 +144,38 @@ private object RexMusicSyncEngine {
             }
             p.id = join.optString("id").ifBlank { java.util.UUID.randomUUID().toString() }
             p.name = join.optString("name").trim().ifBlank { "User" }
-            p.lastSeen = System.currentTimeMillis()
+            p.lastSeen = SystemClock.elapsedRealtime()
             peers.add(p)
             send(p.writer, JSONObject().put("type", "welcome").put("id", p.id).put("room", roomName))
             broadcastMembers()
-            sendState(p); sendQueue(p); broadcastMembers()
+            sendQueue(p); broadcastMembers()
             while (true) {
                 val line = withContext(Dispatchers.IO) { p.reader.readLine() } ?: break
                 val msg = JSONObject(line)
                 when (msg.optString("type")) {
                     "ping" -> {
-                        p.lastSeen = System.currentTimeMillis()
+                        p.lastSeen = SystemClock.elapsedRealtime()
                         p.deviceVolume = msg.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f)
                         _state.value = _state.value.copy(members = _state.value.members.map { if (it.id == p.id) it.copy(deviceVolume = p.deviceVolume) else it })
-                        send(p.writer, JSONObject().put("type", "pong").put("at", System.currentTimeMillis()))
+                        val hostSend = SystemClock.elapsedRealtime()
+                        p.clockSynced = true
+                        send(p.writer, JSONObject().put("type", "pong")
+                            .put("clientElapsed", msg.optLong("clientElapsed", 0L))
+                            .put("hostReceiveElapsed", hostSend)
+                            .put("hostSendElapsed", SystemClock.elapsedRealtime()))
+                        if (hostTrack != null) sendState(p)
                     }
-                    "ready" -> { p.lastSeen = System.currentTimeMillis() }
-                    "request_track" -> { p.lastSeen = System.currentTimeMillis(); if (hostTrack != null) sendState(p) }
+                    "ready" -> { p.lastSeen = SystemClock.elapsedRealtime() }
+                    "request_track" -> { p.lastSeen = SystemClock.elapsedRealtime(); if (hostTrack != null) sendState(p) }
                     "queue_add" -> {
-                        p.lastSeen = System.currentTimeMillis()
+                        p.lastSeen = SystemClock.elapsedRealtime()
                         val t = trackFromJson(msg.optJSONObject("track"))
                         if (t != null && sharedQueue.none { it.id == t.id }) { sharedQueue += t; publishQueue() }
                         _state.value = _state.value.copy(cacheStatus = "Menerima ${t?.title ?: "lagu"} dari ${p.name}…")
                     }
-                    "queue_request" -> { p.lastSeen = System.currentTimeMillis(); sendQueue(p) }
-                    "volume" -> { p.lastSeen = System.currentTimeMillis(); p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f) }
-                    "play_request" -> { p.lastSeen = System.currentTimeMillis(); val id = msg.optString("trackId"); sharedQueue.firstOrNull { it.id == id }?.let { queued -> val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }; if (local != null) { sharedQueue.removeAll { it.id == id }; publishQueue(); playTrack(local.track) } } }
+                    "queue_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); sendQueue(p) }
+                    "volume" -> { p.lastSeen = SystemClock.elapsedRealtime(); p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f) }
+                    "play_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); val id = msg.optString("trackId"); sharedQueue.firstOrNull { it.id == id }?.let { queued -> val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }; if (local != null) { sharedQueue.removeAll { it.id == id }; publishQueue(); playTrack(local.track) } } }
                 }
             }
         } catch (_: Exception) {
@@ -173,7 +192,7 @@ private object RexMusicSyncEngine {
 
     private suspend fun monitorPeers() {
         while (_state.value.hosting) {
-            val now = System.currentTimeMillis()
+            val now = SystemClock.elapsedRealtime()
             peers.filter { now - it.lastSeen > CLIENT_TIMEOUT_MS }.forEach { p -> runCatching { p.socket.close() } }
             delay(HEARTBEAT_MS)
         }
@@ -203,7 +222,7 @@ private object RexMusicSyncEngine {
                         val maxVolume = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
                         val currentVolume = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                         val actual = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else -1f
-                        send(writer, JSONObject().put("type", "ping").put("at", System.currentTimeMillis()).put("deviceVolume", actual))
+                        send(writer, JSONObject().put("type", "ping").put("clientElapsed", SystemClock.elapsedRealtime()).put("deviceVolume", actual))
                     }; delay(HEARTBEAT_MS) } }
                 while (true) {
                     val line = reader.readLine() ?: break
@@ -221,6 +240,22 @@ private object RexMusicSyncEngine {
 
     private fun handleClientMessage(m: JSONObject) {
         when (m.optString("type")) {
+            "room_time" -> _state.value = _state.value.copy(roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs))
+            "pong" -> {
+                val c0 = m.optLong("clientElapsed", 0L)
+                val h1 = m.optLong("hostReceiveElapsed", 0L)
+                val h2 = m.optLong("hostSendElapsed", 0L)
+                val c3 = SystemClock.elapsedRealtime()
+                if (c0 > 0L && h1 > 0L && h2 >= h1) {
+                    val rtt = (c3 - c0 - (h2 - h1)).coerceAtLeast(0L)
+                    val offset = (((h1 - c0) + (h2 - c3)) / 2L)
+                    // Prefer low-RTT samples; they are less affected by queued network traffic.
+                    if (lastClockRttMs < 0L || rtt <= lastClockRttMs + 40L || rtt < lastClockRttMs) {
+                        clockOffsetMs = offset
+                        lastClockRttMs = rtt
+                    }
+                }
+            }
             "members" -> {
                 val a = m.optJSONArray("members")
                 val list = mutableListOf<SyncMember>()
@@ -230,11 +265,19 @@ private object RexMusicSyncEngine {
             "sync" -> {
                 val id = m.optString("trackId")
                 val pos = m.optLong("position", 0L)
+                val hostAt = m.optLong("hostElapsed", 0L)
                 val shouldPlay = m.optBoolean("playing", false)
                 val local = RexPlayerController.state.value
-                val needsRepair = id.isNotBlank() && (local.nowPlaying?.id != id || kotlin.math.abs(local.positionMs - pos) > 1700L || local.isPlaying != shouldPlay)
-                if (needsRepair && playbackJob?.isActive != true) playbackJob = scope.launch { reconcileLocalTrack(id, pos, shouldPlay) }
-                _state.value = _state.value.copy(trackId = id, trackTitle = m.optString("title", "Belum ada lagu"), positionMs = pos, playing = shouldPlay)
+                val projected = if (shouldPlay && hostAt > 0L) pos + (SystemClock.elapsedRealtime() + clockOffsetMs - hostAt).coerceAtLeast(0L) else pos
+                val drift = kotlin.math.abs(local.positionMs - projected)
+                val needsTrack = id.isNotBlank() && local.nowPlaying?.id != id
+                val needsPlayState = id.isNotBlank() && local.nowPlaying?.id == id && local.isPlaying != shouldPlay
+                if (needsTrack && playbackJob?.isActive != true) playbackJob = scope.launch { syncLocalTrack(id, pos, shouldPlay, m.optLong("startAt", 0L)) }
+                else if (needsPlayState && playbackJob?.isActive != true) playbackJob = scope.launch { reconcileLocalTrack(id, projected, shouldPlay) }
+                else if (shouldPlay && drift > DRIFT_CORRECTION_MS && playbackJob?.isActive != true) {
+                    playbackJob = scope.launch { withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(projected) } }
+                }
+                _state.value = _state.value.copy(trackId = id, trackTitle = m.optString("title", "Belum ada lagu"), positionMs = projected, playing = shouldPlay, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs))
             }
             "state" -> {
                 val track = m.optJSONObject("track")
@@ -243,7 +286,7 @@ private object RexMusicSyncEngine {
                 val pos = m.optLong("position", 0L)
                 val playing = m.optBoolean("playing", false)
                 val startAt = m.optLong("startAt", 0L)
-                _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, status = "Sinkronisasi · $title")
+                _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs), status = "Sinkronisasi · $title")
                 if (id.isNotBlank()) playbackJob?.cancel(); if (id.isNotBlank()) playbackJob = scope.launch { syncLocalTrack(id, pos, playing, startAt) }
             }
             "stop" -> { playbackJob?.cancel(); stopLocalPlayback(); _state.value = _state.value.copy(playing = false, status = m.optString("reason", "Pemutaran dihentikan")) }
@@ -253,7 +296,7 @@ private object RexMusicSyncEngine {
                 _state.value = _state.value.copy(queue = list)
             }
             "queue_item" -> trackFromJson(m.optJSONObject("track"))?.let { t -> if (_state.value.queue.none { it.id == t.id }) _state.value = _state.value.copy(queue = _state.value.queue + t) }
-            "volume" -> { val v = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f); RexPlayerController.setSyncVolume(v) }
+            "volume" -> { val v = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f); scope.launch(Dispatchers.Main) { RexPlayerController.setSyncVolume(v) } }
             "reject" -> _state.value = _state.value.copy(error = m.optString("reason"), status = "Akses ditolak")
         }
     }
@@ -265,21 +308,22 @@ private object RexMusicSyncEngine {
             _state.value = _state.value.copy(status = "Lagu belum ada di HP ini", error = "Lagu '$id' belum diterima atau belum terindeks di library offline; tunggu transfer cache selesai.")
             return
         }
-        withContext(Dispatchers.Main) { RexPlayerController.playFromOffline(track) }
-        val deadline = System.currentTimeMillis() + 12000
-        while (System.currentTimeMillis() < deadline) {
+        withContext(Dispatchers.Main) { RexPlayerController.prepareFromOfflineForSync(track) }
+        val deadline = SystemClock.elapsedRealtime() + 12000
+        while (SystemClock.elapsedRealtime() < deadline) {
             val s = RexPlayerController.state.value
             if (s.nowPlaying?.id == id && s.durationMs > 0L && s.phase == LoadPhase.Idle) break
             delay(100)
         }
         val actual = RexPlayerController.state.value
         if (actual.nowPlaying?.id != id) return
-        val targetWall = if (startAt > 0L) startAt else System.currentTimeMillis()
-        val targetPos = max(0L, if (startAt > 0L) pos + max(0L, targetWall - startAt) else pos)
-        delay(max(0L, targetWall - System.currentTimeMillis()))
+        val targetHostElapsed = if (startAt > 0L) startAt else SystemClock.elapsedRealtime() + clockOffsetMs
+        val targetLocalElapsed = targetHostElapsed - clockOffsetMs
+        delay(max(0L, targetLocalElapsed - SystemClock.elapsedRealtime()))
+        val targetPos = max(0L, pos + max(0L, SystemClock.elapsedRealtime() + clockOffsetMs - targetHostElapsed))
         withContext(Dispatchers.Main) {
-            RexPlayerController.seekToPosition(targetPos)
-            if (playing) RexPlayerController.play() else RexPlayerController.pause()
+            if (playing) RexPlayerController.startSyncPlayback(targetPos)
+            else { RexPlayerController.seekToPositionImmediate(pos); RexPlayerController.pause() }
         }
     }
 
@@ -294,8 +338,8 @@ private object RexMusicSyncEngine {
                 return
             }
             withContext(Dispatchers.Main) { RexPlayerController.playFromOffline(track) }
-            val deadline = System.currentTimeMillis() + 10000L
-            while (System.currentTimeMillis() < deadline) {
+            val deadline = SystemClock.elapsedRealtime() + 10000L
+            while (SystemClock.elapsedRealtime() < deadline) {
                 val s = RexPlayerController.state.value
                 if (s.nowPlaying?.id == id && s.durationMs > 0L) break
                 delay(100L)
@@ -303,7 +347,7 @@ private object RexMusicSyncEngine {
         }
         val now = RexPlayerController.state.value
         if (now.nowPlaying?.id != id) return
-        if (kotlin.math.abs(now.positionMs - targetPosition) > 900L) withContext(Dispatchers.Main) { RexPlayerController.seekToPosition(targetPosition) }
+        if (kotlin.math.abs(now.positionMs - targetPosition) > DRIFT_CORRECTION_MS) withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(targetPosition) }
         if (shouldPlay && !now.isPlaying) withContext(Dispatchers.Main) { RexPlayerController.play() }
         if (!shouldPlay && now.isPlaying) withContext(Dispatchers.Main) { RexPlayerController.pause() }
     }
@@ -329,34 +373,52 @@ private object RexMusicSyncEngine {
         if (local == null) { _state.value = _state.value.copy(error = "Pilih lagu yang sudah tersedia offline di HP host."); return }
         hostTrack = local.track
         playAnchorPositionMs = 0L
-        playAnchorWallMs = System.currentTimeMillis() + START_LEAD_MS
-        hostPlaying = true
-        _state.value = _state.value.copy(trackId = track.id, trackTitle = track.title, positionMs = 0L, playing = true, status = "Mulai serentak…", error = null)
-        broadcastState()
+        hostPreparing = true
+        hostPlaying = false
+        _state.value = _state.value.copy(trackId = track.id, trackTitle = track.title, positionMs = 0L, playing = false, status = "Menyiapkan semua perangkat…", error = null)
         playbackJob?.cancel()
         playbackJob = scope.launch {
-            delay(max(0L, playAnchorWallMs - System.currentTimeMillis()))
-            withContext(Dispatchers.Main) { RexPlayerController.playFromOffline(local.track) }
-            delay(600)
-            withContext(Dispatchers.Main) { RexPlayerController.seekToPosition(0L); RexPlayerController.play() }
+            // Prepare the host player before announcing the future start; do not play early.
+            withContext(Dispatchers.Main) { RexPlayerController.prepareFromOfflineForSync(local.track) }
+            val deadline = SystemClock.elapsedRealtime() + 15000L
+            while (isActive && SystemClock.elapsedRealtime() < deadline) {
+                val s = RexPlayerController.state.value
+                if (s.nowPlaying?.id == local.track.id && s.durationMs > 0L && s.phase == LoadPhase.Idle) break
+                delay(40L)
+            }
+            val ready = RexPlayerController.state.value
+            if (ready.nowPlaying?.id != local.track.id || ready.durationMs <= 0L) {
+                hostPreparing = false
+                hostPlaying = false
+                _state.value = _state.value.copy(playing = false, status = "Lagu gagal disiapkan", error = "Player tidak siap sebelum batas waktu.")
+                broadcastState()
+                return@launch
+            }
+            hostPreparing = false
+            hostPlaying = true
+            playAnchorWallMs = SystemClock.elapsedRealtime() + START_LEAD_MS
+            _state.value = _state.value.copy(playing = true, status = "Mulai serentak · room clock")
+            broadcastState()
+            delay(max(0L, playAnchorWallMs - SystemClock.elapsedRealtime()))
+            withContext(Dispatchers.Main) { RexPlayerController.startSyncPlayback(0L) }
         }
     }
 
     private fun resumeRoomAtCurrentPosition() {
         val track = hostTrack ?: return
         playAnchorPositionMs = RexPlayerController.state.value.positionMs.coerceAtLeast(playAnchorPositionMs)
-        playAnchorWallMs = System.currentTimeMillis() + START_LEAD_MS
+        playAnchorWallMs = SystemClock.elapsedRealtime() + START_LEAD_MS
         hostPlaying = true
         _state.value = _state.value.copy(playing = true, positionMs = playAnchorPositionMs, status = "Anggota kembali · sinkronisasi ulang", error = null)
         broadcastState()
         playbackJob?.cancel()
         playbackJob = scope.launch {
-            delay(max(0L, playAnchorWallMs - System.currentTimeMillis()))
+            delay(max(0L, playAnchorWallMs - SystemClock.elapsedRealtime()))
             withContext(Dispatchers.Main) {
                 if (RexPlayerController.state.value.nowPlaying?.id != track.id) RexPlayerController.playFromOffline(track)
                 delay(150L)
-                RexPlayerController.seekToPosition(playAnchorPositionMs)
-                RexPlayerController.play()
+                RexPlayerController.seekToPositionImmediate(playAnchorPositionMs)
+                RexPlayerController.startSyncPlayback(playAnchorPositionMs)
             }
         }
     }
@@ -366,9 +428,9 @@ private object RexMusicSyncEngine {
         hostPlaying = !hostPlaying
         if (hostPlaying) {
             playAnchorPositionMs = RexPlayerController.state.value.positionMs
-            playAnchorWallMs = System.currentTimeMillis() + START_LEAD_MS
+            playAnchorWallMs = SystemClock.elapsedRealtime() + START_LEAD_MS
             broadcastState()
-            playbackJob?.cancel(); playbackJob = scope.launch { delay(max(0L, playAnchorWallMs-System.currentTimeMillis())); withContext(Dispatchers.Main) { RexPlayerController.seekToPosition(playAnchorPositionMs); RexPlayerController.play() } }
+            playbackJob?.cancel(); playbackJob = scope.launch { delay(max(0L, playAnchorWallMs-SystemClock.elapsedRealtime())); withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(playAnchorPositionMs); RexPlayerController.startSyncPlayback(playAnchorPositionMs) } }
         } else {
             scope.launch { withContextMain { RexPlayerController.pause() } }
             _state.value = _state.value.copy(playing = false, positionMs = RexPlayerController.state.value.positionMs, status = "Dijeda host")
@@ -377,7 +439,7 @@ private object RexMusicSyncEngine {
     }
 
     fun stopAll(reason: String = "Host menghentikan pemutaran") {
-        hostPlaying = false; playbackJob?.cancel()
+        hostPreparing = false; hostPlaying = false; playbackJob?.cancel()
         scope.launch { withContextMain { RexPlayerController.pause() } }
         _state.value = _state.value.copy(playing = false, positionMs = RexPlayerController.state.value.positionMs, status = reason)
         peers.forEach { runCatching { send(it.writer, JSONObject().put("type", "stop").put("reason", reason)) } }
@@ -385,17 +447,29 @@ private object RexMusicSyncEngine {
 
     private fun sendState(p: Peer) {
         val track = hostTrack
-        val pos = if (hostPlaying) playAnchorPositionMs + max(0L, System.currentTimeMillis() - playAnchorWallMs) else RexPlayerController.state.value.positionMs
+        val now = SystemClock.elapsedRealtime()
+        val startAt = if (hostPlaying) max(now + START_LEAD_MS, playAnchorWallMs) else 0L
+        val currentPosition = if (hostPlaying) playAnchorPositionMs + max(0L, now - playAnchorWallMs) else RexPlayerController.state.value.positionMs
+        // If playback is already underway, project to the future start; if the anchor is still ahead, keep its start position.
+        val pos = if (hostPlaying) {
+            if (now < playAnchorWallMs) playAnchorPositionMs else currentPosition + max(0L, startAt - now)
+        } else currentPosition
         send(p.writer, JSONObject().put("type", "state").put("track", track?.let { JSONObject().put("id", it.id).put("title", it.title).put("artist", it.artist) })
-            .put("position", pos).put("playing", hostPlaying).put("startAt", if (hostPlaying) max(System.currentTimeMillis()+500L, playAnchorWallMs) else 0L))
+            .put("position", pos).put("playing", hostPlaying).put("hostElapsed", now).put("roomElapsedMs", (now - roomStartedElapsedMs).coerceAtLeast(0L)).put("startAt", startAt))
     }
-    private fun broadcastState() { peers.forEach { sendState(it) } }
+    private fun broadcastState() { peers.filter { it.clockSynced }.forEach { sendState(it) } }
     private fun broadcastTick() {
+        val now = SystemClock.elapsedRealtime()
+        val roomElapsed = (now - roomStartedElapsedMs).coerceAtLeast(0L)
+        _state.value = _state.value.copy(roomElapsedMs = roomElapsed)
+        val roomMessage = JSONObject().put("type", "room_time").put("roomElapsedMs", roomElapsed)
+        peers.filter { it.clockSynced }.forEach { runCatching { send(it.writer, roomMessage) } }
+        if (hostPreparing) return
         val track = hostTrack ?: return
         val current = RexPlayerController.state.value
         // RexPlayerController has its own autoplay. If it advances away from the shared track,
         // hand control back to the room queue so every member gets the same next track.
-        if (hostPlaying && System.currentTimeMillis() > playAnchorWallMs + 2500L &&
+        if (hostPlaying && SystemClock.elapsedRealtime() > playAnchorWallMs + 2500L &&
             current.isPlaying && current.nowPlaying?.id != null && current.nowPlaying?.id != track.id) {
             val next = sharedQueue.firstOrNull()
             if (next != null) { playQueued(next); return }
@@ -404,12 +478,13 @@ private object RexMusicSyncEngine {
         }
         val position = if (hostPlaying) {
             if (current.nowPlaying?.id == track.id && current.positionMs > 0L) current.positionMs
-            else playAnchorPositionMs + max(0L, System.currentTimeMillis() - playAnchorWallMs)
+            else playAnchorPositionMs + max(0L, SystemClock.elapsedRealtime() - playAnchorWallMs)
         } else current.positionMs
+        val hostReference = if (hostPlaying) max(now, playAnchorWallMs) else now
         val msg = JSONObject().put("type", "sync").put("trackId", track.id).put("title", track.title)
-            .put("position", position).put("playing", hostPlaying)
-        peers.forEach { send(it.writer, msg) }
-        _state.value = _state.value.copy(positionMs = position, playing = hostPlaying)
+            .put("position", position).put("playing", hostPlaying).put("hostElapsed", hostReference).put("roomElapsedMs", (now - roomStartedElapsedMs).coerceAtLeast(0L))
+        peers.filter { it.clockSynced }.forEach { send(it.writer, msg) }
+        _state.value = _state.value.copy(positionMs = position, playing = hostPlaying, roomElapsedMs = (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(0L))
     }
     private fun broadcastMembers() {
         val a = org.json.JSONArray().put(JSONObject().put("id", "host").put("name", "Host"))
@@ -440,6 +515,15 @@ private object RexMusicSyncEngine {
             if (offline == null) { _state.value = _state.value.copy(error = "Transfer lagu belum selesai atau izin penyimpanan belum aktif."); return@launch }
             sharedQueue.removeAll { it.id == track.id }; publishQueue(); playTrack(offline.track)
         } else if (_state.value.connected) runCatching { clientWriter?.let { send(it, JSONObject().put("type", "play_request").put("trackId", track.id)) } }
+    }
+
+    fun setHostVolume(value: Float) {
+        val v = value.coerceIn(0f, 1f)
+        _state.value = _state.value.copy(hostVolume = v)
+        appContextRef?.let { context ->
+            RexPlayerController.init(context)
+            RexPlayerController.setSyncVolume(v)
+        }
     }
 
     fun setMemberVolume(id: String, value: Float) {
@@ -526,6 +610,7 @@ private object RexMusicSyncEngine {
 
     fun disconnect() { closeAll(); _state.value = _state.value.copy(hosting = false, connected = false, playing = false, members = emptyList(), status = "Terputus", error = null) }
     private fun closeAll() {
+        hostPreparing = false; hostPlaying = false; roomStartedElapsedMs = 0L; clockOffsetMs = 0L; lastClockRttMs = -1L
         heartbeat?.cancel(); playbackJob?.cancel(); roomJob?.cancel(); roomJob = null
         sharedQueue.clear()
         peers.forEach { runCatching { it.socket.close() } }; peers.clear()
@@ -535,6 +620,11 @@ private object RexMusicSyncEngine {
         _state.value = _state.value.copy(queue = emptyList())
     }
     private fun stopLocalPlayback() { appContextRef?.let { c -> scope.launch(Dispatchers.Main) { runCatching { RexPlayerController.init(c); RexPlayerController.pause() } } } }
+}
+
+private fun formatRoomTime(ms: Long): String {
+    val total = (ms.coerceAtLeast(0L) / 1000L)
+    return String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", total / 3600L, (total / 60L) % 60L, total % 60L)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -599,6 +689,7 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                             }
                         }
                         Text(state.status, style = MaterialTheme.typography.titleSmall)
+                        if (active) Text("Room time · ${formatRoomTime(state.roomElapsedMs)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
                         state.error?.let { errorText ->
                             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.errorContainer) {
@@ -640,7 +731,7 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                         Button(onClick = { RexMusicSyncEngine.joinRoom(room, name.ifBlank { "User" }, ip, password) }, enabled = !active && ip.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                             Text("Gabung room")
                         }
-                        Text("Tips: matikan VPN/WARP jika koneksi antar-HP tidak bisa tersambung, lalu pastikan kedua HP memakai Wi-Fi yang sama.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Tips: bisa memakai Wi-Fi yang sama atau hotspot host. Matikan VPN/WARP jika perangkat tidak bisa saling terhubung.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -690,6 +781,13 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                             Text("NOW PLAYING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
                             Text(state.trackTitle, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             Text(if (state.playing) "Sedang diputar bersama" else "Playback dijeda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
+                            if (state.hosting) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Volume host", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                                    Text("${(state.hostVolume * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                                Slider(value = state.hostVolume, onValueChange = { RexMusicSyncEngine.setHostVolume(it) }, valueRange = 0f..1f)
+                            }
                             if (state.hosting) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
                                     Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null)
