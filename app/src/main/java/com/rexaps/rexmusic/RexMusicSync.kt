@@ -287,7 +287,21 @@ private object RexMusicSyncEngine {
                 val playing = m.optBoolean("playing", false)
                 val startAt = m.optLong("startAt", 0L)
                 _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs), status = "Sinkronisasi · $title")
-                if (id.isNotBlank()) playbackJob?.cancel(); if (id.isNotBlank()) playbackJob = scope.launch { syncLocalTrack(id, pos, playing, startAt) }
+
+                // A state snapshot may arrive after the initial sync packet. Never restart
+                // preparation for a track that is already loaded, and don't cancel an
+                // in-flight preparation for the same track: doing so can keep members silent.
+                if (id.isNotBlank()) {
+                    val local = RexPlayerController.state.value
+                    val sameTrackLoaded = local.nowPlaying?.id == id && local.durationMs > 0L
+                    val preparationForSameTrack = playbackJob?.isActive == true && local.nowPlaying?.id == id
+                    if (!sameTrackLoaded && !preparationForSameTrack) {
+                        playbackJob?.cancel()
+                        playbackJob = scope.launch { syncLocalTrack(id, pos, playing, startAt) }
+                    } else if (sameTrackLoaded && local.isPlaying != playing && playbackJob?.isActive != true) {
+                        playbackJob = scope.launch { reconcileLocalTrack(id, pos, playing) }
+                    }
+                }
             }
             "stop" -> { playbackJob?.cancel(); stopLocalPlayback(); _state.value = _state.value.copy(playing = false, status = m.optString("reason", "Pemutaran dihentikan")) }
             "queue" -> {
