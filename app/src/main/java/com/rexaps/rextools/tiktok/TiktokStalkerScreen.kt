@@ -16,18 +16,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -41,9 +40,10 @@ fun TiktokStalkerScreen(
     vm: TiktokStalkerViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
+    val ctx = LocalContext.current
     var webViewUrl by remember { mutableStateOf<String?>(null) }
 
-    // WebView tersembunyi untuk scraping
+    // WebView tersembunyi
     if (webViewUrl != null) {
         Box(modifier = Modifier.size(1.dp).alpha(0.01f)) {
             AndroidView(
@@ -55,6 +55,7 @@ fun TiktokStalkerScreen(
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
+                                // Tunggu 3 detik biar JS TikTok selesai render
                                 view?.postDelayed({
                                     view.evaluateJavascript("""
                                         (function() {
@@ -63,6 +64,7 @@ fun TiktokStalkerScreen(
                                                 if(el) {
                                                     window.RexBridge.onResult(el.textContent);
                                                 } else {
+                                                    // Fallback kalo element gak ada, coba script lain
                                                     var scripts = document.getElementsByTagName('script');
                                                     for(var i=0; i<scripts.length; i++) {
                                                         if(scripts[i].id === '__UNIVERSAL_DATA_FOR_REHYDRATION__') {
@@ -84,10 +86,11 @@ fun TiktokStalkerScreen(
                             @JavascriptInterface
                             fun onResult(json: String) {
                                 vm.onFullResultReceived(json)
-                                webViewUrl = null
+                                webViewUrl = null // Tutup webview kalo udah dapet
                             }
                             @JavascriptInterface
                             fun onError(msg: String) {
+                                // Handle error di VM lu kalo mau
                                 webViewUrl = null
                             }
                         }, "RexBridge")
@@ -122,6 +125,7 @@ fun TiktokStalkerScreen(
                 singleLine = true
             )
 
+            // 2 TOMBOL
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { vm.stalkBasic() },
@@ -152,9 +156,14 @@ fun TiktokStalkerScreen(
                 )
             }
 
-            state.error?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
+            state.error?.let {
+                Text("Error: $it", color = MaterialTheme.colorScheme.error)
+            }
 
+            // HASIL NEXRAY (BIASA)
             state.result?.let { r -> BasicProfileCard(r) }
+
+            // HASIL WEBVIEW (FULL)
             state.fullResult?.let { r -> FullProfileCard(r) }
         }
     }

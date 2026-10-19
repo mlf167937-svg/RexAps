@@ -1,6 +1,7 @@
 package com.rexaps.rexmusic
 
 import android.content.Context
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.*
@@ -51,7 +52,7 @@ private const val HEARTBEAT_MS = 800L
 private const val CLIENT_TIMEOUT_MS = 3500L
 private const val START_LEAD_MS = 1800L
 
-private data class SyncMember(val id: String, val name: String, val connectedAt: Long = System.currentTimeMillis(), val ip: String = "", val volume: Float = 1f)
+private data class SyncMember(val id: String, val name: String, val connectedAt: Long = System.currentTimeMillis(), val ip: String = "", val volume: Float = 1f, val deviceVolume: Float = -1f)
 private data class SyncUiState(
     val hosting: Boolean = false, val connected: Boolean = false, val room: String = "RexSyncRoom1",
     val ip: String = "", val password: String = "rexsync", val name: String = "User",
@@ -62,7 +63,9 @@ private data class SyncUiState(
 
 /** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
 private object RexMusicSyncEngine {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+        _state.value = _state.value.copy(error = "RexMusicSync: ${error.message ?: "terjadi kesalahan"}")
+    })
     private val gson = Gson()
     private val _state = MutableStateFlow(SyncUiState())
     val state = _state.asStateFlow()
@@ -85,7 +88,7 @@ private object RexMusicSyncEngine {
     private var resumeWhenMemberReturns = false
 
     private data class Peer(val socket: Socket, val reader: BufferedReader, val writer: BufferedWriter,
-                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = System.currentTimeMillis(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f)
+                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = System.currentTimeMillis(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f, @Volatile var deviceVolume: Float = -1f)
 
     fun detectIp(context: Context): String = runCatching {
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -137,7 +140,12 @@ private object RexMusicSyncEngine {
                 val line = withContext(Dispatchers.IO) { p.reader.readLine() } ?: break
                 val msg = JSONObject(line)
                 when (msg.optString("type")) {
-                    "ping" -> { p.lastSeen = System.currentTimeMillis(); send(p.writer, JSONObject().put("type", "pong").put("at", System.currentTimeMillis())) }
+                    "ping" -> {
+                        p.lastSeen = System.currentTimeMillis()
+                        p.deviceVolume = msg.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f)
+                        _state.value = _state.value.copy(members = _state.value.members.map { if (it.id == p.id) it.copy(deviceVolume = p.deviceVolume) else it })
+                        send(p.writer, JSONObject().put("type", "pong").put("at", System.currentTimeMillis()))
+                    }
                     "ready" -> { p.lastSeen = System.currentTimeMillis() }
                     "request_track" -> { p.lastSeen = System.currentTimeMillis(); if (hostTrack != null) sendState(p) }
                     "queue_add" -> {
@@ -190,7 +198,13 @@ private object RexMusicSyncEngine {
                 if (welcome.optString("type") != "welcome") error(welcome.optString("reason", "Ditolak host"))
                 _state.value = _state.value.copy(connected = true, status = "Terhubung ke ${room.trim()}", error = null)
                 heartbeat?.cancel()
-                heartbeat = launch { while (isActive && client?.isClosed == false) { runCatching { send(writer, JSONObject().put("type", "ping").put("at", System.currentTimeMillis())) }; delay(HEARTBEAT_MS) } }
+                heartbeat = launch { while (isActive && client?.isClosed == false) { runCatching {
+                        val am = appContextRef?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        val maxVolume = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
+                        val currentVolume = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                        val actual = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else -1f
+                        send(writer, JSONObject().put("type", "ping").put("at", System.currentTimeMillis()).put("deviceVolume", actual))
+                    }; delay(HEARTBEAT_MS) } }
                 while (true) {
                     val line = reader.readLine() ?: break
                     handleClientMessage(JSONObject(line))
@@ -210,7 +224,7 @@ private object RexMusicSyncEngine {
             "members" -> {
                 val a = m.optJSONArray("members")
                 val list = mutableListOf<SyncMember>()
-                if (a != null) for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; list += SyncMember(o.optString("id"), o.optString("name"), volume = o.optDouble("volume", 1.0).toFloat()) }
+                if (a != null) for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; list += SyncMember(o.optString("id"), o.optString("name"), volume = o.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f), deviceVolume = o.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f)) }
                 _state.value = _state.value.copy(members = list)
             }
             "sync" -> {
@@ -399,8 +413,8 @@ private object RexMusicSyncEngine {
     }
     private fun broadcastMembers() {
         val a = org.json.JSONArray().put(JSONObject().put("id", "host").put("name", "Host"))
-        peers.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name).put("volume", it.volume)) }
-        _state.value = _state.value.copy(members = listOf(SyncMember("host", "Host")) + peers.map { SyncMember(it.id, it.name, ip = it.ip, volume = it.volume) }, volumes = peers.associate { it.id to it.volume })
+        peers.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name).put("volume", it.volume).put("deviceVolume", it.deviceVolume)) }
+        _state.value = _state.value.copy(members = listOf(SyncMember("host", "Host")) + peers.map { SyncMember(it.id, it.name, ip = it.ip, volume = it.volume, deviceVolume = it.deviceVolume) }, volumes = peers.associate { it.id to it.volume })
         val msg = JSONObject().put("type", "members").put("members", a)
         peers.forEach { send(it.writer, msg) }
     }
@@ -433,7 +447,6 @@ private object RexMusicSyncEngine {
         if (!_state.value.hosting) return
         peers.firstOrNull { it.id == id }?.let { p -> p.volume = v; runCatching { send(p.writer, JSONObject().put("type", "volume").put("value", v)) } }
         _state.value = _state.value.copy(volumes = _state.value.volumes + (id to v), members = _state.value.members.map { if (it.id == id) it.copy(volume = v) else it })
-        broadcastMembers()
     }
 
     private fun trackJson(t: RexTrack) = JSONObject().put("id", t.id).put("title", t.title).put("artist", t.artist).put("album", t.album).put("cover", t.cover).put("spotifyUrl", t.spotifyUrl).put("durationText", t.durationText)
@@ -504,7 +517,11 @@ private object RexMusicSyncEngine {
         }
     }
 
-    private fun send(w: BufferedWriter, m: JSONObject) { synchronized(w) { w.write(m.toString()); w.newLine(); w.flush() } }
+    private fun send(w: BufferedWriter, m: JSONObject) {
+        // Socket writes may fail when a phone disconnects mid-gesture. Never let an IOException
+        // escape a Compose callback (especially the volume slider) and crash the whole screen.
+        runCatching { synchronized(w) { w.write(m.toString()); w.newLine(); w.flush() } }
+    }
     private suspend fun withContextMain(block: () -> Unit) { withContext(Dispatchers.Main) { block() } }
 
     fun disconnect() { closeAll(); _state.value = _state.value.copy(hosting = false, connected = false, playing = false, members = emptyList(), status = "Terputus", error = null) }
@@ -525,65 +542,242 @@ private object RexMusicSyncEngine {
 fun RexMusicSyncScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val state by RexMusicSyncEngine.state.collectAsState()
-    val music by RexPlayerController.state.collectAsState()
     val offlineState by RexOfflineManager.state.collectAsState()
     var room by remember { mutableStateOf("RexSyncRoom1") }
     var ip by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("rexsync") }
     var name by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { RexMusicSyncEngine.bindContext(context); ip = RexMusicSyncEngine.detectIp(context) }
-    Scaffold(topBar = { TopAppBar(title = { Text("RexMusicSync", fontWeight = FontWeight.SemiBold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Kembali") } }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 14.dp, bottom = 28.dp)) {
+    var query by remember { mutableStateOf("") }
+    var onlineResults by remember { mutableStateOf<List<RexTrack>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var searchMessage by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val active = state.hosting || state.connected
+
+    LaunchedEffect(Unit) {
+        RexMusicSyncEngine.bindContext(context)
+        ip = RexMusicSyncEngine.detectIp(context)
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("RexMusicSync", fontWeight = FontWeight.Bold)
+                        Text("Listen together · local Wi-Fi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Kembali") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 30.dp)
+        ) {
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(22.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)); Text("Dengarkan bareng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                        Text("Sinkronisasi melalui Wi-Fi lokal. Semua perangkat harus berada di jaringan yang sama.", style = MaterialTheme.typography.bodyMedium)
-                        Text("Status: ${state.status}", style = MaterialTheme.typography.labelLarge)
-                        if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                                Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(13.dp).size(28.dp))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Music, in sync.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text("Putar bareng di jaringan Wi-Fi yang sama", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Surface(shape = RoundedCornerShape(50), color = if (active) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface) {
+                                Text(if (state.hosting) "HOST" else if (state.connected) "CONNECTED" else "OFFLINE", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Text(state.status, style = MaterialTheme.typography.titleSmall)
+                        if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                        state.error?.let { errorText ->
+                            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.errorContainer) {
+                                Text(errorText, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        if (active) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("ROOM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(state.room, style = MaterialTheme.typography.titleMedium)
+                                }
+                                if (state.hosting) Column(horizontalAlignment = Alignment.End) {
+                                    Text("MEMBERS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${state.members.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
                     }
                 }
             }
+
             item {
-                Text("BUAT ROOM · HOST", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                OutlinedTextField(room, { room = it }, label = { Text("Nama room") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(ip, { ip = it }, label = { Text("IP Wi-Fi host (otomatis) ") }, modifier = Modifier.fillMaxWidth(), singleLine = true, trailingIcon = { TextButton(onClick = { ip = RexMusicSyncEngine.detectIp(context) }) { Text("Auto") } })
-                OutlinedTextField(password, { password = it }, label = { Text("Password room") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Button(onClick = { RexMusicSyncEngine.createRoom(room, password, ip) }, enabled = !state.hosting && ip.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (state.hosting) "Room aktif" else "Buat room") }
-            }
-            item { HorizontalDivider(); Text("GABUNG ROOM · USER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
-            item {
-                OutlinedTextField(name, { name = it }, label = { Text("Nama kamu") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(room, { room = it }, label = { Text("Nama room") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(ip, { ip = it }, label = { Text("IP host") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(password, { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Button(onClick = { RexMusicSyncEngine.joinRoom(room, name.ifBlank { "User" }, ip, password) }, enabled = !state.connected && ip.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Gabung room") }
-            }
-            if (state.hosting || state.connected) {
-                item { HorizontalDivider(); Text("ANGGOTA (${state.members.size})", style = MaterialTheme.typography.labelLarge) }
-                items(state.members, key = { it.id }) { member -> ListItem(headlineContent = { Text(member.name) }, supportingContent = { Text(if (member.id == "host") "Host" else "Terhubung") }, leadingContent = { Icon(Icons.Default.MusicNote, null) }) }
-            }
-            if (state.hosting || state.connected) {
-                item { HorizontalDivider(); Text("ANTREAN BERSAMA (${state.queue.size})", style = MaterialTheme.typography.labelLarge); if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-                items(state.queue, key = { "q-${it.id}" }) { track ->
-                    Card(onClick = { RexMusicSyncEngine.playQueued(track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Filled.QueueMusic, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold); Text(track.artist, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }
+                Text("CONNECTION", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Create a room", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(room, { room = it }, label = { Text("Nama room") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
+                        OutlinedTextField(ip, { ip = it }, label = { Text("IP Wi-Fi host") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active, trailingIcon = { TextButton(onClick = { ip = RexMusicSyncEngine.detectIp(context) }, enabled = !active) { Text("AUTO") } })
+                        OutlinedTextField(password, { password = it }, label = { Text("Password room") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
+                        Button(onClick = { RexMusicSyncEngine.createRoom(room, password, ip) }, enabled = !active && ip.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                            Text("Buat room sebagai host")
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
+                        Text("Join a room", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(name, { name = it }, label = { Text("Nama kamu") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
+                        OutlinedTextField(ip, { ip = it }, label = { Text("IP host") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
+                        Button(onClick = { RexMusicSyncEngine.joinRoom(room, name.ifBlank { "User" }, ip, password) }, enabled = !active && ip.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                            Text("Gabung room")
+                        }
+                        Text("Tips: matikan VPN/WARP jika koneksi antar-HP tidak bisa tersambung, lalu pastikan kedua HP memakai Wi-Fi yang sama.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (state.hosting) items(state.members.filter { it.id != "host" }, key = { "vol-${it.id}" }) { member ->
-                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("Volume · ${member.name}", style = MaterialTheme.typography.labelMedium); Slider(value = state.volumes[member.id] ?: member.volume, onValueChange = { RexMusicSyncEngine.setMemberVolume(member.id, it) }, valueRange = 0f..1f) }
-                }
-                item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { OutlinedButton(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f), enabled = state.hosting) { Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (state.playing) "Pause semua" else "Lanjutkan") }; OutlinedButton(onClick = { RexMusicSyncEngine.stopAll() }, modifier = Modifier.weight(1f), enabled = state.hosting) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop semua") } } }
             }
-            item { HorizontalDivider(); Text("LAGU OFFLINE DI HP INI", style = MaterialTheme.typography.labelLarge); Text("Tambah lagu akan langsung mengirim cache ke room, tidak menunggu lagu diputar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(offlineState.entries, key = { "offline-${it.track.id}" }) { entry ->
-                Card(onClick = { RexMusicSyncEngine.addToQueue(entry.track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.MusicNote, null); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(entry.track.title, fontWeight = FontWeight.SemiBold); Text(entry.track.artist, style = MaterialTheme.typography.bodySmall) }; Text("+", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineSmall) }
+
+            if (active) {
+                item {
+                    Text("ROOM MEMBERS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                items(state.members.distinctBy { it.id }, key = { "member-${it.id}" }) { member ->
+                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Icon(Icons.Default.MusicNote, null, modifier = Modifier.padding(10.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(member.name, style = MaterialTheme.typography.titleMedium)
+                                    Text(if (member.id == "host") "Host device" else "Connected · ${member.ip}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (member.id == "host") Text("YOU", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (state.hosting && member.id != "host") {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Gain RexSync", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                                    Text("${((state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                }
+                                Slider(
+                                    value = (state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f),
+                                    onValueChange = { RexMusicSyncEngine.setMemberVolume(member.id, it) },
+                                    valueRange = 0f..1f
+                                )
+                                Text(
+                                    if (member.deviceVolume >= 0f) "Volume media HP: ${(member.deviceVolume * 100).toInt()}% · gain aplikasi diatur terpisah" else "Menunggu laporan volume media dari HP anggota…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else if (member.id != "host" && member.deviceVolume >= 0f) {
+                                Text("Volume media HP: ${(member.deviceVolume * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("NOW PLAYING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
+                            Text(state.trackTitle, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text(if (state.playing) "Sedang diputar bersama" else "Playback dijeda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
+                            if (state.hosting) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
+                                    Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+                                    Spacer(Modifier.width(6.dp)); Text(if (state.playing) "Pause" else "Resume")
+                                }
+                                OutlinedButton(onClick = { RexMusicSyncEngine.stopAll() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
+                                    Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop")
+                                }
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text("SHARED QUEUE · ${state.queue.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                items(state.queue.distinctBy { it.id }, key = { "queue-${it.id}" }) { track ->
+                    Card(onClick = { RexMusicSyncEngine.playQueued(track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) { Text(track.title, style = MaterialTheme.typography.titleSmall); Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                 }
             }
-            if (state.connected && !state.hosting) item { OutlinedButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Keluar dari room") } }
-            if (state.hosting || state.connected) item { TextButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Tutup koneksi") } }
+
+            item {
+                Text("FIND MUSIC", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Cari lagu online", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                            value = query, onValueChange = { query = it }, label = { Text("Judul atau artis") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            enabled = !searching,
+                            trailingIcon = { TextButton(enabled = !searching && query.isNotBlank(), onClick = {
+                                searching = true; searchMessage = "Mencari lagu…"
+                                scope.launch {
+                                    val result = RexMusicApi.search(query.trim())
+                                    onlineResults = result.getOrElse { emptyList() }
+                                    searchMessage = if (result.isSuccess) "${onlineResults.size} hasil · unduh dulu agar bisa dipakai di room" else (result.exceptionOrNull()?.message ?: "Pencarian gagal")
+                                    searching = false
+                                }
+                            }) { Text(if (searching) "…" else "CARI") } }
+                        )
+                        if (searchMessage.isNotBlank()) Text(searchMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            items(onlineResults.distinctBy { it.id }.filter { it.id.isNotBlank() }, key = { "search-${it.id}" }) { track ->
+                Card(shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) { Text(track.title, style = MaterialTheme.typography.titleSmall); Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        TextButton(onClick = { RexOfflineManager.download(track) }) { Text(if (offlineState.entries.any { it.track.id == track.id }) "TERSIMPAN" else "UNDUH") }
+                    }
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("YOUR OFFLINE LIBRARY", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text("${offlineState.entries.distinctBy { it.track.id }.size} lagu tersedia", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (active) Text("TAP + TO QUEUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(offlineState.entries.distinctBy { it.track.id }.filter { it.track.id.isNotBlank() }, key = { "offline-${it.track.id}" }) { entry ->
+                Card(shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                            Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(10.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) { Text(entry.track.title, style = MaterialTheme.typography.titleSmall); Text(entry.track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        TextButton(enabled = active, onClick = { RexMusicSyncEngine.addToQueue(entry.track) }) { Text("+ QUEUE") }
+                    }
+                }
+            }
+
+            if (active) item {
+                OutlinedButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Text(if (state.hosting) "Tutup room" else "Keluar dari room")
+                }
+            }
         }
     }
 }
