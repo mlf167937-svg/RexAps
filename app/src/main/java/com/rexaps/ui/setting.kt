@@ -1,18 +1,10 @@
+// setting.kt
 package com.rexaps.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,12 +12,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,7 +35,7 @@ private data class SettingSocialLink(
     val title: String,
     val subtitle: String,
     val symbol: String,
-    val color: androidx.compose.ui.graphics.Color,
+    val color: Color,
     val url: String
 )
 
@@ -55,28 +44,28 @@ private val socialLinks = listOf(
         title = "YouTube",
         subtitle = "@RexRuinCraft",
         symbol = "▶",
-        color = androidx.compose.ui.graphics.Color(0xFFFF0000),
+        color = Color(0xFFFF0000),
         url = "https://www.youtube.com/@RexRuinCraft"
     ),
     SettingSocialLink(
         title = "TikTok",
         subtitle = "@rexstudio4",
         symbol = "♪",
-        color = androidx.compose.ui.graphics.Color(0xFF111111),
+        color = Color(0xFF111111),
         url = "https://www.tiktok.com/@rexstudio4"
     ),
     SettingSocialLink(
         title = "Saweria",
         subtitle = "Dukung lewat donasi",
         symbol = "☕",
-        color = androidx.compose.ui.graphics.Color(0xFFF5A623),
+        color = Color(0xFFF5A623),
         url = "https://saweria.co/rexruincraft"
     ),
     SettingSocialLink(
         title = "Saluran WhatsApp",
         subtitle = "Gabung untuk update terbaru",
         symbol = "✆",
-        color = androidx.compose.ui.graphics.Color(0xFF25D366),
+        color = Color(0xFF25D366),
         url = "https://whatsapp.com/channel/0029Vb8oqCTDOQIYrRuWic33"
     )
 )
@@ -110,7 +99,7 @@ fun RexSettingsScreen(
                 border = BorderStroke(1.dp, colors.outlineVariant),
                 shape = CircleShape
             ) {
-                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Kembali ke beranda")
                 }
             }
@@ -133,7 +122,7 @@ fun RexSettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                androidx.compose.foundation.layout.Box(
+                Box(
                     modifier = Modifier.size(54.dp).clip(RoundedCornerShape(17.dp))
                         .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
                     contentAlignment = Alignment.Center
@@ -185,10 +174,10 @@ fun RexSettingsScreen(
                         color = link.color,
                         modifier = Modifier.size(42.dp)
                     ) {
-                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                        Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = link.symbol,
-                                color = androidx.compose.ui.graphics.Color.White,
+                                color = Color.White,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )

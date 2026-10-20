@@ -21,14 +21,8 @@ import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -76,7 +70,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,6 +83,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -111,7 +105,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/* ═════════════════════ Konstanta & model ═════════════════════ */
+/* ═════════════════════ Konstanta & Model ═════════════════════ */
 
 private const val DAY_MS = 24L * 60 * 60 * 1000
 private const val MAX_CLIP_MS = 4000L
@@ -181,7 +175,7 @@ internal val storyGradients = listOf(
     listOf(Color(0xFFEE0979), Color(0xFFFF6A00))
 )
 
-/* ═════════════════════ File & media helpers ═════════════════════ */
+/* ═════════════════════ File & Media Helpers ═════════════════════ */
 
 private fun hasStorageAccess(ctx: Context): Boolean =
     if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
@@ -215,7 +209,6 @@ private fun writeAccount(a: RexLocalAccount) {
     RexPaths.config.writeText(j.toString(2))
 }
 
-/** Story > 24 jam dihapus otomatis. */
 private fun loadStories(): List<RexStory> {
     val now = System.currentTimeMillis()
     val files = RexPaths.story.listFiles() ?: return emptyList()
@@ -306,7 +299,6 @@ internal fun videoDurationOf(ctx: Context, src: VSrc): Long {
     } catch (e: Exception) { 0L } finally { try { r.release() } catch (_: Exception) {} }
 }
 
-/** Ekstrak video dari Motion Photo / Live Photo Android (mp4 di ujung file JPEG). */
 private fun extractMotionVideo(ctx: Context, uri: Uri, out: File): Boolean = try {
     val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
     var start = -1
@@ -331,7 +323,6 @@ private fun extractMotionVideo(ctx: Context, uri: Uri, out: File): Boolean = try
     } else false
 } catch (e: Exception) { false }
 
-/** Potong video maks 4 detik tanpa re-encode (remux). Audio dibuang. */
 internal fun trimVideo(ctx: Context, src: VSrc, startMs: Long, out: File): Boolean {
     val dur = videoDurationOf(ctx, src)
     if (dur in 1..(MAX_CLIP_MS + 300)) {
@@ -437,7 +428,7 @@ internal fun renderCrop(src: Bitmap, aspect: Float, outW: Int, s: Float, ox: Flo
 
 internal fun secs(ms: Long) = String.format("%.1fs", ms / 1000f)
 
-/* ═════════════════════ Util UI ═════════════════════ */
+/* ═════════════════════ UI Utilities ═════════════════════ */
 
 internal fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
     val src = remember { MutableInteractionSource() }
@@ -506,7 +497,7 @@ internal fun GlowBadge(text: String) {
     }
 }
 
-/* ═════════════════════ Player video ═════════════════════ */
+/* ═════════════════════ Video Player ═════════════════════ */
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -545,7 +536,7 @@ internal fun RexVideo(
     )
 }
 
-/* ═════════════════════ Crop dialog ═════════════════════ */
+/* ═════════════════════ Crop Dialog ═════════════════════ */
 
 @Composable
 internal fun CropDialog(
@@ -708,12 +699,8 @@ internal fun CropDialog(
     }
 }
 
-/* ═════════════════════ Controller state profil ═════════════════════ */
+/* ═════════════════════ Profile Controller ═════════════════════ */
 
-/**
- * Semua state & aksi profil. Dipakai bersama oleh layout portrait & landscape,
- * sehingga logika tidak diduplikasi.
- */
 internal class RexProfileController(
     private val context: Context,
     private val scope: CoroutineScope
@@ -731,7 +718,6 @@ internal class RexProfileController(
     var crop by mutableStateOf<CropReq?>(null)
     var busy by mutableStateOf<String?>(null)
 
-    // Diisi oleh rememberRexProfileController() dari launcher Activity.
     var onPickBanner: () -> Unit = {}
     var onPickAvatar: () -> Unit = {}
     var onPickStoryVideo: () -> Unit = {}
@@ -912,7 +898,6 @@ internal class RexProfileController(
     }
 }
 
-/** Membuat controller + launcher. Dipanggil sekali dari entry point. */
 @Composable
 internal fun rememberRexProfileController(): RexProfileController {
     val context = LocalContext.current
@@ -941,7 +926,7 @@ internal fun rememberRexProfileController(): RexProfileController {
     return ctl
 }
 
-/* ═════════════════════ Entry point + izin ═════════════════════ */
+/* ═════════════════════ Entry Point & Permission ═════════════════════ */
 
 @Composable
 fun RexLocalAccountScreen(padding: PaddingValues) {
@@ -988,8 +973,7 @@ fun RexLocalAccountScreen(padding: PaddingValues) {
 @Composable
 private fun RexProfileRoot(padding: PaddingValues) {
     val ctl = rememberRexProfileController()
-    val isLandscape =
-        LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     Box(Modifier.fillMaxSize().padding(padding)) {
         if (isLandscape) {
@@ -998,7 +982,6 @@ private fun RexProfileRoot(padding: PaddingValues) {
             RexAccountScreenPortrait(ctl)
         }
 
-        // Tombol kamera melayang (ubah profil)
         Surface(
             Modifier.align(Alignment.TopEnd).padding(14.dp),
             shape = CircleShape,
@@ -1160,8 +1143,6 @@ private fun EditProfileSheet(ctl: RexProfileController) {
     }
 }
 
-/* ═════════════════════ Izin storage ═════════════════════ */
-
 @Composable
 private fun PermissionGate(padding: PaddingValues, onAllow: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -1217,8 +1198,6 @@ private fun PermissionGate(padding: PaddingValues, onAllow: () -> Unit) {
         }
     }
 }
-
-/* ═════════════════════ Komponen bersama layout profil ═════════════════════ */
 
 @Composable
 internal fun StatItem(value: Int, label: String, modifier: Modifier) {
@@ -1402,7 +1381,6 @@ internal fun AvatarContent(acct: RexLocalAccount, rev: Int, animate: Boolean, mo
     }
 }
 
-/** Avatar dengan ring story bersegmen. */
 @Composable
 internal fun StoryRingAvatar(
     acct: RexLocalAccount,
@@ -1490,7 +1468,6 @@ internal fun MediaThumb(file: File, modifier: Modifier) {
     }
 }
 
-/** Galeri (video + story) dengan tab. Dipakai portrait & landscape. */
 @Composable
 internal fun ProfileTabs(ctl: RexProfileController, columns: Int, cellAspect: Float) {
     val colors = MaterialTheme.colorScheme
@@ -1824,8 +1801,6 @@ internal fun StoryViewer(
         }
     }
 }
-
-/* ═════════════════════ Feed video ═════════════════════ */
 
 @Composable
 internal fun VideoFeed(
