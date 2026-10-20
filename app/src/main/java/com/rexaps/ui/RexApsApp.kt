@@ -1098,7 +1098,7 @@ internal fun ThemeSheet(
                     }
                 }
                 Text(
-                    text = "30 tampilan premium. Pilih yang paling nyaman untukmu.",
+                    text = "33 tampilan premium, dengan empat tema rekomendasi di bagian atas.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1114,11 +1114,20 @@ internal fun ThemePicker(
     onSelect: (RexThemeOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val recommended = listOf(
+        RexThemeOption.DARK_BLUE_MOON,
+        RexThemeOption.DARK_RED_MOON,
+        RexThemeOption.DARK_PURPLE_MOON,
+        RexThemeOption.DARK_HOLLOW_PURPLE
+    )
+    val others = RexThemeOption.values().filterNot { it in recommended }
+
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        RexThemeOption.values().toList().chunked(THEME_COLUMNS).forEach { rowItems ->
+        Text("4 tema rekomendasi", style = MaterialTheme.typography.titleMedium)
+        recommended.chunked(2).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { option ->
                     ThemeTile(
@@ -1128,9 +1137,20 @@ internal fun ThemePicker(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                repeat(THEME_COLUMNS - rowItems.size) {
-                    Spacer(Modifier.weight(1f))
+            }
+        }
+        Text("Tema lainnya", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        others.chunked(THEME_COLUMNS).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowItems.forEach { option ->
+                    ThemeTile(
+                        option = option,
+                        isSelected = option == selected,
+                        onClick = { onSelect(option) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
+                repeat(THEME_COLUMNS - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

@@ -53,7 +53,7 @@ fun RexMonitorHome(
             .fillMaxSize()
             .then(Modifier)
     ) {
-        val wide = maxWidth >= 840.dp
+        val wide = maxWidth >= 840.dp || (rexIsLandscapeLayout() && maxWidth >= 640.dp)
         val metricColumns = if (wide) 4 else 2
         Column(
             Modifier

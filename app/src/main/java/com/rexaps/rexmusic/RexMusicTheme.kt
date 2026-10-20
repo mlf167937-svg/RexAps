@@ -14,7 +14,8 @@ import androidx.compose.ui.unit.sp
 
 /** Accent/player tokens are resolved from the palette selected in RexAps. */
 /** The full-screen player intentionally keeps its dark canvas; its accents now follow RexAps. */
-val RexPlayerBase: Color = Color(0xFF09090D)
+val RexPlayerBase: Color
+    @Composable get() = MaterialTheme.colorScheme.background
 
 val RexHeroBrush: Brush
     @Composable get() = Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary))
