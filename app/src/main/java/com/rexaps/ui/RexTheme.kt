@@ -12,12 +12,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** 33 curated app-owned themes; the selected palette never follows the device theme. */
+/** 37 curated app-owned themes; the selected palette never follows the device theme. */
 enum class RexThemeOption(val label: String) {
     DARK_BLUE_MOON("Dark Blue Moon"),
     DARK_RED_MOON("Dark Red Moon"),
     DARK_PURPLE_MOON("Dark Purple Moon"),
     DARK_HOLLOW_PURPLE("Dark Holow Purple"),
+    LIGHT_BLUE_MOON("Light Blue Moon"),
+    LIGHT_RED_MOON("Light Red Moon"),
+    LIGHT_PURPLE_MOON("Light Purple Moon"),
+    LIGHT_HOLLOW_PURPLE("Light Holow Purple"),
     LIGHT("Daylight"), DARK("Midnight"), AMOLED("AMOLED"),
     LAVENDER("Lavender"), OCEAN("Oceanic"), CYBER("Cyber Pulse"), AURORA("Aurora"),
     COSMIC("Cosmic"), NEBULA("Nebula"), SAPPHIRE("Sapphire"), EMERALD("Emerald"),
@@ -53,11 +57,16 @@ data class RexPaletteSpec(
         private fun p(d:Boolean, a:Long, on:Long, c:Long, oc:Long, t:Long, bg:Long, card:Long, muted:Long, outline:Long, text:Long) =
             RexPaletteSpec(d,a,on,c,oc,t,bg,card,muted,outline,text)
         private val palettes: Map<RexThemeOption, RexPaletteSpec> = mapOf(
-            // Four curated recommendations. Blue Moon is the first-run default.
+            // Four curated dark recommendations. Dark Blue Moon is the first-run default.
             RexThemeOption.DARK_BLUE_MOON to p(true,0xFF69A7FF,0xFF06152D,0xFF173967,0xFFDCEBFF,0xFF65DDF5,0xFF070D18,0xFF101B2B,0xFF9DB4D2,0xFF263B57,0xFFF1F6FF),
             RexThemeOption.DARK_RED_MOON to p(true,0xFFFF4568,0xFF23050C,0xFF5F1827,0xFFFFDCE3,0xFFFF9CB0,0xFF11070B,0xFF1E1016,0xFFCDA4AE,0xFF59303C,0xFFFFF2F5),
             RexThemeOption.DARK_PURPLE_MOON to p(true,0xFFB99BFF,0xFF20103A,0xFF43266D,0xFFF0E5FF,0xFF8BE3FF,0xFF100918,0xFF1E142B,0xFFB7A6C9,0xFF3F2B55,0xFFF8F2FF),
             RexThemeOption.DARK_HOLLOW_PURPLE to p(true,0xFFCF8BFF,0xFF250A3D,0xFF4B1A70,0xFFFFE3FF,0xFF8B75FF,0xFF0B0612,0xFF180D24,0xFFB8A2C8,0xFF412552,0xFFFFF4FF),
+            // Matching light variants keep each curated Moon theme available in both appearances.
+            RexThemeOption.LIGHT_BLUE_MOON to p(false,0xFF245DB8,0xFFFFFFFF,0xFFDCE9FF,0xFF153D7B,0xFF087E9A,0xFFF4F8FF,0xFFFFFFFF,0xFF526782,0xFFD6E1F2,0xFF101C30),
+            RexThemeOption.LIGHT_RED_MOON to p(false,0xFFB42343,0xFFFFFFFF,0xFFFFE0E7,0xFF7A1830,0xFF9C2948,0xFFFFF5F7,0xFFFFFFFF,0xFF79515B,0xFFF0D5DC,0xFF2B1018),
+            RexThemeOption.LIGHT_PURPLE_MOON to p(false,0xFF7042B8,0xFFFFFFFF,0xFFEDE2FF,0xFF4A267F,0xFF087EAD,0xFFFAF7FF,0xFFFFFFFF,0xFF6E617E,0xFFE5D9F4,0xFF241536),
+            RexThemeOption.LIGHT_HOLLOW_PURPLE to p(false,0xFF7828A8,0xFFFFFFFF,0xFFF2DFFF,0xFF591B7D,0xFF5C48C7,0xFFFCF7FF,0xFFFFFFFF,0xFF74627F,0xFFE9D8F2,0xFF291237),
             RexThemeOption.LIGHT to p(false,0xFF635BDB,0xFFFFFFFF,0xFFE9E7FF,0xFF302B83,0xFF0E9F9A,0xFFF6F7FB,0xFFFFFFFF,0xFF626A7A,0xFFE2E5EF,0xFF171A26),
             RexThemeOption.DARK to p(true,0xFF9B8CFF,0xFF17132D,0xFF30285D,0xFFE9E4FF,0xFF64D8CB,0xFF101116,0xFF191B23,0xFFA4A8B8,0xFF30323D,0xFFF3F4FA),
             RexThemeOption.AMOLED to p(true,0xFFB4A5FF,0xFF120D25,0xFF251D40,0xFFE8E1FF,0xFF52E0D0,0xFF000000,0xFF0D0D12,0xFFA7A4B6,0xFF292633,0xFFF7F6FF),
