@@ -10,7 +10,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,8 +45,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -65,31 +62,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-
-// =====================================================================
-// THEME
-// =====================================================================
-
-@Composable
-fun RexTheme(content: @Composable () -> Unit) {
-    val scheme =
-        if (isSystemInDarkTheme()) {
-            darkColorScheme(
-                primary = Color(0xFF25D366),
-                tertiary = Color(0xFF34B7F1)
-            )
-        } else {
-            lightColorScheme(
-                primary = Color(0xFF128C7E),
-                tertiary = Color(0xFF075E54)
-            )
-        }
-
-    MaterialTheme(
-        colorScheme = scheme,
-        content = content
-    )
-}
 
 // =====================================================================
 // OPEN SESSION (dipakai MainActivity dan route UI utama)
@@ -135,7 +107,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            RexTheme {
+            com.rexaps.ui.RexTheme(option = com.rexaps.ui.RexThemeStore(this@MainActivity).load()) {
                 SessionListScreen(
                     refreshTick = tick,
                     onOpen = { session, method ->

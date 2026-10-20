@@ -15,7 +15,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -81,12 +80,9 @@ private val CText = Color(0xFF94E2D5)
 private val CArchive = Color(0xFFFAB387)
 private val PreviewFg = Color(0xFFCDD6F4)
 
-// Warna nama file: biru terang di tema gelap, biru lebih pekat di tema terang (kontras tetap terjaga).
-private val NameBlueDark = Color(0xFF89B4FA)
-private val NameBlueLight = Color(0xFF1E66F5)
-
+// Nama file memakai aksen tema aplikasi; warnanya ikut berubah saat tema RexAps diganti.
 @Composable
-private fun nameBlue(): Color = if (isSystemInDarkTheme()) NameBlueDark else NameBlueLight
+private fun nameBlue(): Color = MaterialTheme.colorScheme.primary
 
 private const val PLACE_TERMUX = "/data/data/com.termux"
 private const val PLACE_STORAGE = "/storage/emulated/0"
@@ -893,7 +889,7 @@ private fun FilePreview(b: FileBrowserState, file: RemoteFile, modifier: Modifie
                 Text(
                     file.name,
                     style = MaterialTheme.typography.titleSmall,
-                    color = NameBlueDark,
+                    color = nameBlue(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1155,7 +1151,7 @@ private fun NoPreview(f: RemoteFile, message: String = "Pratinjau belum tersedia
     ) {
         Icon(st.icon, null, Modifier.size(64.dp), tint = st.color)
         Spacer(Modifier.height(12.dp))
-        Text(f.name, style = MaterialTheme.typography.titleMedium, color = NameBlueDark, textAlign = TextAlign.Center)
+        Text(f.name, style = MaterialTheme.typography.titleMedium, color = nameBlue(), textAlign = TextAlign.Center)
         Text(
             "${st.label} · ${fmtBytes(f.size)} · ${f.perms}",
             style = MaterialTheme.typography.bodySmall,

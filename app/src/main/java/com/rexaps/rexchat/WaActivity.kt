@@ -64,7 +64,7 @@ open class WaActivity : ComponentActivity() {
         controller = c
 
         setContent {
-            RexTheme {
+            com.rexaps.ui.RexTheme(option = com.rexaps.ui.RexThemeStore(this@WaActivity).load()) {
                 WaScreen(
                     c = c,
                     title = session.name,

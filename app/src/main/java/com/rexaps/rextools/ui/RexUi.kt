@@ -23,7 +23,6 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -89,38 +88,6 @@ fun hairline(alpha: Float = 0.7f) =
 
 /* ═════════════════════ THEME (opsional) ═════════════════════ */
 
-private val RexDark = darkColorScheme(
-    primary = Color(0xFF7CA2FF), onPrimary = Color(0xFF05122F),
-    primaryContainer = Color(0xFF1B2C5E), onPrimaryContainer = Color(0xFFD9E3FF),
-    secondary = Color(0xFF4FD8C4), onSecondary = Color(0xFF00201C),
-    secondaryContainer = Color(0xFF0F3A36), onSecondaryContainer = Color(0xFFB8F5EC),
-    tertiary = Color(0xFFB69CFF), onTertiary = Color(0xFF241046),
-    tertiaryContainer = Color(0xFF3A2A6B), onTertiaryContainer = Color(0xFFE8DDFF),
-    background = Color(0xFF070912), onBackground = Color(0xFFE6E8F2),
-    surface = Color(0xFF0C0F1C), onSurface = Color(0xFFE6E8F2),
-    surfaceVariant = Color(0xFF1A1F33), onSurfaceVariant = Color(0xFF9AA3BD),
-    outline = Color(0xFF3A4260), outlineVariant = Color(0xFF262C45),
-    error = Color(0xFFFF7A8A), onError = Color(0xFF3B0610),
-    errorContainer = Color(0xFF45121C), onErrorContainer = Color(0xFFFFD9DE),
-    surfaceContainerLowest = Color(0xFF070912), surfaceContainerLow = Color(0xFF0F1322),
-    surfaceContainer = Color(0xFF131829), surfaceContainerHigh = Color(0xFF181E32),
-    surfaceContainerHighest = Color(0xFF1F2640)
-)
-
-private val RexLight = lightColorScheme(
-    primary = Color(0xFF3F5FE0), onPrimary = Color.White,
-    primaryContainer = Color(0xFFDDE4FF), onPrimaryContainer = Color(0xFF0B1B5E),
-    secondary = Color(0xFF00897B), tertiary = Color(0xFF7351D6),
-    tertiaryContainer = Color(0xFFEBE0FF), onTertiaryContainer = Color(0xFF2A1068),
-    secondaryContainer = Color(0xFFCDF3EE), onSecondaryContainer = Color(0xFF00201C),
-    background = Color(0xFFF6F7FB), surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFE8EBF5), onSurfaceVariant = Color(0xFF596079),
-    outline = Color(0xFFB4BBD2), outlineVariant = Color(0xFFD9DDEC),
-    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF1F3FA),
-    surfaceContainer = Color(0xFFECEFF8), surfaceContainerHigh = Color(0xFFE6E9F4),
-    surfaceContainerHighest = Color(0xFFDFE3F0)
-)
-
 private val RexType = Typography().let { t ->
     t.copy(
         displaySmall = t.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp),
@@ -131,12 +98,9 @@ private val RexType = Typography().let { t ->
 }
 
 @Composable
-fun RexTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) RexDark else RexLight,
-        typography = RexType,
-        content = content
-    )
+fun RexTheme(content: @Composable () -> Unit) {
+    // Keep RexTools inside the palette selected by the RexAps shell.
+    MaterialTheme(typography = RexType, content = content)
 }
 
 /* ═════════════════════ MODIFIERS ═════════════════════ */

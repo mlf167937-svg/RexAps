@@ -1,8 +1,7 @@
 package com.rexaps.rexcoder.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -94,29 +93,30 @@ object Rex {
     /** Signature cyan -> violet gradient used for highlights, focus lines and primary buttons. */
     fun accentBrush(): Brush = Brush.horizontalGradient(listOf(Accent, Accent2))
 
-    fun apply(dark: Boolean) {
-        EditorBg = if (dark) DarkEditorBg else LightEditorBg
-        SideBar = if (dark) DarkSideBar else LightSideBar
-        ActivityBar = if (dark) DarkActivityBar else LightActivityBar
-        TitleBar = if (dark) DarkTitleBar else LightTitleBar
-        TabBar = if (dark) DarkTabBar else LightTabBar
-        TabInactive = if (dark) DarkTabInactive else LightTabInactive
-        Border = if (dark) DarkBorder else LightBorder
-        Selection = if (dark) DarkSelection else LightSelection
-        SelectionEditor = if (dark) DarkSelectionEditor else LightSelectionEditor
-        LineHighlight = if (dark) DarkLineHighlight else LightLineHighlight
-        Accent = if (dark) DarkAccent else LightAccent
-        Accent2 = if (dark) DarkAccent2 else LightAccent2
-        Field = if (dark) DarkField else LightField
-        Overlay = if (dark) DarkOverlay else LightOverlay
-        OnAccent = if (dark) DarkOnAccent else LightOnAccent
-        Text = if (dark) DarkText else LightText
-        TextDim = if (dark) DarkTextDim else LightTextDim
-        TextBright = if (dark) DarkTextBright else LightTextBright
-        Error = if (dark) DarkError else LightError
-        Warning = if (dark) DarkWarning else LightWarning
-        Modified = if (dark) DarkModified else LightModified
-        Success = if (dark) DarkSuccess else LightSuccess
+    fun apply(colors: ColorScheme) {
+        // Editor chrome follows RexAps palettes; only syntax highlighting stays specialized.
+        EditorBg = colors.background
+        SideBar = colors.surface
+        ActivityBar = colors.surfaceVariant
+        TitleBar = colors.surface
+        TabBar = colors.surface
+        TabInactive = colors.surfaceVariant
+        Border = colors.outlineVariant
+        Selection = colors.primaryContainer
+        SelectionEditor = colors.primaryContainer
+        LineHighlight = colors.surfaceVariant.copy(alpha = 0.55f)
+        Accent = colors.primary
+        Accent2 = colors.tertiary
+        Field = colors.surfaceVariant
+        Overlay = colors.surface
+        OnAccent = colors.onPrimary
+        Text = colors.onSurface
+        TextDim = colors.onSurfaceVariant
+        TextBright = colors.onSurface
+        Error = colors.error
+        Warning = colors.tertiary
+        Modified = colors.secondary
+        Success = colors.tertiary
     }
 }
 
@@ -132,18 +132,8 @@ val CodeStyle: TextStyle
     get() = codeStyle(13)
 
 @Composable
-fun RexTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
-    Rex.apply(darkTheme)
-    val scheme = if (darkTheme) darkColorScheme(
-        primary = Rex.DarkAccent, onPrimary = Rex.DarkOnAccent, secondary = Rex.DarkAccent2,
-        background = Rex.DarkEditorBg, surface = Rex.DarkSideBar,
-        onSurface = Rex.DarkText, onBackground = Rex.DarkText,
-        surfaceVariant = Rex.DarkField, outline = Rex.DarkBorder
-    ) else lightColorScheme(
-        primary = Rex.LightAccent, onPrimary = Rex.LightOnAccent, secondary = Rex.LightAccent2,
-        background = Rex.LightEditorBg, surface = Rex.LightSideBar,
-        onSurface = Rex.LightText, onBackground = Rex.LightText,
-        surfaceVariant = Rex.LightField, outline = Rex.LightBorder
-    )
-    MaterialTheme(colorScheme = scheme, content = content)
+fun RexTheme(content: @Composable () -> Unit) {
+    Rex.apply(MaterialTheme.colorScheme)
+    // Do not nest a separate light/dark MaterialTheme; inherit RexAps colors.
+    content()
 }

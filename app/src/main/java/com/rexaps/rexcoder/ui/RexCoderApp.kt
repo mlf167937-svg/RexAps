@@ -49,13 +49,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRexCoderState()) {
     RexRuntime.init(LocalContext.current)
-    var darkTheme by rememberSaveable { mutableStateOf(true) }
-    RexTheme(darkTheme = darkTheme) {
+    RexTheme {
         BoxWithConstraints(modifier.fillMaxSize().background(Rex.EditorBg)) {
             val widthDp = maxWidth.value
             val heightDp = maxHeight.value
-            if (maxWidth >= 600.dp) WideLayout(state, roomy = maxHeight >= 480.dp, widthDp = widthDp, heightDp = heightDp, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
-            else CompactLayout(state, heightDp = heightDp, darkTheme = darkTheme, onToggleTheme = { darkTheme = !darkTheme })
+            if (maxWidth >= 600.dp) WideLayout(state, roomy = maxHeight >= 480.dp, widthDp = widthDp, heightDp = heightDp)
+            else CompactLayout(state, heightDp = heightDp)
             if (state.paletteVisible) CommandPalette(state)
         }
     }
@@ -64,12 +63,12 @@ fun RexCoderApp(modifier: Modifier = Modifier, state: RexCoderState = rememberRe
 // ───────────── Landscape / tablet ─────────────
 
 @Composable
-private fun WideLayout(s: RexCoderState, roomy: Boolean, widthDp: Float, heightDp: Float, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun WideLayout(s: RexCoderState, roomy: Boolean, widthDp: Float, heightDp: Float) {
     val density = LocalDensity.current.density
     val sidebarW = s.sidebarWidth.coerceIn(150f, (widthDp * 0.5f).coerceAtLeast(150f))
     val panelH = s.panelHeight.coerceIn(90f, (heightDp * 0.6f).coerceAtLeast(90f))
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-        if (roomy) TitleBar(s, darkTheme, onToggleTheme)
+        if (roomy) TitleBar(s)
         Row(Modifier.weight(1f)) {
             VerticalActivityBar(s, roomy)
             if (s.sidebarVisible) {
@@ -103,7 +102,7 @@ private fun PanelResizeHandle(s: RexCoderState, currentDp: Float, heightDp: Floa
 }
 
 @Composable
-private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun TitleBar(s: RexCoderState) {
     Row(
         Modifier.fillMaxWidth().height(36.dp).background(Rex.TitleBar)
             .drawBehind { drawRect(Rex.accentBrush(), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()), alpha = 0.6f) }
@@ -141,14 +140,13 @@ private fun TitleBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> 
         }
         Spacer(Modifier.width(8.dp))
         SmallIconButton(Icons.Outlined.Save, "Save", 32.dp) { s.save() }
-        SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 32.dp) { onToggleTheme() }
     }
 }
 
 // ───────────── Portrait phone ─────────────
 
 @Composable
-private fun CompactLayout(s: RexCoderState, heightDp: Float, darkTheme: Boolean, onToggleTheme: () -> Unit) {
+private fun CompactLayout(s: RexCoderState, heightDp: Float) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -165,7 +163,7 @@ private fun CompactLayout(s: RexCoderState, heightDp: Float, darkTheme: Boolean,
         }
     ) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-            CompactTopBar(s, darkTheme, onToggleTheme) { scope.launch { drawer.open() } }
+            CompactTopBar(s) { scope.launch { drawer.open() } }
             EditorArea(s, horizontal = false, modifier = Modifier.weight(1f))
             if (s.panelVisible) {
                 PanelResizeHandle(s, panelH, heightDp, density)
@@ -180,7 +178,7 @@ private fun CompactLayout(s: RexCoderState, heightDp: Float, darkTheme: Boolean,
 }
 
 @Composable
-private fun CompactTopBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: () -> Unit, onMenu: () -> Unit) {
+private fun CompactTopBar(s: RexCoderState, onMenu: () -> Unit) {
     val doc = s.focusedDoc
     Row(
         Modifier.fillMaxWidth().height(48.dp).background(Rex.TitleBar)
@@ -198,7 +196,6 @@ private fun CompactTopBar(s: RexCoderState, darkTheme: Boolean, onToggleTheme: (
         }
         SmallIconButton(Icons.Outlined.Search, "Command palette", 40.dp, Rex.Text) { s.paletteVisible = true }
         LayoutMenu(s, tint = Rex.Text, size = 40.dp)
-        SmallIconButton(if (darkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "Toggle theme", 40.dp, Rex.Text) { onToggleTheme() }
         SmallIconButton(Icons.Outlined.Save, "Save", 40.dp, Rex.Text) { s.save() }
     }
 }

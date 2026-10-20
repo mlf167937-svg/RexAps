@@ -3,6 +3,7 @@ package com.rexaps.ui
 
 import android.app.Activity
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -69,6 +70,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +84,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -93,6 +96,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.rexaps.rexcoder.RexCoderScreen
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexgit.RexGit
@@ -149,6 +153,23 @@ fun RexApsApp(activity: Activity) {
     var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
     var showThemeSheet by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableStateOf(RexTab.HOME) }
+
+    // System bars belong to RexAps, not the Android device's light/dark preference.
+    val activePalette = remember(themeOption) { RexPaletteSpec.of(themeOption) }
+    SideEffect {
+        activity.window.statusBarColor = Color(activePalette.background).toArgb()
+        activity.window.navigationBarColor = Color(activePalette.background).toArgb()
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = !activePalette.dark
+            isAppearanceLightNavigationBars = !activePalette.dark
+        }
+    }
+
+    // A module without its own nested-back action returns to the RexAps shell instead of closing the app.
+    BackHandler(enabled = route != RexRoute.NONE) {
+        route = RexRoute.NONE
+        routeLoading = false
+    }
 
     val onThemeChange: (RexThemeOption) -> Unit = { option ->
         if (option != themeOption) {
