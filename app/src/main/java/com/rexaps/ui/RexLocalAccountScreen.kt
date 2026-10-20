@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -65,6 +66,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -985,7 +987,8 @@ private fun RexProfileRoot(padding: PaddingValues) {
         Surface(
             Modifier.align(Alignment.TopEnd).padding(14.dp),
             shape = CircleShape,
-            color = Color.Black.copy(.35f)
+            color = Color.Black.copy(.35f),
+            border = BorderStroke(1.dp, Color.White.copy(.18f))
         ) {
             IconButton(onClick = { ctl.showEdit = true }) {
                 Icon(Icons.Default.PhotoCamera, null, tint = Color.White)
@@ -1086,7 +1089,14 @@ private fun EditProfileSheet(ctl: RexProfileController) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Edit profil", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Column {
+                Text("Edit profil", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "Perbarui foto, banner, dan identitas kamu",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MediaOption(Icons.Default.AddAPhoto, "Banner", "Foto • video 4 dtk • live", Modifier.weight(1f)) {
@@ -1147,55 +1157,88 @@ private fun EditProfileSheet(ctl: RexProfileController) {
 private fun PermissionGate(padding: PaddingValues, onAllow: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val inf = rememberInfiniteTransition(label = "gate")
-    val pulse by inf.animateFloat(1f, 1.12f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "pulse")
+    val pulse by inf.animateFloat(
+        1f, 1.08f,
+        infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    val steps = if (Build.VERSION.SDK_INT >= 30) {
+        listOf(
+            "Tekan tombol \"Izinkan akses\" di bawah",
+            "Aktifkan \"Izinkan akses ke semua file\"",
+            "Kembali ke RexAps, halaman akan terbuka otomatis"
+        )
+    } else {
+        listOf(
+            "Tekan tombol \"Izinkan akses\" di bawah",
+            "Setujui izin penyimpanan yang muncul"
+        )
+    }
 
     Box(Modifier.fillMaxSize().padding(padding)) {
         Aurora(Modifier.fillMaxSize())
         Column(
-            Modifier.fillMaxSize().padding(28.dp),
+            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                Modifier
-                    .size(110.dp)
-                    .graphicsLayer { scaleX = pulse; scaleY = pulse }
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Lock, null, tint = colors.onPrimary, modifier = Modifier.size(48.dp))
+            Box(Modifier.graphicsLayer { scaleX = pulse; scaleY = pulse }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(136.dp).clip(CircleShape).background(colors.primary.copy(alpha = .12f)))
+                Box(
+                    Modifier
+                        .size(104.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Lock, null, tint = colors.onPrimary, modifier = Modifier.size(44.dp))
+                }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
             Text(
                 "Izin penyimpanan diperlukan",
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Profil, story, dan video kamu disimpan langsung di Download/RexAps/.config/ — 100% lokal, tanpa server. " +
-                    "Tanpa izin ini aplikasi tidak bisa membaca atau menyimpan file tersebut.",
+                "Profil, story, dan video kamu disimpan langsung di Download/RexAps/.config/ — 100% lokal, tanpa server.",
                 color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
-            if (Build.VERSION.SDK_INT >= 30) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Kamu akan dibawa ke Pengaturan. Aktifkan \"Izinkan akses ke semua file\", lalu kembali ke aplikasi.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.primary,
-                    textAlign = TextAlign.Center
-                )
+            Spacer(Modifier.height(24.dp))
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    steps.forEachIndexed { i, s -> PermissionStep(i + 1, s) }
+                }
             }
             Spacer(Modifier.height(26.dp))
             Button(
                 onClick = onAllow,
-                Modifier.fillMaxWidth().height(54.dp),
+                Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)
-            ) { Text("Izinkan akses") }
+            ) {
+                Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Izinkan akses", fontWeight = FontWeight.Bold)
+            }
         }
+    }
+}
+
+@Composable
+private fun PermissionStep(number: Int, text: String) {
+    val c = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(28.dp).clip(CircleShape).background(c.primary.copy(alpha = .16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("$number", color = c.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = c.onSurface, modifier = Modifier.weight(1f))
     }
 }
 
@@ -1211,7 +1254,12 @@ internal fun StatItem(value: Int, label: String, modifier: Modifier) {
 @Composable
 internal fun SegTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     val c = MaterialTheme.colorScheme
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = c.surfaceVariant.copy(.55f)) {
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = c.surfaceVariant.copy(.4f),
+        border = BorderStroke(1.dp, c.outlineVariant.copy(.4f))
+    ) {
         Row(Modifier.padding(4.dp)) {
             labels.forEachIndexed { i, l ->
                 val sel = i == selected
@@ -1220,12 +1268,19 @@ internal fun SegTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Uni
                 Box(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(bg)
                         .clickable { onSelect(i) }
-                        .padding(vertical = 11.dp),
+                        .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
-                ) { Text(l, color = fg, fontWeight = FontWeight.SemiBold) }
+                ) {
+                    Text(
+                        l,
+                        color = fg,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
             }
         }
     }
@@ -1255,16 +1310,22 @@ internal fun RexGrid(
 @Composable
 internal fun AddTile(modifier: Modifier, title: String, sub: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
     Box(
         modifier
             .pressable(onClick)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(c.primary.copy(.18f), c.tertiary.copy(.18f))))
-            .border(1.dp, c.primary.copy(.4f), RoundedCornerShape(16.dp)),
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(c.primary.copy(.20f), c.tertiary.copy(.14f))))
+            .border(1.dp, c.primary.copy(.35f), shape),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(Icons.Default.Add, null, tint = c.primary, modifier = Modifier.size(28.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(c.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, null, tint = c.onPrimary, modifier = Modifier.size(22.dp))
+            }
             Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
         }
@@ -1280,10 +1341,21 @@ internal fun MediaOption(
     onClick: () -> Unit
 ) {
     val c = MaterialTheme.colorScheme
-    Surface(modifier.pressable(onClick), shape = RoundedCornerShape(18.dp), color = c.surfaceVariant) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(icon, null, tint = c.primary)
-            Text(title, fontWeight = FontWeight.Bold)
+    Surface(
+        modifier.pressable(onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = c.surfaceVariant.copy(.7f),
+        border = BorderStroke(1.dp, c.outlineVariant.copy(.4f))
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(c.primary.copy(.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = c.primary, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
             Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
         }
     }
@@ -1560,13 +1632,20 @@ internal fun ProfileIdentity(acct: RexLocalAccount, centered: Boolean) {
 internal fun ProfileStats(ctl: RexProfileController) {
     val colors = MaterialTheme.colorScheme
     GlassCard(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             StatItem(ctl.stories.size, "Story", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(28.dp).background(colors.outlineVariant))
+            Box(Modifier.width(1.dp).height(32.dp).background(colors.outlineVariant.copy(.6f)))
             StatItem(ctl.videos.size, "Video", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(28.dp).background(colors.outlineVariant))
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Lock, null, tint = colors.primary, modifier = Modifier.size(22.dp))
+            Box(Modifier.width(1.dp).height(32.dp).background(colors.outlineVariant.copy(.6f)))
+            Column(
+                Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Icon(Icons.Default.Lock, null, tint = colors.primary, modifier = Modifier.size(20.dp))
                 Text("100% Lokal", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
             }
         }
@@ -1600,7 +1679,8 @@ internal fun ProfileActions(ctl: RexProfileController) {
 @Composable
 private fun StoryTile(st: RexStory, acct: RexLocalAccount, rev: Int, modifier: Modifier, onClick: () -> Unit) {
     val left = (DAY_MS - (System.currentTimeMillis() - st.time)).coerceAtLeast(0)
-    Box(modifier.pressable(onClick).clip(RoundedCornerShape(16.dp))) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(modifier.pressable(onClick).clip(shape).border(1.dp, Color.White.copy(alpha = .08f), shape)) {
         if (st.isVideo) {
             MediaThumb(st.file, Modifier.fillMaxSize())
         } else {
@@ -1633,6 +1713,7 @@ private fun StoryTile(st: RexStory, acct: RexLocalAccount, rev: Int, modifier: M
             "${left / 3_600_000}j lagi",
             color = Color.White,
             style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
             modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
         )
     }
@@ -1644,21 +1725,27 @@ internal fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> 
     var g by remember { mutableIntStateOf(0) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(26.dp),
-        title = { Text("Buat story", fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Text("Buat story", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(
-                    Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(20.dp))
+                    Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(24.dp))
                         .background(Brush.linearGradient(storyGradients[g])),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text.ifBlank { "Tulis sesuatu…" },
-                        color = Color.White,
+                        color = Color.White.copy(alpha = if (text.isBlank()) .7f else 1f),
                         fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         maxLines = 4,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1668,18 +1755,37 @@ internal fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> 
                     onValueChange = { if (it.length <= 200) text = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Teks story") },
-                    shape = RoundedCornerShape(14.dp)
+                    supportingText = { Text("${text.length}/200") },
+                    shape = RoundedCornerShape(16.dp)
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Warna latar",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     storyGradients.forEachIndexed { i, cols ->
+                        val selected = i == g
                         Box(
-                            Modifier.size(32.dp).clip(CircleShape).background(Brush.linearGradient(cols))
-                                .border(if (i == g) 3.dp else 0.dp, Color.White, CircleShape)
-                                .clickable { g = i }
-                        )
+                            Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(cols))
+                                .border(if (selected) 2.dp else 0.dp, Color.White, CircleShape)
+                                .clickable { g = i },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selected) {
+                                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
-                OutlinedButton(onClick = onVideo, Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                OutlinedButton(
+                    onClick = onVideo,
+                    Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
                     Icon(Icons.Default.Videocam, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Pilih video .mp4")
@@ -1687,7 +1793,11 @@ internal fun StoryComposeDialog(onDismiss: () -> Unit, onText: (String, Int) -> 
             }
         },
         confirmButton = {
-            TextButton(enabled = text.isNotBlank(), onClick = { onText(text.trim(), g) }) { Text("Posting teks") }
+            Button(
+                enabled = text.isNotBlank(),
+                onClick = { onText(text.trim(), g) },
+                shape = RoundedCornerShape(14.dp)
+            ) { Text("Posting teks") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
     )
