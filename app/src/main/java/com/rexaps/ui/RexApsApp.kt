@@ -1102,7 +1102,7 @@ internal fun ThemeSheet(
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
-                            text = "${RexThemeOption.values().size}",
+                            text = "${RexThemeOption.curatedOptions.size}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -1110,7 +1110,7 @@ internal fun ThemeSheet(
                     }
                 }
                 Text(
-                    text = "33 tampilan premium, dengan empat tema rekomendasi di bagian atas.",
+                    text = "30 tema premium dalam enam kategori visual, dengan preview langsung.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1126,43 +1126,25 @@ internal fun ThemePicker(
     onSelect: (RexThemeOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val recommended = listOf(
-        RexThemeOption.DARK_BLUE_MOON,
-        RexThemeOption.DARK_RED_MOON,
-        RexThemeOption.DARK_PURPLE_MOON,
-        RexThemeOption.DARK_HOLLOW_PURPLE
+    val categoryGroups = listOf(
+        "Glass" to RexThemeOption.curatedOptions.filter { it.name.startsWith("GLASS_") },
+        "Dark" to RexThemeOption.curatedOptions.filter { it.name.startsWith("DARK_") },
+        "Light" to RexThemeOption.curatedOptions.filter { it.name.startsWith("LIGHT_") },
+        "Neon" to RexThemeOption.curatedOptions.filter { it.name.startsWith("NEON_") },
+        "Cosmic" to RexThemeOption.curatedOptions.filter { it.name.startsWith("ASTRAL_") || it.name.startsWith("NEBULA_") || it.name.startsWith("ECLIPSE_") || it.name.startsWith("STARLIGHT_") },
+        "Elemental" to RexThemeOption.curatedOptions.filter { it.name.startsWith("FROST_") || it.name.startsWith("INFERNO_") || it.name.startsWith("THUNDER_") || it.name.startsWith("ABYSSAL_") }
     )
-    val others = RexThemeOption.values().filterNot { it in recommended }
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("4 tema rekomendasi", style = MaterialTheme.typography.titleMedium)
-        recommended.chunked(2).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowItems.forEach { option ->
-                    ThemeTile(
-                        option = option,
-                        isSelected = option == selected,
-                        onClick = { onSelect(option) },
-                        modifier = Modifier.weight(1f)
-                    )
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        categoryGroups.forEach { (category, options) ->
+            Text(category, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+            options.chunked(THEME_COLUMNS).forEach { rowItems ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rowItems.forEach { option ->
+                        ThemeTile(option = option, isSelected = option == selected,
+                            onClick = { onSelect(option) }, modifier = Modifier.weight(1f))
+                    }
+                    repeat(THEME_COLUMNS - rowItems.size) { Spacer(Modifier.weight(1f)) }
                 }
-            }
-        }
-        Text("Tema lainnya", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-        others.chunked(THEME_COLUMNS).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowItems.forEach { option ->
-                    ThemeTile(
-                        option = option,
-                        isSelected = option == selected,
-                        onClick = { onSelect(option) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                repeat(THEME_COLUMNS - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -1228,6 +1210,16 @@ private fun ThemeTile(
                 .background(Brush.linearGradient(listOf(previewBg, previewCard)))
                 .border(1.dp, previewOutline, previewShape)
         ) {
+            if (option == RexThemeOption.GLASS_BLUE_MOON) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopStart).padding(5.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    color = previewPrimary.copy(alpha = .92f)
+                ) {
+                    Text("Default", modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                        color = Color(spec.onPrimary), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)

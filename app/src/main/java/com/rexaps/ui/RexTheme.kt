@@ -29,21 +29,48 @@ enum class RexThemeOption(val label: String) {
     GRAPHITE("Graphite"), OBSIDIAN("Obsidian"), ARCTIC("Arctic"), MINT("Mint"),
     CRIMSON("Crimson"), VIOLET("Electric Violet"), TEAL("Deep Teal"),
     MATRIX("Matrix"), SYNTHWAVE("Synthwave"), GLACIER("Glacier"),
-    MOCHA("Mocha"), PEARL("Pearl"), COBALT("Cobalt"), MAGENTA("Magenta");
+    MOCHA("Mocha"), PEARL("Pearl"), COBALT("Cobalt"), MAGENTA("Magenta"),
+    GLASS_BLUE_MOON("Glass Blue Moon"), GLASS_RED_MOON("Glass Red Moon"),
+    GLASS_PURPLE_MOON("Glass Purple Moon"), GLASS_HOLLOW_PURPLE("Glass Hollow Purple"),
+    GLASS_EMERALD_MOON("Glass Emerald Moon"), GLASS_GOLD_MOON("Glass Gold Moon"),
+    DARK_ONYX_MOON("Dark Onyx Moon"), DARK_MIDNIGHT_SILVER("Dark Midnight Silver"),
+    LIGHT_PEARL_WHITE("Light Pearl White"), LIGHT_SAKURA_PINK("Light Sakura Pink"),
+    NEON_CYAN_MOON("Neon Cyan Moon"), NEON_GREEN_MOON("Neon Green Moon"),
+    NEON_PINK_MOON("Neon Pink Moon"), NEON_YELLOW_MOON("Neon Yellow Moon"),
+    ASTRAL_GALAXY_MOON("Astral Galaxy Moon"), NEBULA_VOID_MOON("Nebula Void Moon"),
+    ECLIPSE_BLACK_MOON("Eclipse Black Moon"), STARLIGHT_SILVER_MOON("Starlight Silver Moon"),
+    FROST_ICE_BLUE_MOON("Frost Ice Blue Moon"), INFERNO_MAGMA_RED_MOON("Inferno Magma Red Moon"),
+    THUNDER_GOLD_MOON("Thunder Gold Moon"), ABYSSAL_OCEAN_MOON("Abyssal Ocean Moon");
 
+    companion object {
+        /** The curated 30-theme catalogue in the product's canonical category/order. */
+        val curatedOptions: List<RexThemeOption> = listOf(
+            GLASS_BLUE_MOON, GLASS_RED_MOON, GLASS_PURPLE_MOON, GLASS_HOLLOW_PURPLE, GLASS_EMERALD_MOON, GLASS_GOLD_MOON,
+            DARK_BLUE_MOON, DARK_RED_MOON, DARK_PURPLE_MOON, DARK_HOLLOW_PURPLE, DARK_ONYX_MOON, DARK_MIDNIGHT_SILVER,
+            LIGHT_BLUE_MOON, LIGHT_RED_MOON, LIGHT_PURPLE_MOON, LIGHT_HOLLOW_PURPLE, LIGHT_PEARL_WHITE, LIGHT_SAKURA_PINK,
+            NEON_CYAN_MOON, NEON_GREEN_MOON, NEON_PINK_MOON, NEON_YELLOW_MOON,
+            ASTRAL_GALAXY_MOON, NEBULA_VOID_MOON, ECLIPSE_BLACK_MOON, STARLIGHT_SILVER_MOON,
+            FROST_ICE_BLUE_MOON, INFERNO_MAGMA_RED_MOON, THUNDER_GOLD_MOON, ABYSSAL_OCEAN_MOON
+        )
+    }
     val swatch: Long get() = RexPaletteSpec.of(this).primary
 }
 
 class RexThemeStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val engine = com.rexaps.ui.theme.RexThemeManager(appContext)
     fun load(): RexThemeOption {
-        val saved = prefs.getString(KEY_THEME, null) ?: return RexThemeOption.DARK_BLUE_MOON
-        // Migrate installations using the previous default without losing a valid choice.
-        if (saved == "BLOOD_MOON") return RexThemeOption.DARK_BLUE_MOON
-        return RexThemeOption.values().firstOrNull { it.name == saved }
-            ?: RexThemeOption.DARK_BLUE_MOON
+        val saved = prefs.getString(KEY_THEME, null)
+        val option = if (saved == null || saved == "BLOOD_MOON") RexThemeOption.GLASS_BLUE_MOON
+            else RexThemeOption.values().firstOrNull { it.name == saved } ?: RexThemeOption.GLASS_BLUE_MOON
+        if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())
+        return option
     }
-    fun save(option: RexThemeOption) { prefs.edit().putString(KEY_THEME, option.name).apply() }
+    fun save(option: RexThemeOption) {
+        prefs.edit().putString(KEY_THEME, option.name).apply()
+        if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())
+    }
     private companion object { const val PREFS_NAME = "rexaps_settings"; const val KEY_THEME = "theme_option" }
 }
 
@@ -53,7 +80,18 @@ data class RexPaletteSpec(
     val muted: Long, val outline: Long, val text: Long
 ) {
     companion object {
-        fun of(option: RexThemeOption): RexPaletteSpec = palettes[option] ?: palettes.getValue(RexThemeOption.DARK_BLUE_MOON)
+        fun of(option: RexThemeOption): RexPaletteSpec {
+            if (option in RexThemeOption.curatedOptions) {
+                val t = com.rexaps.ui.theme.RexThemeRegistry.get(option.labelToThemeId())
+                return RexPaletteSpec(
+                    dark = t.category != "Light", primary = t.primary, onPrimary = t.onPrimary,
+                    container = com.rexaps.ui.theme.blend(t.primary, t.background, .42f),
+                    onContainer = t.text, tertiary = t.secondary, background = t.background,
+                    card = t.surface, muted = t.textMuted, outline = t.border, text = t.text
+                )
+            }
+            return palettes[option] ?: palettes.getValue(RexThemeOption.DARK_BLUE_MOON)
+        }
         private fun p(d:Boolean, a:Long, on:Long, c:Long, oc:Long, t:Long, bg:Long, card:Long, muted:Long, outline:Long, text:Long) =
             RexPaletteSpec(d,a,on,c,oc,t,bg,card,muted,outline,text)
         private val palettes: Map<RexThemeOption, RexPaletteSpec> = mapOf(
@@ -98,6 +136,18 @@ data class RexPaletteSpec(
             RexThemeOption.MAGENTA to p(true,0xFFFF70B8,0xFF3B0A25,0xFF57183B,0xFFFFDDEC,0xFFB18CFF,0xFF160914,0xFF251323,0xFFBBA0B5,0xFF43263E,0xFFFFF0F8)
         )
     }
+}
+
+private fun RexThemeOption.labelToThemeId(): String = when(this) {
+    RexThemeOption.ASTRAL_GALAXY_MOON -> "astral_galaxy_moon"
+    RexThemeOption.NEBULA_VOID_MOON -> "nebula_void_moon"
+    RexThemeOption.ECLIPSE_BLACK_MOON -> "eclipse_black_moon"
+    RexThemeOption.STARLIGHT_SILVER_MOON -> "starlight_silver_moon"
+    RexThemeOption.FROST_ICE_BLUE_MOON -> "frost_ice_blue_moon"
+    RexThemeOption.INFERNO_MAGMA_RED_MOON -> "inferno_magma_red_moon"
+    RexThemeOption.THUNDER_GOLD_MOON -> "thunder_gold_moon"
+    RexThemeOption.ABYSSAL_OCEAN_MOON -> "abyssal_ocean_moon"
+    else -> name.lowercase()
 }
 
 private fun RexPaletteSpec.toColorScheme(): ColorScheme = if (dark) {
