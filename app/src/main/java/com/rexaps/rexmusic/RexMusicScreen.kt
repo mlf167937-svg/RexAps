@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,11 +47,11 @@ import kotlinx.coroutines.flow.map
 
 private const val NOTIF_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 
-private const val TAB_HOME = 0
-private const val TAB_SEARCH = 1
-private const val TAB_PLAYLIST = 2
-private const val TAB_LIBRARY = 3
-private const val TAB_SYNC = 4
+internal const val TAB_HOME = 0
+internal const val TAB_SEARCH = 1
+internal const val TAB_PLAYLIST = 2
+internal const val TAB_LIBRARY = 3
+internal const val TAB_SYNC = 4
 
 @Composable
 fun RexMusicScreen(
@@ -78,18 +79,25 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     var libTab by rememberSaveable { mutableStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
-    var showPlayer by remember { mutableStateOf(false) }
-    var showQueue by remember { mutableStateOf(false) }
-    var showRepeat by remember { mutableStateOf(false) }
+    var showPlayer by rememberSaveable { mutableStateOf(false) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    var showRepeat by rememberSaveable { mutableStateOf(false) }
+    // Permission/track-target dialogs are transient because their selected RexTrack is not saveable.
     var showStorageDialog by remember { mutableStateOf(false) }
-    var showDeleteAll by remember { mutableStateOf(false) }
+    var showDeleteAll by rememberSaveable { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<RexTrack?>(null) }
     var deleteTarget by remember { mutableStateOf<RexTrack?>(null) }
     var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
     var playlistTarget by remember { mutableStateOf<RexTrack?>(null) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
 
-    val liked = remember { mutableStateMapOf<String, Boolean>() }
+    // Preserve liked IDs across configuration changes without needing to serialize RexTrack objects.
+    val likedIds = rememberSaveable(
+        saver = listSaver(
+            save = { ids -> ids.toList() },
+            restore = { saved -> mutableStateListOf<String>().apply { addAll(saved) } }
+        )
+    ) { mutableStateListOf<String>() }
     val snackbar = remember { SnackbarHostState() }
 
     val homeList = rememberLazyListState()
@@ -337,180 +345,111 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     )
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Base the layout on this window's available bounds, not device configuration.
+            // This also responds when the app is resized or placed in split-screen.
+            val useLandscapeLayout = maxWidth > maxHeight
 
-            snackbarHost = {
-                SnackbarHost(snackbar)
-            },
+            val screenContent: @Composable (Modifier) -> Unit = { contentModifier ->
+                Box(contentModifier) {
+                    when (tab) {
+                        TAB_HOME -> {
+                            HomeTab(
+                                state,
+                                actions,
+                                homeList,
+                                onBack
+                            )
+                        }
 
-            bottomBar = {
-                Column {
-                    val now = state.nowPlaying
+                        TAB_SYNC -> {
+                            RexMusicSyncScreen(onBack = { tab = TAB_HOME })
+                        }
 
-                    if (now != null && tab != TAB_SYNC) {
-                        MiniPlayer(
-                            track = now,
-                            state = state,
-                            positionState = positionState,
-                            onToggle = {
-                                vm.togglePlay()
-                            },
-                            onNext = {
-                                vm.next()
-                            },
-                            onOpen = {
-                                showPlayer = true
-                            }
-                        )
+                        TAB_SEARCH -> {
+                            SearchTab(
+                                state = state,
+                                query = query,
+                                typing = typing && !state.offline.enabled,
+                                onQueryChange = {
+                                    query = it
+                                    if (!state.offline.enabled) {
+                                        if (it.isBlank()) {
+                                            vm.clearSearch()
+                                        } else {
+                                            vm.search(it)
+                                        }
+                                    }
+                                },
+                                onClear = {
+                                    query = ""
+                                    vm.clearSearch()
+                                },
+                                actions = actions,
+                                listState = searchList
+                            )
+                        }
+
+                        TAB_PLAYLIST -> {
+                            PlaylistTab(
+                                state = state,
+                                actions = actions,
+                                listState = playlistList
+                            )
+                        }
+
+                        else -> {
+                            LibraryTab(
+                                state,
+                                libTab,
+                                { libTab = it },
+                                actions,
+                                libraryList
+                            )
+                        }
                     }
 
-                    if (tab != TAB_SYNC) NavigationBar {
-                        NavigationBarItem(
-                            selected = tab == TAB_HOME,
-                            onClick = {
-                                tab = TAB_HOME
-                            },
-                            icon = {
-                                Icon(
-                                    Icons.Default.Home,
-                                    contentDescription = null
-                                )
-                            },
-                            label = {
-                                Text("Beranda")
-                            }
-                        )
-
-                        NavigationBarItem(
-                            selected = tab == TAB_SEARCH,
-                            onClick = {
-                                tab = TAB_SEARCH
-                            },
-                            icon = {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = null
-                                )
-                            },
-                            label = {
-                                Text("Cari")
-                            }
-                        )
-
-                        NavigationBarItem(
-                            selected = tab == TAB_PLAYLIST,
-                            onClick = {
-                                tab = TAB_PLAYLIST
-                            },
-                            icon = {
-                                Icon(
-                                    Icons.Default.QueueMusic,
-                                    contentDescription = null
-                                )
-                            },
-                            label = {
-                                Text("Playlist")
-                            }
-                        )
-
-                        NavigationBarItem(
-                            selected = tab == TAB_LIBRARY,
-                            onClick = {
-                                tab = TAB_LIBRARY
-                            },
-                            icon = {
-                                Icon(
-                                    Icons.Default.LibraryMusic,
-                                    contentDescription = null
-                                )
-                            },
-                            label = {
-                                Text("Koleksi")
-                            }
-                        )
-
-                        NavigationBarItem(
-                            selected = tab == TAB_SYNC,
-                            onClick = { tab = TAB_SYNC },
-                            icon = { Icon(Icons.Default.Groups, contentDescription = null) },
-                            label = { Text("Sync") }
-                        )
-                    }
+                    ErrorCard(
+                        error = state.error,
+                        onDismiss = actions.dismissError,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
                 }
             }
-        ) { pad ->
 
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-            ) {
-                when (tab) {
-                    TAB_HOME -> {
-                        HomeTab(
-                            state,
-                            actions,
-                            homeList,
-                            onBack
-                        )
-                    }
-
-                    TAB_SYNC -> {
-                        RexMusicSyncScreen(onBack = { tab = TAB_HOME })
-                    }
-
-                    TAB_SEARCH -> {
-                        SearchTab(
-                            state = state,
-                            query = query,
-                            typing = typing && !state.offline.enabled,
-
-                            onQueryChange = {
-                                query = it
-
-                                if (!state.offline.enabled) {
-                                    if (it.isBlank()) {
-                                        vm.clearSearch()
-                                    } else {
-                                        vm.search(it)
-                                    }
-                                }
-                            },
-
-                            onClear = {
-                                query = ""
-                                vm.clearSearch()
-                            },
-
-                            actions = actions,
-                            listState = searchList
-                        )
-                    }
-
-                    TAB_PLAYLIST -> {
-                        PlaylistTab(
-                            state = state,
-                            actions = actions,
-                            listState = playlistList
-                        )
-                    }
-
-                    else -> {
-                        LibraryTab(
-                            state,
-                            libTab,
-                            { libTab = it },
-                            actions,
-                            libraryList
-                        )
-                    }
+            val miniPlayerContent: @Composable () -> Unit = {
+                val now = state.nowPlaying
+                if (now != null && tab != TAB_SYNC) {
+                    MiniPlayer(
+                        track = now,
+                        state = state,
+                        positionState = positionState,
+                        onToggle = { vm.togglePlay() },
+                        onNext = { vm.next() },
+                        onOpen = { showPlayer = true }
+                    )
                 }
+            }
 
-                ErrorCard(
-                    error = state.error,
-                    onDismiss = actions.dismissError,
-                    modifier = Modifier.align(Alignment.TopCenter)
+            val snackbarContent: @Composable () -> Unit = {
+                SnackbarHost(snackbar)
+            }
+
+            if (useLandscapeLayout) {
+                RexMusicScreenLandscape(
+                    selectedTab = tab,
+                    onTabSelected = { tab = it },
+                    miniPlayer = miniPlayerContent,
+                    snackbarHost = snackbarContent,
+                    content = screenContent
+                )
+            } else {
+                RexMusicScreenPortrait(
+                    selectedTab = tab,
+                    onTabSelected = { tab = it },
+                    miniPlayer = miniPlayerContent,
+                    snackbarHost = snackbarContent,
+                    content = screenContent
                 )
             }
         }
@@ -537,7 +476,7 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                     track = track,
                     state = state,
                     positionState = positionState,
-                    isLiked = liked[track.id] == true,
+                    isLiked = track.id in likedIds,
                     downloaded = state.offline.isDownloaded(
                         track,
                         dlKey
@@ -582,7 +521,8 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                         },
 
                         onToggleLike = {
-                            liked[track.id] = liked[track.id] != true
+                            if (track.id in likedIds) likedIds.remove(track.id)
+                            else likedIds.add(track.id)
                         },
 
                         onRepeat = {
@@ -905,7 +845,7 @@ private fun PlayerPlaceholder(
             Modifier.padding(4.dp),
             size = 48.dp,
             iconSize = 32.dp,
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onBackground
         )
 
         Column(
@@ -917,7 +857,7 @@ private fun PlayerPlaceholder(
         ) {
             if (error.isNullOrBlank()) {
                 CircularProgressIndicator(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     strokeWidth = 3.dp,
                     modifier = Modifier.size(44.dp)
                 )
@@ -927,13 +867,13 @@ private fun PlayerPlaceholder(
                 Text(
                     loadingText.ifBlank { "Memuat..." },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
             } else {
                 Icon(
                     Icons.Default.Warning,
                     contentDescription = "Error",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onBackground
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -941,7 +881,7 @@ private fun PlayerPlaceholder(
                 Text(
                     error,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center
                 )
             }

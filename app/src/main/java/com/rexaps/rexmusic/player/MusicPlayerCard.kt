@@ -99,7 +99,7 @@ fun MusicPlayerCard(
     modifier: Modifier = Modifier
 ) {
     val busy = state.phase.isPlayerBusy
-    CompositionLocalProvider(LocalContentColor provides Color.White) {
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
         BoxWithConstraints(
             modifier
                 .fillMaxSize()
@@ -108,41 +108,122 @@ fun MusicPlayerCard(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            val coverSize = minOf(maxWidth - 48.dp, maxHeight * 0.42f).coerceAtLeast(160.dp)
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                PlayerTopBar(state, track, actions.onClose, actions.onLyrics, actions.onMore)
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    PlayerCover(
-                        cover = track.cover, title = track.title, size = coverSize,
-                        busy = busy, playing = state.isPlaying, accent = accent,
-                        onAccentFound = onAccentFound,
-                        onSwipeNext = actions.onNext, onSwipePrev = actions.onOpenPrevious
-                    )
+            val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
+            val coverSize = if (landscape) {
+                minOf(maxWidth * 0.36f, maxHeight - 100.dp).coerceAtLeast(128.dp)
+            } else {
+                minOf(maxWidth - 48.dp, maxHeight * 0.42f).coerceAtLeast(160.dp)
+            }
+
+            if (landscape) {
+                Column(Modifier.fillMaxSize()) {
+                    PlayerTopBar(state, track, actions.onClose, actions.onLyrics, actions.onMore)
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.weight(0.92f).fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PlayerCover(
+                                cover = track.cover,
+                                title = track.title,
+                                size = coverSize,
+                                busy = busy,
+                                playing = state.isPlaying,
+                                accent = accent,
+                                onAccentFound = onAccentFound,
+                                onSwipeNext = actions.onNext,
+                                onSwipePrev = actions.onOpenPrevious
+                            )
+                        }
+                        PlayerDetails(
+                            track = track,
+                            state = state,
+                            positionState = positionState,
+                            isLiked = isLiked,
+                            downloaded = downloaded,
+                            downloadStatus = downloadStatus,
+                            busy = busy,
+                            actions = actions,
+                            modifier = Modifier
+                                .weight(1.08f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 20.dp)
+                                .verticalScroll(rememberScrollState())
+                        )
+                    }
                 }
-                Spacer(Modifier.height(28.dp))
-                Column(Modifier.padding(horizontal = 24.dp)) {
-                    TrackInfo(
-                        title = track.title,
-                        artist = track.artist,
-                        isLiked = isLiked,
-                        onToggleLike = actions.onToggleLike,
-                        lyrics = state.lyrics,
-                        positionMs = positionState.value,
-                        onLyrics = actions.onLyrics
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    SeekSection(positionState, state.durationMs, state.bufferedPercent, busy, actions.onSeek)
+            } else {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    PlayerTopBar(state, track, actions.onClose, actions.onLyrics, actions.onMore)
                     Spacer(Modifier.height(8.dp))
-                    PlayerControls(state, busy, actions)
-                    Spacer(Modifier.height(16.dp))
-                    BottomActions(state, downloaded, downloadStatus, actions)
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        PlayerCover(
+                            cover = track.cover,
+                            title = track.title,
+                            size = coverSize,
+                            busy = busy,
+                            playing = state.isPlaying,
+                            accent = accent,
+                            onAccentFound = onAccentFound,
+                            onSwipeNext = actions.onNext,
+                            onSwipePrev = actions.onOpenPrevious
+                        )
+                    }
+                    Spacer(Modifier.height(28.dp))
+                    PlayerDetails(
+                        track = track,
+                        state = state,
+                        positionState = positionState,
+                        isLiked = isLiked,
+                        downloaded = downloaded,
+                        downloadStatus = downloadStatus,
+                        busy = busy,
+                        actions = actions,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                    Spacer(Modifier.height(24.dp))
                 }
-                PlayerError(state.error, actions.onPlayPause)
-                NeighborSection(state, actions.onOpenPrevious, actions.onNext)
-                Spacer(Modifier.height(24.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerDetails(
+    track: RexTrack,
+    state: RexMusicUiState,
+    positionState: State<Long>,
+    isLiked: Boolean,
+    downloaded: Boolean,
+    downloadStatus: DownloadStatus?,
+    busy: Boolean,
+    actions: PlayerActions,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        TrackInfo(
+            title = track.title,
+            artist = track.artist,
+            isLiked = isLiked,
+            onToggleLike = actions.onToggleLike,
+            lyrics = state.lyrics,
+            positionMs = positionState.value,
+            onLyrics = actions.onLyrics
+        )
+        Spacer(Modifier.height(12.dp))
+        SeekSection(positionState, state.durationMs, state.bufferedPercent, busy, actions.onSeek)
+        Spacer(Modifier.height(8.dp))
+        PlayerControls(state, busy, actions)
+        Spacer(Modifier.height(16.dp))
+        BottomActions(state, downloaded, downloadStatus, actions)
+        PlayerError(state.error, actions.onPlayPause)
+        NeighborSection(state, actions.onOpenPrevious, actions.onNext)
     }
 }
 
@@ -177,7 +258,7 @@ private fun PlayerTopBar(
             onClose,
             size = 48.dp,
             iconSize = 32.dp,
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onBackground
         )
 
         Column(
@@ -193,12 +274,12 @@ private fun PlayerTopBar(
                 when {
                     busy -> CircularProgressIndicator(
                         strokeWidth = 1.5.dp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.size(16.dp)
                     )
 
                     state.isPlaying -> EqualizerBars(
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onBackground,
                         barWidth = 3.dp
                     )
 
@@ -208,7 +289,7 @@ private fun PlayerTopBar(
                 Text(
                     statusLabel(state),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     letterSpacing = 1.5.sp
                 )
             }
@@ -217,7 +298,7 @@ private fun PlayerTopBar(
                 track.album,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
@@ -229,7 +310,7 @@ private fun PlayerTopBar(
             "Tampilkan lirik",
             onLyrics,
             size = 48.dp,
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onBackground
         )
 
         RexIconButton(
@@ -237,7 +318,7 @@ private fun PlayerTopBar(
             "Opsi lagu",
             onMore,
             size = 48.dp,
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onBackground
         )
     }
 }
@@ -254,8 +335,8 @@ fun Modifier.playerBackground(accent: Color?): Modifier {
         drawRect(
             Brush.verticalGradient(
                 colorStops = arrayOf(
-                    0f to lerp(c, Color.Black, 0.35f),
-                    0.55f to lerp(playerBase, c, 0.28f),
+                    0f to lerp(playerBase, c, 0.14f),
+                    0.55f to lerp(playerBase, c, 0.07f),
                     1f to playerBase
                 )
             )
@@ -384,13 +465,13 @@ private fun TrackInfo(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(
-                title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.basicMarquee()
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 artist, style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
             )
 
             val activeLyric = activeLyricText(lyrics, positionMs)
@@ -418,7 +499,7 @@ private fun TrackInfo(
                                 text = line.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color.White.copy(alpha = 0.9f),
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -436,14 +517,14 @@ private fun TrackInfo(
                         Icon(
                             Icons.Default.Subtitles,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.55f),
+                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
                             "Lihat lirik",
                             style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                         )
                     }
                 }
@@ -486,7 +567,7 @@ private fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
         description = if (isLiked) "Hapus dari favorit" else "Tambah ke favorit",
         onClick = onToggle,
         size = 48.dp, iconSize = 28.dp,
-        tint = if (isLiked) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.85f),
+        tint = if (isLiked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
         modifier = Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value }
     )
 }
@@ -503,13 +584,13 @@ private fun SeekSection(
 ) {
     val positionMs = positionState.value
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
-    val muted = Color.White.copy(alpha = 0.6f)
+    val muted = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
     Column {
         if (durationMs <= 0L && busy) {
             Box(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
-                    color = Color.White, trackColor = Color.White.copy(alpha = 0.2f)
+                    color = MaterialTheme.colorScheme.onBackground, trackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f)
                 )
             }
         } else {
@@ -552,14 +633,14 @@ private fun SeekBar(progress: Float, buffered: Float, onSeek: (Float) -> Unit) {
             },
         contentAlignment = Alignment.CenterStart
     ) {
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)))
-        Box(Modifier.fillMaxWidth(buffered.coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f)))
-        Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(Color.White))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.18f)))
+        Box(Modifier.fillMaxWidth(buffered.coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)))
+        Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground))
         Box(
             Modifier
                 .offset { IntOffset((progress * widthPx - thumb.toPx() / 2).roundToInt(), 0) }
                 .size(thumb)
-                .background(Color.White, CircleShape)
+                .background(MaterialTheme.colorScheme.onBackground, CircleShape)
         )
     }
 }
@@ -580,12 +661,12 @@ private fun PlayerControls(state: RexMusicUiState, busy: Boolean, actions: Playe
         )
         RexIconButton(
             Icons.Default.SkipPrevious, "Lagu sebelumnya", actions.onPrev,
-            size = 52.dp, iconSize = 36.dp, tint = Color.White
+            size = 52.dp, iconSize = 36.dp, tint = MaterialTheme.colorScheme.onBackground
         )
         PlayPauseButton(state.isPlaying, busy, actions.onPlayPause)
         RexIconButton(
             Icons.Default.SkipNext, "Lagu berikutnya", actions.onNext,
-            size = 52.dp, iconSize = 36.dp, tint = Color.White
+            size = 52.dp, iconSize = 36.dp, tint = MaterialTheme.colorScheme.onBackground
         )
         RepeatControl(state.repeatTotal, state.repeatLeft, actions.onRepeat)
     }
@@ -600,7 +681,7 @@ private fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, onClick: () -> Un
             .size(72.dp)
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
             .clip(CircleShape)
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.primary)
             .clickable(
                 interactionSource = source, indication = LocalIndication.current,
                 role = Role.Button, onClick = onClick
@@ -617,15 +698,15 @@ private fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, onClick: () -> Un
         ) { s ->
             when (s) {
                 0 -> CircularProgressIndicator(
-                    color = RexPlayerBase, strokeWidth = 3.dp, modifier = Modifier.size(28.dp)
+                    color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 3.dp, modifier = Modifier.size(28.dp)
                 )
                 1 -> Icon(
                     Icons.Default.Pause, contentDescription = "Jeda",
-                    tint = RexPlayerBase, modifier = Modifier.size(40.dp)
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp)
                 )
                 else -> Icon(
                     Icons.Default.PlayArrow, contentDescription = "Putar",
-                    tint = RexPlayerBase, modifier = Modifier.size(40.dp)
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp)
                 )
             }
         }
@@ -646,7 +727,7 @@ private fun ToggleControl(
     ) {
         Icon(
             icon, contentDescription = description,
-            tint = if (active) accent else Color.White.copy(alpha = 0.8f),
+            tint = if (active) accent else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
             modifier = Modifier.size(26.dp)
         )
         if (active) {
@@ -669,12 +750,12 @@ private fun RepeatControl(total: Int, left: Int, onClick: () -> Unit) {
         Icon(
             if (on) Icons.Default.RepeatOne else Icons.Default.Repeat,
             contentDescription = if (on) "Ulangi lagu, sisa $left dari $total kali" else "Atur ulangi lagu",
-            tint = if (on) accent else Color.White.copy(alpha = 0.8f),
+            tint = if (on) accent else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
             modifier = Modifier.size(26.dp)
         )
         if (on) {
             Text(
-                "$left", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RexPlayerBase,
+                "$left", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiary,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp)
                     .background(accent, CircleShape)
                     .padding(horizontal = 4.dp, vertical = 1.dp)
@@ -726,10 +807,10 @@ private fun ActionPill(
     onClick: () -> Unit
 ) {
     val accent = MaterialTheme.colorScheme.tertiary
-    val fg = if (active) accent else Color.White
+    val fg = if (active) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onBackground
     Row(
         Modifier.height(40.dp).clip(CircleShape)
-            .background(if (active) accent.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.12f))
+            .background(if (active) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -798,7 +879,7 @@ private fun NeighborRow(
 ) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
             .clickable(onClick = onClick).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -807,16 +888,16 @@ private fun NeighborRow(
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             Text(
-                track.title, style = MaterialTheme.typography.titleSmall, color = Color.White,
+                track.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             Text(
                 track.artist, style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
         Spacer(Modifier.width(8.dp))
-        Icon(icon, contentDescription = label, tint = Color.White.copy(alpha = 0.8f))
+        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
     }
 }
 
@@ -830,7 +911,7 @@ private fun AutoplayRow(favorites: List<String>, popularCount: Int, offlineMode:
     }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
             .clickable(onClick = onClick).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -838,19 +919,19 @@ private fun AutoplayRow(favorites: List<String>, popularCount: Int, offlineMode:
             Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(RexHeroBrush),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White)
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text("AUTOPLAY PINTAR", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-            Text("Lagu berikutnya untukmu", style = MaterialTheme.typography.titleSmall, color = Color.White)
+            Text("Lagu berikutnya untukmu", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
             Text(
                 subtitle, style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.7f), maxLines = 2, overflow = TextOverflow.Ellipsis
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 2, overflow = TextOverflow.Ellipsis
             )
         }
         Spacer(Modifier.width(8.dp))
-        Icon(Icons.Default.SkipNext, contentDescription = "Lagu berikutnya", tint = Color.White.copy(alpha = 0.8f))
+        Icon(Icons.Default.SkipNext, contentDescription = "Lagu berikutnya", tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
     }
 }
 

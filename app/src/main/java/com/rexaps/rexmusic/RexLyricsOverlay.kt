@@ -68,27 +68,73 @@ fun RexLyricsOverlay(
 ) {
     val base = accent ?: MaterialTheme.colorScheme.primary
 
-    Box(
+    BoxWithConstraints(
         modifier
             .fillMaxSize()
             .background(RexPlayerBase)
             .pointerInput(Unit) { }
     ) {
+        val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
         LyricsBackdrop(track.cover, base)
 
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            LyricsHeader(onClose)
-            NowSpinning(track, isPlaying, base)
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when {
-                    loading -> LyricsLoading()
-                    !error.isNullOrBlank() -> LyricsMessage(error)
-                    lyrics.isEmpty -> LyricsMessage("Lirik tidak tersedia untuk lagu ini", showIcon = true)
-                    lyrics.hasSynced -> SyncedLyrics(lyrics, positionState, onSeekTo)
-                    else -> PlainLyrics(lyrics.plain)
+        if (landscape) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                LyricsHeader(onClose)
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    Column(
+                        Modifier
+                            .weight(0.82f)
+                            .fillMaxHeight()
+                    ) {
+                        NowSpinning(track, isPlaying, base)
+                        Spacer(Modifier.weight(1f))
+                        LyricsFooter(positionState, durationMs, base, onSeekTo)
+                    }
+                    LyricsBody(
+                        lyrics = lyrics,
+                        loading = loading,
+                        error = error,
+                        positionState = positionState,
+                        onSeekTo = onSeekTo,
+                        modifier = Modifier.weight(1.18f).fillMaxHeight()
+                    )
                 }
             }
-            LyricsFooter(positionState, durationMs, base, onSeekTo)
+        } else {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                LyricsHeader(onClose)
+                NowSpinning(track, isPlaying, base)
+                LyricsBody(
+                    lyrics = lyrics,
+                    loading = loading,
+                    error = error,
+                    positionState = positionState,
+                    onSeekTo = onSeekTo,
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+                LyricsFooter(positionState, durationMs, base, onSeekTo)
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun LyricsBody(
+    lyrics: Lyrics,
+    loading: Boolean,
+    error: String?,
+    positionState: State<Long>,
+    onSeekTo: ((Long) -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier) {
+        when {
+            loading -> LyricsLoading()
+            !error.isNullOrBlank() -> LyricsMessage(error)
+            lyrics.isEmpty -> LyricsMessage("Lirik tidak tersedia untuk lagu ini", showIcon = true)
+            lyrics.hasSynced -> SyncedLyrics(lyrics, positionState, onSeekTo)
+            else -> PlainLyrics(lyrics.plain)
         }
     }
 }
@@ -112,9 +158,9 @@ private fun LyricsBackdrop(cover: String, accent: Color) {
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to accent.copy(alpha = 0.35f),
-                    0.45f to Color.Black.copy(alpha = 0.55f),
-                    1f to Color.Black.copy(alpha = 0.92f)
+                    0f to androidx.compose.ui.graphics.lerp(Color.Black, accent, 0.20f),
+                    0.45f to Color.Black.copy(alpha = 0.82f),
+                    1f to Color.Black.copy(alpha = 0.94f)
                 )
             )
         )

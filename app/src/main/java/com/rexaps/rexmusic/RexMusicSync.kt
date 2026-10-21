@@ -12,12 +12,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -647,20 +649,44 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val state by RexMusicSyncEngine.state.collectAsState()
     val offlineState by RexOfflineManager.state.collectAsState()
-    var room by remember { mutableStateOf("RexSyncRoom1") }
-    var ip by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("rexsync") }
-    var name by remember { mutableStateOf("") }
-    var query by remember { mutableStateOf("") }
+
+    var room by rememberSaveable { mutableStateOf("RexSyncRoom1") }
+    var ip by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("rexsync") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf<List<RexTrack>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
-    var searchMessage by remember { mutableStateOf("") }
+    var searchMessage by rememberSaveable { mutableStateOf("") }
+
     val scope = rememberCoroutineScope()
     val active = state.hosting || state.connected
+    val connecting = !active &&
+        state.error == null &&
+        state.status.lowercase().let {
+            "menghubungkan" in it || "connecting" in it || "mencari host" in it
+        }
 
     LaunchedEffect(Unit) {
         RexMusicSyncEngine.bindContext(context)
-        ip = RexMusicSyncEngine.detectIp(context)
+        if (ip.isBlank()) ip = RexMusicSyncEngine.detectIp(context)
+    }
+
+    val searchOnline: () -> Unit = {
+        if (!searching && query.isNotBlank()) {
+            searching = true
+            searchMessage = "Mencari lagu…"
+            scope.launch {
+                val result = RexMusicApi.search(query.trim())
+                onlineResults = result.getOrElse { emptyList() }
+                searchMessage = if (result.isSuccess) {
+                    "${onlineResults.size} hasil · unduh dulu agar bisa dipakai di room"
+                } else {
+                    result.exceptionOrNull()?.message ?: "Pencarian gagal"
+                }
+                searching = false
+            }
+        }
     }
 
     Scaffold(
@@ -670,226 +696,952 @@ fun RexMusicSyncScreen(onBack: () -> Unit) {
                 title = {
                     Column {
                         Text("RexMusicSync", fontWeight = FontWeight.Bold)
-                        Text("Listen together · local Wi-Fi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Listen together · local Wi-Fi",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Kembali") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                navigationIcon = {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Kembali"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 30.dp)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
         ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(26.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            val useTwoPaneLayout = maxWidth >= 680.dp && maxWidth > maxHeight
+
+            if (useTwoPaneLayout) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                                Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(13.dp).size(28.dp))
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text("Music, in sync.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                Text("Putar bareng di jaringan Wi-Fi yang sama", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Surface(shape = RoundedCornerShape(50), color = if (active) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface) {
-                                Text(if (state.hosting) "HOST" else if (state.connected) "CONNECTED" else "OFFLINE", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                    ) {
+                        item { SyncOverviewCard(state = state, active = active, connecting = connecting) }
+                        item {
+                            SyncConnectionCard(
+                                room = room,
+                                onRoomChange = { room = it },
+                                ip = ip,
+                                onIpChange = { ip = it },
+                                password = password,
+                                onPasswordChange = { password = it },
+                                name = name,
+                                onNameChange = { name = it },
+                                active = active,
+                                onAutoIp = { ip = RexMusicSyncEngine.detectIp(context) },
+                                onCreateRoom = { RexMusicSyncEngine.createRoom(room, password, ip) },
+                                onJoinRoom = {
+                                    RexMusicSyncEngine.joinRoom(
+                                        room.trim(),
+                                        name.ifBlank { "User" }.trim(),
+                                        ip.trim(),
+                                        password
+                                    )
+                                }
+                            )
                         }
-                        Text(state.status, style = MaterialTheme.typography.titleSmall)
-                        if (active) Text("Room time · ${formatRoomTime(state.roomElapsedMs)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                        if (state.cacheStatus.isNotBlank()) Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
-                        state.error?.let { errorText ->
-                            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.errorContainer) {
-                                Text(errorText, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall)
-                            }
+                        item {
+                            SyncOnlineSearchCard(
+                                query = query,
+                                onQueryChange = { query = it },
+                                searching = searching,
+                                searchMessage = searchMessage,
+                                onSearch = searchOnline
+                            )
                         }
+                        items(
+                            onlineResults.distinctBy { it.id }.filter { it.id.isNotBlank() },
+                            key = { "search-${it.id}" }
+                        ) { track ->
+                            SyncOnlineResultCard(
+                                track = track,
+                                downloaded = offlineState.entries.any { it.track.id == track.id },
+                                onDownload = { RexOfflineManager.download(track) }
+                            )
+                        }
+                        item {
+                            SyncOfflineHeader(
+                                count = offlineState.entries.distinctBy { it.track.id }.size,
+                                active = active
+                            )
+                        }
+                        if (offlineState.entries.distinctBy { it.track.id }.none { it.track.id.isNotBlank() }) {
+                            item { SyncEmptyOfflineCard() }
+                        }
+                        items(
+                            offlineState.entries.distinctBy { it.track.id }
+                                .filter { it.track.id.isNotBlank() },
+                            key = { "offline-${it.track.id}" }
+                        ) { entry ->
+                            SyncOfflineTrackCard(
+                                track = entry.track,
+                                active = active,
+                                onQueue = { RexMusicSyncEngine.addToQueue(entry.track) }
+                            )
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                    ) {
                         if (active) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("ROOM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(state.room, style = MaterialTheme.typography.titleMedium)
-                                }
-                                if (state.hosting) Column(horizontalAlignment = Alignment.End) {
-                                    Text("MEMBERS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${state.members.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("CONNECTION", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Create a room", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(room, { room = it }, label = { Text("Nama room") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
-                        OutlinedTextField(ip, { ip = it }, label = { Text("IP Wi-Fi host") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active, trailingIcon = { TextButton(onClick = { ip = RexMusicSyncEngine.detectIp(context) }, enabled = !active) { Text("AUTO") } })
-                        OutlinedTextField(password, { password = it }, label = { Text("Password room") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
-                        Button(onClick = { RexMusicSyncEngine.createRoom(room, password, ip) }, enabled = !active && ip.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                            Text("Buat room sebagai host")
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
-                        Text("Join a room", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(name, { name = it }, label = { Text("Nama kamu") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
-                        OutlinedTextField(ip, { ip = it }, label = { Text("IP host") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !active)
-                        Button(onClick = { RexMusicSyncEngine.joinRoom(room, name.ifBlank { "User" }, ip, password) }, enabled = !active && ip.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                            Text("Gabung room")
-                        }
-                        Text("Tips: bisa memakai Wi-Fi yang sama atau hotspot host. Matikan VPN/WARP jika perangkat tidak bisa saling terhubung.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-
-            if (active) {
-                item {
-                    Text("ROOM MEMBERS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                }
-                items(state.members.distinctBy { it.id }, key = { "member-${it.id}" }) { member ->
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                                    Icon(Icons.Default.MusicNote, null, modifier = Modifier.padding(10.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(member.name, style = MaterialTheme.typography.titleMedium)
-                                    Text(if (member.id == "host") "Host device" else "Connected · ${member.ip}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                if (member.id == "host") Text("YOU", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                            if (state.hosting && member.id != "host") {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Gain RexSync", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                                    Text("${((state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                                }
-                                Slider(
-                                    value = (state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f),
-                                    onValueChange = { RexMusicSyncEngine.setMemberVolume(member.id, it) },
-                                    valueRange = 0f..1f
+                            item { SyncMembersHeader(state.members.distinctBy { it.id }.size) }
+                            items(
+                                state.members.distinctBy { it.id },
+                                key = { "member-${it.id}" }
+                            ) { member ->
+                                SyncMemberCard(
+                                    member = member,
+                                    state = state,
+                                    onVolumeChange = { value ->
+                                        RexMusicSyncEngine.setMemberVolume(member.id, value)
+                                    }
                                 )
-                                Text(
-                                    if (member.deviceVolume >= 0f) "Volume media HP: ${(member.deviceVolume * 100).toInt()}% · gain aplikasi diatur terpisah" else "Menunggu laporan volume media dari HP anggota…",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            item {
+                                SyncPlaybackCard(
+                                    state = state,
+                                    onHostVolumeChange = { RexMusicSyncEngine.setHostVolume(it) },
+                                    onTogglePlayback = { RexMusicSyncEngine.togglePlayback() },
+                                    onStop = { RexMusicSyncEngine.stopAll() }
                                 )
-                            } else if (member.id != "host" && member.deviceVolume >= 0f) {
-                                Text("Volume media HP: ${(member.deviceVolume * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            item { SyncQueueHeader(state.queue.size) }
+                            if (state.queue.distinctBy { it.id }.isEmpty()) {
+                                item { SyncEmptyQueueCard() }
+                            }
+                            items(
+                                state.queue.distinctBy { it.id },
+                                key = { "queue-${it.id}" }
+                            ) { track ->
+                                SyncQueueTrackCard(
+                                    track = track,
+                                    onPlay = { RexMusicSyncEngine.playQueued(track) }
+                                )
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = { RexMusicSyncEngine.disconnect() },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text(if (state.hosting) "Tutup room" else "Keluar dari room")
+                                }
+                            }
+                        } else {
+                            item { SyncWaitingCard(connecting = connecting, error = state.error) }
+                            item { SyncMembersEmptyCard() }
+                            item { SyncPlaybackEmptyCard() }
                         }
                     }
                 }
-                item {
-                    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("NOW PLAYING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
-                            Text(state.trackTitle, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Text(if (state.playing) "Sedang diputar bersama" else "Playback dijeda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f))
-                            if (state.hosting) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Volume host", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                                    Text("${(state.hostVolume * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                                Slider(value = state.hostVolume, onValueChange = { RexMusicSyncEngine.setHostVolume(it) }, valueRange = 0f..1f)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 30.dp)
+                ) {
+                    item { SyncOverviewCard(state = state, active = active, connecting = connecting) }
+                    item {
+                        SyncConnectionCard(
+                            room = room,
+                            onRoomChange = { room = it },
+                            ip = ip,
+                            onIpChange = { ip = it },
+                            password = password,
+                            onPasswordChange = { password = it },
+                            name = name,
+                            onNameChange = { name = it },
+                            active = active,
+                            onAutoIp = { ip = RexMusicSyncEngine.detectIp(context) },
+                            onCreateRoom = { RexMusicSyncEngine.createRoom(room, password, ip) },
+                            onJoinRoom = {
+                                RexMusicSyncEngine.joinRoom(
+                                    room,
+                                    name.ifBlank { "User" },
+                                    ip,
+                                    password
+                                )
                             }
-                            if (state.hosting) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { RexMusicSyncEngine.togglePlayback() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
-                                    Icon(if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                                    Spacer(Modifier.width(6.dp)); Text(if (state.playing) "Pause" else "Resume")
-                                }
-                                OutlinedButton(onClick = { RexMusicSyncEngine.stopAll() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
-                                    Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop")
-                                }
-                            }
-                        }
-                    }
-                }
-                item {
-                    Text("SHARED QUEUE · ${state.queue.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                }
-                items(state.queue.distinctBy { it.id }, key = { "queue-${it.id}" }) { track ->
-                    Card(onClick = { RexMusicSyncEngine.playQueued(track) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) { Text(track.title, style = MaterialTheme.typography.titleSmall); Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("FIND MUSIC", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Cari lagu online", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(
-                            value = query, onValueChange = { query = it }, label = { Text("Judul atau artis") },
-                            modifier = Modifier.fillMaxWidth(), singleLine = true,
-                            enabled = !searching,
-                            trailingIcon = { TextButton(enabled = !searching && query.isNotBlank(), onClick = {
-                                searching = true; searchMessage = "Mencari lagu…"
-                                scope.launch {
-                                    val result = RexMusicApi.search(query.trim())
-                                    onlineResults = result.getOrElse { emptyList() }
-                                    searchMessage = if (result.isSuccess) "${onlineResults.size} hasil · unduh dulu agar bisa dipakai di room" else (result.exceptionOrNull()?.message ?: "Pencarian gagal")
-                                    searching = false
-                                }
-                            }) { Text(if (searching) "…" else "CARI") } }
                         )
-                        if (searchMessage.isNotBlank()) Text(searchMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-            }
-            items(onlineResults.distinctBy { it.id }.filter { it.id.isNotBlank() }, key = { "search-${it.id}" }) { track ->
-                Card(shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) { Text(track.title, style = MaterialTheme.typography.titleSmall); Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        TextButton(onClick = { RexOfflineManager.download(track) }) { Text(if (offlineState.entries.any { it.track.id == track.id }) "TERSIMPAN" else "UNDUH") }
-                    }
-                }
-            }
 
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("YOUR OFFLINE LIBRARY", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        Text("${offlineState.entries.distinctBy { it.track.id }.size} lagu tersedia", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (active) Text("TAP + TO QUEUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            items(offlineState.entries.distinctBy { it.track.id }.filter { it.track.id.isNotBlank() }, key = { "offline-${it.track.id}" }) { entry ->
-                Card(shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(10.dp))
+                    if (active) {
+                        item { SyncMembersHeader(state.members.distinctBy { it.id }.size) }
+                        items(
+                            state.members.distinctBy { it.id },
+                            key = { "member-${it.id}" }
+                        ) { member ->
+                            SyncMemberCard(
+                                member = member,
+                                state = state,
+                                onVolumeChange = { value ->
+                                    RexMusicSyncEngine.setMemberVolume(member.id, value)
+                                }
+                            )
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) { Text(entry.track.title, style = MaterialTheme.typography.titleSmall); Text(entry.track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        TextButton(enabled = active, onClick = { RexMusicSyncEngine.addToQueue(entry.track) }) { Text("+ QUEUE") }
+                        item {
+                            SyncPlaybackCard(
+                                state = state,
+                                onHostVolumeChange = { RexMusicSyncEngine.setHostVolume(it) },
+                                onTogglePlayback = { RexMusicSyncEngine.togglePlayback() },
+                                onStop = { RexMusicSyncEngine.stopAll() }
+                            )
+                        }
+                        item { SyncQueueHeader(state.queue.size) }
+                        if (state.queue.distinctBy { it.id }.isEmpty()) {
+                            item { SyncEmptyQueueCard() }
+                        }
+                        items(
+                            state.queue.distinctBy { it.id },
+                            key = { "queue-${it.id}" }
+                        ) { track ->
+                            SyncQueueTrackCard(
+                                track = track,
+                                onPlay = { RexMusicSyncEngine.playQueued(track) }
+                            )
+                        }
+                        item {
+                            OutlinedButton(
+                                onClick = { RexMusicSyncEngine.disconnect() },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text(if (state.hosting) "Tutup room" else "Keluar dari room")
+                            }
+                        }
+                    } else {
+                        item { SyncWaitingCard(connecting = connecting, error = state.error) }
+                        item { SyncMembersEmptyCard() }
+                        item { SyncPlaybackEmptyCard() }
+                    }
+
+                    item {
+                        SyncOnlineSearchCard(
+                            query = query,
+                            onQueryChange = { query = it },
+                            searching = searching,
+                            searchMessage = searchMessage,
+                            onSearch = searchOnline
+                        )
+                    }
+                    items(
+                        onlineResults.distinctBy { it.id }.filter { it.id.isNotBlank() },
+                        key = { "search-${it.id}" }
+                    ) { track ->
+                        SyncOnlineResultCard(
+                            track = track,
+                            downloaded = offlineState.entries.any { it.track.id == track.id },
+                            onDownload = { RexOfflineManager.download(track) }
+                        )
+                    }
+                    item {
+                        SyncOfflineHeader(
+                            count = offlineState.entries.distinctBy { it.track.id }.size,
+                            active = active
+                        )
+                    }
+                    if (offlineState.entries.distinctBy { it.track.id }.none { it.track.id.isNotBlank() }) {
+                        item { SyncEmptyOfflineCard() }
+                    }
+                    items(
+                        offlineState.entries.distinctBy { it.track.id }
+                            .filter { it.track.id.isNotBlank() },
+                        key = { "offline-${it.track.id}" }
+                    ) { entry ->
+                        SyncOfflineTrackCard(
+                            track = entry.track,
+                            active = active,
+                            onQueue = { RexMusicSyncEngine.addToQueue(entry.track) }
+                        )
                     }
                 }
             }
+        }
+    }
+}
 
-            if (active) item {
-                OutlinedButton(onClick = { RexMusicSyncEngine.disconnect() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                    Text(if (state.hosting) "Tutup room" else "Keluar dari room")
+@Composable
+private fun SyncOverviewCard(
+    state: SyncUiState,
+    active: Boolean,
+    connecting: Boolean
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = scheme.primaryContainer
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = scheme.onPrimaryContainer,
+                        modifier = Modifier.padding(12.dp).size(28.dp)
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Music, in sync.",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Text(
+                        "Putar bareng di jaringan Wi-Fi yang sama",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                val statusColor = when {
+                    state.error != null -> scheme.errorContainer
+                    active -> scheme.tertiaryContainer
+                    else -> scheme.surface
+                }
+                val statusTextColor = when {
+                    state.error != null -> scheme.onErrorContainer
+                    active -> scheme.onTertiaryContainer
+                    else -> scheme.onSurfaceVariant
+                }
+                Surface(shape = RoundedCornerShape(50), color = statusColor) {
+                    Text(
+                        when {
+                            state.error != null -> "ERROR"
+                            state.hosting -> "HOST"
+                            state.connected -> "CONNECTED"
+                            connecting -> "CONNECTING"
+                            else -> "OFFLINE"
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusTextColor
+                    )
                 }
             }
+
+            Text(
+                state.status,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (state.error != null) scheme.error else scheme.onSurface
+            )
+            if (connecting) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Mencoba menghubungkan…", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                }
+            }
+            if (active) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ROOM", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text(state.room, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("MEMBERS", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text(
+                            "${state.members.distinctBy { it.id }.size}",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = scheme.primary
+                        )
+                    }
+                    if (state.roomElapsedMs > 0L) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("ROOM TIME", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                            Text(formatRoomTime(state.roomElapsedMs), style = MaterialTheme.typography.titleSmall)
+                        }
+                    }
+                }
+            }
+            if (state.cacheStatus.isNotBlank()) {
+                Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = scheme.tertiary)
+            }
+            state.error?.let { errorText ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = scheme.errorContainer
+                ) {
+                    Text(
+                        errorText,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        color = scheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncConnectionCard(
+    room: String,
+    onRoomChange: (String) -> Unit,
+    ip: String,
+    onIpChange: (String) -> Unit,
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    name: String,
+    onNameChange: (String) -> Unit,
+    active: Boolean,
+    onAutoIp: () -> Unit,
+    onCreateRoom: () -> Unit,
+    onJoinRoom: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SyncSectionHeading(title = "Connection", subtitle = "Host a room or join a device on your local Wi-Fi")
+            OutlinedTextField(
+                value = room,
+                onValueChange = onRoomChange,
+                label = { Text("Nama room") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            OutlinedTextField(
+                value = ip,
+                onValueChange = onIpChange,
+                label = { Text("IP Wi-Fi host") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active,
+                trailingIcon = {
+                    TextButton(onClick = onAutoIp, enabled = !active) { Text("AUTO") }
+                }
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                label = { Text("Password room") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            Button(
+                onClick = onCreateRoom,
+                enabled = !active && ip.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Buat room sebagai host")
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text("Join an existing room", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = name,
+                onValueChange = onNameChange,
+                label = { Text("Nama kamu") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            Button(
+                onClick = onJoinRoom,
+                enabled = !active && ip.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Gabung room")
+            }
+            Text(
+                "Gunakan Wi-Fi yang sama atau hotspot host. Matikan VPN/WARP jika perangkat tidak bisa saling terhubung.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (active) {
+                Text(
+                    "Koneksi aktif. Putuskan room terlebih dahulu untuk mengganti detail koneksi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncSectionHeading(
+    title: String,
+    subtitle: String? = null,
+    titleColor: androidx.compose.ui.graphics.Color? = null,
+    subtitleColor: androidx.compose.ui.graphics.Color? = null
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = titleColor ?: scheme.primary)
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = subtitleColor ?: scheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncMembersHeader(count: Int) {
+    SyncSectionHeading("Connected members", "$count device${if (count == 1) "" else "s"} in this room")
+}
+
+@Composable
+private fun SyncMemberCard(
+    member: SyncMember,
+    state: SyncUiState,
+    onVolumeChange: (Float) -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(13.dp),
+                    color = scheme.secondaryContainer
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.padding(10.dp),
+                        tint = scheme.onSecondaryContainer
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(member.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Text(
+                        if (member.id == "host") "Host device" else "Connected · ${member.ip}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+                if (member.id == "host") {
+                    Text("YOU", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
+                }
+            }
+            if (state.hosting && member.id != "host") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RexSync gain", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        "${((state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f) * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = scheme.primary
+                    )
+                }
+                Slider(
+                    value = (state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f),
+                    onValueChange = onVolumeChange,
+                    valueRange = 0f..1f
+                )
+                Text(
+                    if (member.deviceVolume >= 0f) {
+                        "Media volume: ${(member.deviceVolume * 100).toInt()}% · app gain is separate"
+                    } else {
+                        "Waiting for this device to report media volume…"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant
+                )
+            } else if (member.id != "host" && member.deviceVolume >= 0f) {
+                Text(
+                    "Media volume: ${(member.deviceVolume * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncPlaybackCard(
+    state: SyncUiState,
+    onHostVolumeChange: (Float) -> Unit,
+    onTogglePlayback: () -> Unit,
+    onStop: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.primaryContainer)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SyncSectionHeading("Playback synchronization", "Shared playback status for this room", scheme.onPrimaryContainer, scheme.onPrimaryContainer.copy(alpha = 0.8f))
+            Text(
+                state.trackTitle.ifBlank { "Belum ada lagu" },
+                style = MaterialTheme.typography.titleLarge,
+                color = scheme.onPrimaryContainer,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = scheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        if (state.playing) "PLAYING" else "PAUSED",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (state.roomElapsedMs > 0L) formatRoomTime(state.roomElapsedMs) else "Room timer ready",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
+                )
+            }
+            if (state.hosting) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Host volume", style = MaterialTheme.typography.labelMedium, color = scheme.onPrimaryContainer, modifier = Modifier.weight(1f))
+                    Text("${(state.hostVolume.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.onPrimaryContainer)
+                }
+                Slider(
+                    value = state.hostVolume.coerceIn(0f, 1f),
+                    onValueChange = onHostVolumeChange,
+                    valueRange = 0f..1f
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = onTogglePlayback,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
+                        androidx.compose.material3.Icon(
+                            if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (state.playing) "Pause" else "Resume")
+                    }
+                    OutlinedButton(
+                        onClick = onStop,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
+                        androidx.compose.material3.Icon(Icons.Default.Stop, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stop")
+                    }
+                }
+            } else {
+                Text(
+                    "Playback is controlled by the host device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncQueueHeader(count: Int) {
+    SyncSectionHeading("Shared queue", "$count track${if (count == 1) "" else "s"}")
+}
+
+@Composable
+private fun SyncQueueTrackCard(track: RexTrack, onPlay: () -> Unit) {
+    Card(
+        onClick = onPlay,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Icon(
+                Icons.AutoMirrored.Filled.QueueMusic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(26.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(track.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            androidx.compose.material3.Icon(Icons.Default.PlayArrow, contentDescription = "Putar dari antrean", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun SyncOnlineSearchCard(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searching: Boolean,
+    searchMessage: String,
+    onSearch: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SyncSectionHeading("Find music", "Search online tracks to download for the shared room")
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                label = { Text("Judul lagu atau artis") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !searching,
+                trailingIcon = {
+                    TextButton(
+                        enabled = !searching && query.isNotBlank(),
+                        onClick = onSearch
+                    ) {
+                        Text(if (searching) "…" else "CARI")
+                    }
+                }
+            )
+            if (searching) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Mencari lagu…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (searchMessage.isNotBlank()) {
+                Text(
+                    searchMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncOnlineResultCard(
+    track: RexTrack,
+    downloaded: Boolean,
+    onDownload: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Icon(
+                Icons.Default.MusicNote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(26.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(track.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            TextButton(onClick = onDownload) {
+                Text(if (downloaded) "TERSIMPAN" else "UNDUH")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncOfflineHeader(count: Int, active: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            SyncSectionHeading("Your offline library", "$count lagu tersedia di perangkat")
+        }
+        if (active) {
+            Text("TAP + TO QUEUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SyncOfflineTrackCard(
+    track: RexTrack,
+    active: Boolean,
+    onQueue: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                androidx.compose.material3.Icon(
+                    Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(track.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            TextButton(enabled = active, onClick = onQueue) { Text("+ QUEUE") }
+        }
+    }
+}
+
+@Composable
+private fun SyncEmptyQueueCard() {
+    Text(
+        "The shared queue is empty. Add a downloaded track from the offline library to get started.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun SyncEmptyOfflineCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Text(
+            "No offline tracks yet. Search for music above and download it before adding it to a room.",
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SyncWaitingCard(connecting: Boolean, error: String?) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            if (connecting) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+            } else {
+                androidx.compose.material3.Icon(
+                    Icons.Default.Groups,
+                    contentDescription = null,
+                    tint = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            Text(
+                if (connecting) "Connecting to room…" else if (error != null) "Connection needs attention" else "Not connected to a room",
+                style = MaterialTheme.typography.titleMedium,
+                color = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                if (connecting) "RexMusic is trying to establish the local Wi-Fi connection." else "Create a room on this device or enter a host IP to join an existing room.",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncMembersEmptyCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("Connected members", style = MaterialTheme.typography.titleMedium)
+            Text("Members will appear here after a room is active.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SyncPlaybackEmptyCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("Playback synchronization", style = MaterialTheme.typography.titleMedium)
+            Text("The shared playback panel appears when you host or join a room.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
