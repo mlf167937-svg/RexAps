@@ -2,6 +2,7 @@ package com.rexaps.rexwarp.ui
 
 import android.content.res.Configuration
 import android.webkit.WebView
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
