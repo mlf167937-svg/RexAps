@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -841,6 +842,7 @@ private fun PlaylistDetailScreen(
         }
         item(key = "playlist-detail-hero") {
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                val detailArtworkSize = minOf(maxWidth * 0.31f, 236.dp)
                 if (wide) {
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
@@ -848,7 +850,7 @@ private fun PlaylistDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
-                        PlaylistArtwork(playlist, Modifier.size(minOf(maxWidth * 0.31f, 236.dp)))
+                        PlaylistArtwork(playlist, Modifier.size(detailArtworkSize))
                         PlaylistDetailText(playlist, onPlay = { actions.playPlaylist(playlist.name) }, modifier = Modifier.weight(1f))
                     }
                 } else {
@@ -1180,5 +1182,39 @@ private fun PermissionCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.width(8.dp))
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = scheme.onErrorContainer)
+    }
+}
+
+@Composable
+private fun LibraryChip(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Box(
+        Modifier
+            .height(36.dp)
+            .clip(CircleShape)
+            .background(
+                if (selected) scheme.primary
+                else scheme.surfaceVariant
+            )
+            .clickable(
+                role = Role.Tab,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (count > 0) "$label $count" else label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) scheme.onPrimary
+            else scheme.onSurface,
+            maxLines = 1
+        )
     }
 }
