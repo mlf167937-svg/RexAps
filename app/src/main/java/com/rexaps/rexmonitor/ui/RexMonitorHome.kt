@@ -1,5 +1,6 @@
 package com.rexaps.rexmonitor.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -53,7 +55,8 @@ fun RexMonitorHome(
             .fillMaxSize()
             .then(Modifier)
     ) {
-        val wide = maxWidth >= 840.dp || (rexIsLandscapeLayout() && maxWidth >= 640.dp)
+        val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val wide = maxWidth >= 840.dp || (isLandscape && maxWidth >= 640.dp)
         val metricColumns = if (wide) 4 else 2
         Column(
             Modifier

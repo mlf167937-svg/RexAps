@@ -247,6 +247,7 @@ private fun PlayerTopBar(
 @Composable
 fun Modifier.playerBackground(accent: Color?): Modifier {
     val base = accent ?: MaterialTheme.colorScheme.primary
+    val playerBase = RexPlayerBase
     val animated = animateColorAsState(base, tween(700), label = "playerAccent")
     return this.drawBehind {
         val c = animated.value
@@ -254,8 +255,8 @@ fun Modifier.playerBackground(accent: Color?): Modifier {
             Brush.verticalGradient(
                 colorStops = arrayOf(
                     0f to lerp(c, Color.Black, 0.35f),
-                    0.55f to lerp(RexPlayerBase, c, 0.28f),
-                    1f to RexPlayerBase
+                    0.55f to lerp(playerBase, c, 0.28f),
+                    1f to playerBase
                 )
             )
         )

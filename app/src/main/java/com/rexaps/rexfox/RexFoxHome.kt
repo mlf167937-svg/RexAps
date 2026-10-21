@@ -1,5 +1,6 @@
 package com.rexaps.rexfox
 
+import android.content.res.Configuration
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +48,7 @@ fun RexFoxHome(
     onDownloads: () -> Unit,
     onSettings: () -> Unit
 ) {
-    if (LocalRexScreenLayoutMode.current == RexScreenLayoutMode.LANDSCAPE) {
+    if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
         RexFoxHomeLandscape(
             state = state,
             onNavigate = onNavigate,
@@ -181,6 +184,9 @@ private fun RexFoxHomeLandscape(
     onSettings: () -> Unit
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    // Resolve theme-dependent composable colors before entering the non-composable draw scope.
+    val glowPrimary = Violet
+    val glowSecondary = Cyan
     Box(
         Modifier
             .fillMaxSize()
@@ -188,7 +194,7 @@ private fun RexFoxHomeLandscape(
             .drawBehind {
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Violet.copy(alpha = 0.26f), Color.Transparent),
+                        colors = listOf(glowPrimary.copy(alpha = 0.26f), Color.Transparent),
                         center = Offset(size.width * 0.18f, 0f),
                         radius = size.height * 1.1f
                     ),
@@ -197,7 +203,7 @@ private fun RexFoxHomeLandscape(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Cyan.copy(alpha = 0.13f), Color.Transparent),
+                        colors = listOf(glowSecondary.copy(alpha = 0.13f), Color.Transparent),
                         center = Offset(size.width, size.height),
                         radius = size.height * 0.9f
                     ),

@@ -184,69 +184,74 @@ fun RexApsApp(activity: Activity) {
         val appName = route.displayName
 
         RexTheme(option = themeOption) {
-            Crossfade(
-                targetState = routeLoading,
-                animationSpec = tween(320),
-                label = "routeTransition"
-            ) { isLoading ->
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onBackground
+            ) {
+                Crossfade(
+                    targetState = routeLoading,
+                    animationSpec = tween(320),
+                    label = "routeTransition"
+                ) { isLoading ->
+                    if (isLoading) {
+                        RexAppLoader(
+                            appName = appName,
+                            onFinished = { routeLoading = false }
+                        )
+                    } else {
+                        when (route) {
+                            RexRoute.REXFOX -> RexFoxScreen(activity = activity)
 
-                if (isLoading) {
-                    RexAppLoader(
-                        appName = appName,
-                        onFinished = { routeLoading = false }
-                    )
-                } else {
-                    when (route) {
-                        RexRoute.REXFOX -> RexFoxScreen(activity = activity)
+                            RexRoute.REXPANEL ->
+                                com.rexaps.rexpanel.RexPanelScreen(
+                                    activity = activity,
+                                    onExit = { route = RexRoute.NONE }
+                                )
 
-                        RexRoute.REXPANEL ->
-                            com.rexaps.rexpanel.RexPanelScreen(
-                                activity = activity,
-                                onExit = { route = RexRoute.NONE }
-                            )
+                            RexRoute.REXCHAT ->
+                                com.rexaps.rexchat.SessionListScreen(
+                                    onOpen = { session, method ->
+                                        com.rexaps.rexchat.openRexChatSession(activity, session, method)
+                                    },
+                                    onExit = { route = RexRoute.NONE }
+                                )
 
-                        RexRoute.REXCHAT ->
-                            com.rexaps.rexchat.SessionListScreen(
-                                onOpen = { session, method ->
-                                    com.rexaps.rexchat.openRexChatSession(activity, session, method)
-                                },
-                                onExit = { route = RexRoute.NONE }
-                            )
+                            RexRoute.REXNUX ->
+                                RexNuxScreen(onExit = { route = RexRoute.NONE })
 
-                        RexRoute.REXNUX ->
-                            RexNuxScreen(onExit = { route = RexRoute.NONE })
+                            RexRoute.REXTOOLS ->
+                                RexNavGraph(onBack = { route = RexRoute.NONE })
 
-                        RexRoute.REXTOOLS ->
-                            RexNavGraph(onBack = { route = RexRoute.NONE })
+                            RexRoute.REXMUSIC ->
+                                RexMusicScreen(onBack = { route = RexRoute.NONE })
 
-                        RexRoute.REXMUSIC ->
-                            RexMusicScreen(onBack = { route = RexRoute.NONE })
+                            RexRoute.REXMANAGER ->
+                                RexManagerScreen(onExit = { route = RexRoute.NONE })
 
-                        RexRoute.REXMANAGER ->
-                            RexManagerScreen(onExit = { route = RexRoute.NONE })
+                            RexRoute.REXGIT -> RexGit()
 
-                        RexRoute.REXGIT -> RexGit()
+                            RexRoute.REXCODER ->
+                                RexCoderScreen(
+                                    activity = activity,
+                                    onExit = { route = RexRoute.NONE }
+                                )
 
-                        RexRoute.REXCODER ->
-                            RexCoderScreen(
-                                activity = activity,
-                                onExit = { route = RexRoute.NONE }
-                            )
+                            RexRoute.REXMONITOR ->
+                                com.rexaps.rexmonitor.RexMonitorScreen(
+                                    onExit = { route = RexRoute.NONE }
+                                )
 
-                        RexRoute.REXMONITOR ->
-                            com.rexaps.rexmonitor.RexMonitorScreen(
-                                onExit = { route = RexRoute.NONE }
-                            )
+                            RexRoute.REXSPACEX ->
+                                RexSpaceXScreen(onExit = { route = RexRoute.NONE })
 
-                        RexRoute.REXSPACEX ->
-                            RexSpaceXScreen(onExit = { route = RexRoute.NONE })
+                            RexRoute.REXWARP ->
+                                com.rexaps.rexwarp.RexWarpScreen(
+                                    onExit = { route = RexRoute.NONE }
+                                )
 
-                        RexRoute.REXWARP ->
-                            com.rexaps.rexwarp.RexWarpScreen(
-                                onExit = { route = RexRoute.NONE }
-                            )
-
-                        RexRoute.NONE -> Unit
+                            RexRoute.NONE -> Unit
+                        }
                     }
                 }
             }
@@ -274,37 +279,44 @@ fun RexApsApp(activity: Activity) {
     )
 
     RexTheme(option = themeOption) {
-
-        if (isLandscape) {
-            RexAppsScreenLandscape(shell)
-        } else {
-            RexAppsScreenPortrait(shell)
-        }
-
-        if (showThemeSheet) {
-            ThemeSheet(
-                selected = themeOption,
-                onSelect = onThemeChange,
-                onDismiss = { showThemeSheet = false }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = themeApplying,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150))
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
         ) {
-            pendingTheme?.let { target ->
-                RexThemeLoadingOverlay(
-                    targetOption = target,
-                    onFinished = {
-                        themeOption = target
-                        themeStore.save(target)
-                        pendingTheme = null
-                        themeApplying = false
-                        showThemeSheet = false
+            Box(Modifier.fillMaxSize()) {
+                if (isLandscape) {
+                    RexAppsScreenLandscape(shell)
+                } else {
+                    RexAppsScreenPortrait(shell)
+                }
+
+                if (showThemeSheet) {
+                    ThemeSheet(
+                        selected = themeOption,
+                        onSelect = onThemeChange,
+                        onDismiss = { showThemeSheet = false }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = themeApplying,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150))
+                ) {
+                    pendingTheme?.let { target ->
+                        RexThemeLoadingOverlay(
+                            targetOption = target,
+                            onFinished = {
+                                themeOption = target
+                                themeStore.save(target)
+                                pendingTheme = null
+                                themeApplying = false
+                                showThemeSheet = false
+                            }
+                        )
                     }
-                )
+                }
             }
         }
     }
