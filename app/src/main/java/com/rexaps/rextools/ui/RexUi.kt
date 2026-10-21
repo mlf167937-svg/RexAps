@@ -88,19 +88,25 @@ fun hairline(alpha: Float = 0.7f) =
 
 /* ═════════════════════ THEME (opsional) ═════════════════════ */
 
-private val RexType = Typography().let { t ->
-    t.copy(
-        displaySmall = t.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp),
-        headlineSmall = t.headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
-        titleLarge = t.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
-        labelSmall = t.labelSmall.copy(letterSpacing = 0.8.sp)
-    )
-}
-
 @Composable
 fun RexTheme(content: @Composable () -> Unit) {
-    // Keep RexTools inside the palette selected by the RexAps shell.
-    MaterialTheme(typography = RexType, content = content)
+    // Explicitly forward all parent tokens: MaterialTheme's default colorScheme is
+    // lightColorScheme(), which previously silently reset the app palette in RexTools.
+    val inheritedColors = MaterialTheme.colorScheme
+    val inheritedShapes = MaterialTheme.shapes
+    val baseTypography = MaterialTheme.typography
+    val rexTypography = baseTypography.copy(
+        displaySmall = baseTypography.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp),
+        headlineSmall = baseTypography.headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
+        titleLarge = baseTypography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
+        labelSmall = baseTypography.labelSmall.copy(letterSpacing = 0.8.sp)
+    )
+    MaterialTheme(
+        colorScheme = inheritedColors,
+        typography = rexTypography,
+        shapes = inheritedShapes,
+        content = content
+    )
 }
 
 /* ═════════════════════ MODIFIERS ═════════════════════ */

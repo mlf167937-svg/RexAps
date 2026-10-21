@@ -32,7 +32,7 @@ internal fun RexMusicScreenPortrait(
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
         snackbarHost = snackbarHost,
         bottomBar = {
             if (selectedTab != TAB_SYNC) {

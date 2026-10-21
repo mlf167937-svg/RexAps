@@ -230,7 +230,7 @@ fun RexGitScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbar,

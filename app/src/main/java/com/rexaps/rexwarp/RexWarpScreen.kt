@@ -117,6 +117,7 @@ fun RexWarpScreen(
             }
             Scaffold(
                 modifier = Modifier.weight(1f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
                     TopAppBar(

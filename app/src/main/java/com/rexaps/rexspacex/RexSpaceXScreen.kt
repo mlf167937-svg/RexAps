@@ -73,12 +73,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val SpaceBlack = Color(0xFF070A12)
-private val SpacePanel = Color(0xFF101725)
-private val SpaceBlue = Color(0xFF19BFFF)
-private val SpaceRed = Color(0xFFFF3155)
-private val SpaceMuted = Color(0xFF91A3BA)
-private val SpaceGreen = Color(0xFF38E6B0)
+// Every module accent resolves from the active RexAps theme at composition time.
+private val SpaceBlack: Color @Composable get() = MaterialTheme.colorScheme.background
+private val SpacePanel: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+private val SpaceBlue: Color @Composable get() = MaterialTheme.colorScheme.primary
+private val SpaceRed: Color @Composable get() = MaterialTheme.colorScheme.error
+private val SpaceMuted: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+private val SpaceGreen: Color @Composable get() = MaterialTheme.colorScheme.tertiary
 
 @Composable
 fun RexSpaceXScreen(onExit: () -> Unit = {}) {
@@ -101,7 +102,7 @@ fun RexSpaceXScreen(onExit: () -> Unit = {}) {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF111D32), SpaceBlack, Color(0xFF090B12))
+                    colors = listOf(SpacePanel.copy(alpha = 0.76f), SpaceBlack.copy(alpha = 0.86f), SpaceBlack.copy(alpha = 0.91f))
                 )
             )
             .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())

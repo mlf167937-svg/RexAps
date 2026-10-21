@@ -74,7 +74,7 @@ val RexFoxAccent: Brush
 fun RexFoxTheme(content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onBackground,
         content = content
     )

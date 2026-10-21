@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val inferno_magma_red_moon = RexDesignTokens(
     id = "inferno_magma_red_moon", name = "Inferno Magma Red Moon", category = "Elemental",
     primary = argb("FF3B1F"), primaryHover = blend(argb("FF3B1F"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("FF3B1F"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("FF3B1F"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("FF7A1A"), accent = argb("FFB347"),
     background = argb("120505"), backgroundAlt = argb("1F0A07"),
     surface = argb("FF1F0A07"), surfaceElevated = argb("FF2C1916"), surfaceHover = argb("FF352220"),

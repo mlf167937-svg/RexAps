@@ -106,6 +106,7 @@ private fun RexNuxHomeScreen(
     onOpenRexNux: () -> Unit
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
         topBar = {
             TopAppBar(
                 title = {
@@ -368,6 +369,7 @@ private fun RexNuxDownloadScreen(
     onInstall: () -> Unit
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
         topBar = {
             TopAppBar(
                 title = {
@@ -616,6 +618,7 @@ private fun RexNuxSettingsScreen(
     onRemoveDistro: () -> Unit
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
         topBar = {
             TopAppBar(
                 title = {

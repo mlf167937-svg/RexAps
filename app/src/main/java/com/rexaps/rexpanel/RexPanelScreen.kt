@@ -172,7 +172,7 @@ fun RexPanelScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(colors.background)
+            .background(colors.background.copy(alpha = 0.93f))
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()

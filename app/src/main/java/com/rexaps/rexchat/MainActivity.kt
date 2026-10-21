@@ -165,6 +165,7 @@ fun SessionListScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showCreate = true },
@@ -177,7 +178,6 @@ fun SessionListScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .padding(pad)
                 .padding(horizontal = 16.dp)
         ) {

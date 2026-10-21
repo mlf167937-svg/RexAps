@@ -90,7 +90,7 @@ internal fun RexMusicScreenLandscape(
 
             Scaffold(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
                 snackbarHost = snackbarHost,
                 bottomBar = {
                     if (selectedTab != TAB_SYNC) {

@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val dark_red_moon = RexDesignTokens(
     id = "dark_red_moon", name = "Dark Red Moon", category = "Dark",
     primary = argb("EF4444"), primaryHover = blend(argb("EF4444"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("EF4444"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("EF4444"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("F87171"), accent = argb("FCA5A5"),
     background = argb("0F0506"), backgroundAlt = argb("1A0A0C"),
     surface = argb("FF1A0A0C"), surfaceElevated = argb("FF28191B"), surfaceHover = argb("FF312224"),

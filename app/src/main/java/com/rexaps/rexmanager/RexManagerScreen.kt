@@ -75,6 +75,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
@@ -142,14 +143,14 @@ import java.util.zip.ZipOutputStream
 
 // ───────────────────────── Design tokens ─────────────────────────
 private object Rex {
-    val bg = Color(0xFF0B1020)
-    val surface = Color(0xFF131A2E)
-    val surfaceHigh = Color(0xFF1B2440)
-    val primary = Color(0xFF3B6CF6)
-    val onSurface = Color(0xFFEAEEF8)
-    val muted = Color(0xFF9AA4BF)
-    val folder = Color(0xFFF5B73B)
-    val danger = Color(0xFFEF5350)
+    val bg: Color @Composable get() = MaterialTheme.colorScheme.background
+    val surface: Color @Composable get() = MaterialTheme.colorScheme.surface
+    val surfaceHigh: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+    val primary: Color @Composable get() = MaterialTheme.colorScheme.primary
+    val onSurface: Color @Composable get() = MaterialTheme.colorScheme.onSurface
+    val muted: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+    val folder: Color @Composable get() = MaterialTheme.colorScheme.tertiary
+    val danger: Color @Composable get() = MaterialTheme.colorScheme.error
 }
 
 // ───────────────────────── Routes ─────────────────────────
@@ -293,7 +294,7 @@ fun RexManagerScreen(onExit: () -> Unit = {}) {
             }
         }
     ) {
-        Surface(Modifier.fillMaxSize(), color = Rex.bg) {
+        Surface(Modifier.fillMaxSize(), color = Color.Transparent) {
             if (!granted) {
                 PermissionGate {
                     ctx.startActivity(
@@ -393,6 +394,7 @@ private fun formatSize(b: Long): String = when {
     else -> "%.2f GB".format(b / 1073741824.0)
 }
 
+@Composable
 private fun iconFor(f: File): Pair<ImageVector, Color> {
     val e = f.extension.lowercase()
     return when {
@@ -433,7 +435,7 @@ private fun HomeScreen(onOpen: (String) -> Unit, onBack: () -> Unit, onMenu: () 
         Triple("Kamera", File(root, "DCIM"), Icons.Filled.ImageIcon)
     )
 
-    Column(Modifier.fillMaxSize().background(Rex.bg)) {
+    Column(Modifier.fillMaxSize().background(Rex.bg.copy(alpha = 0.94f))) {
         Row(
             Modifier.fillMaxWidth().padding(start = 10.dp, end = 12.dp, top = 12.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -883,7 +885,7 @@ private fun tokenColor(type: String): Color {
         "TYPE" in t || "CLASS" in t -> Color(0xFFFFCB6B)
         "ANNOTATION" in t || "TAG" in t || "ATTRIBUTE" in t -> Color(0xFF89DDFF)
         "OPERATOR" in t || "PUNCT" in t -> Color(0xFF89DDFF)
-        else -> Rex.onSurface
+        else -> Color(0xFFEAEEF8)
     }
 }
 

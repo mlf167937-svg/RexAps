@@ -186,71 +186,75 @@ fun RexApsApp(activity: Activity) {
         RexTheme(option = themeOption) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
+                color = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.onBackground
             ) {
-                Crossfade(
-                    targetState = routeLoading,
-                    animationSpec = tween(320),
-                    label = "routeTransition"
-                ) { isLoading ->
-                    if (isLoading) {
-                        RexAppLoader(
-                            appName = appName,
-                            onFinished = { routeLoading = false }
-                        )
-                    } else {
-                        when (route) {
-                            RexRoute.REXFOX -> RexFoxScreen(activity = activity)
+                Box(Modifier.fillMaxSize()) {
+                    // Keep a single theme-aware animated backdrop underneath every sub-module.
+                    ProAmbientBackdrop(Modifier.fillMaxSize())
+                    Crossfade(
+                        targetState = routeLoading,
+                        animationSpec = tween(320),
+                        label = "routeTransition"
+                    ) { isLoading ->
+                        if (isLoading) {
+                            RexAppLoader(
+                                appName = appName,
+                                onFinished = { routeLoading = false }
+                            )
+                        } else {
+                            when (route) {
+                                RexRoute.REXFOX -> RexFoxScreen(activity = activity)
 
-                            RexRoute.REXPANEL ->
-                                com.rexaps.rexpanel.RexPanelScreen(
-                                    activity = activity,
-                                    onExit = { route = RexRoute.NONE }
-                                )
+                                RexRoute.REXPANEL ->
+                                    com.rexaps.rexpanel.RexPanelScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
 
-                            RexRoute.REXCHAT ->
-                                com.rexaps.rexchat.SessionListScreen(
-                                    onOpen = { session, method ->
-                                        com.rexaps.rexchat.openRexChatSession(activity, session, method)
-                                    },
-                                    onExit = { route = RexRoute.NONE }
-                                )
+                                RexRoute.REXCHAT ->
+                                    com.rexaps.rexchat.SessionListScreen(
+                                        onOpen = { session, method ->
+                                            com.rexaps.rexchat.openRexChatSession(activity, session, method)
+                                        },
+                                        onExit = { route = RexRoute.NONE }
+                                    )
 
-                            RexRoute.REXNUX ->
-                                RexNuxScreen(onExit = { route = RexRoute.NONE })
+                                RexRoute.REXNUX ->
+                                    RexNuxScreen(onExit = { route = RexRoute.NONE })
 
-                            RexRoute.REXTOOLS ->
-                                RexNavGraph(onBack = { route = RexRoute.NONE })
+                                RexRoute.REXTOOLS ->
+                                    RexNavGraph(onBack = { route = RexRoute.NONE })
 
-                            RexRoute.REXMUSIC ->
-                                RexMusicScreen(onBack = { route = RexRoute.NONE })
+                                RexRoute.REXMUSIC ->
+                                    RexMusicScreen(onBack = { route = RexRoute.NONE })
 
-                            RexRoute.REXMANAGER ->
-                                RexManagerScreen(onExit = { route = RexRoute.NONE })
+                                RexRoute.REXMANAGER ->
+                                    RexManagerScreen(onExit = { route = RexRoute.NONE })
 
-                            RexRoute.REXGIT -> RexGit()
+                                RexRoute.REXGIT -> RexGit()
 
-                            RexRoute.REXCODER ->
-                                RexCoderScreen(
-                                    activity = activity,
-                                    onExit = { route = RexRoute.NONE }
-                                )
+                                RexRoute.REXCODER ->
+                                    RexCoderScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
 
-                            RexRoute.REXMONITOR ->
-                                com.rexaps.rexmonitor.RexMonitorScreen(
-                                    onExit = { route = RexRoute.NONE }
-                                )
+                                RexRoute.REXMONITOR ->
+                                    com.rexaps.rexmonitor.RexMonitorScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
 
-                            RexRoute.REXSPACEX ->
-                                RexSpaceXScreen(onExit = { route = RexRoute.NONE })
+                                RexRoute.REXSPACEX ->
+                                    RexSpaceXScreen(onExit = { route = RexRoute.NONE })
 
-                            RexRoute.REXWARP ->
-                                com.rexaps.rexwarp.RexWarpScreen(
-                                    onExit = { route = RexRoute.NONE }
-                                )
+                                RexRoute.REXWARP ->
+                                    com.rexaps.rexwarp.RexWarpScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
 
-                            RexRoute.NONE -> Unit
+                                RexRoute.NONE -> Unit
+                            }
                         }
                     }
                 }
@@ -1127,8 +1131,8 @@ internal fun ThemePicker(
     modifier: Modifier = Modifier
 ) {
     val categoryGroups = listOf(
-        "Glass" to RexThemeOption.curatedOptions.filter { it.name.startsWith("GLASS_") },
         "Dark" to RexThemeOption.curatedOptions.filter { it.name.startsWith("DARK_") },
+        "Glass" to RexThemeOption.curatedOptions.filter { it.name.startsWith("GLASS_") },
         "Light" to RexThemeOption.curatedOptions.filter { it.name.startsWith("LIGHT_") },
         "Neon" to RexThemeOption.curatedOptions.filter { it.name.startsWith("NEON_") },
         "Cosmic" to RexThemeOption.curatedOptions.filter { it.name.startsWith("ASTRAL_") || it.name.startsWith("NEBULA_") || it.name.startsWith("ECLIPSE_") || it.name.startsWith("STARLIGHT_") },

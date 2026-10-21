@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val nebula_void_moon = RexDesignTokens(
     id = "nebula_void_moon", name = "Nebula Void Moon", category = "Cosmic",
     primary = argb("B24BF3"), primaryHover = blend(argb("B24BF3"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("B24BF3"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("B24BF3"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("FF3D8B"), accent = argb("5EEAD4"),
     background = argb("060211"), backgroundAlt = argb("180A2C"),
     surface = argb("FF180A2C"), surfaceElevated = argb("FF261939"), surfaceHover = argb("FF2F2241"),

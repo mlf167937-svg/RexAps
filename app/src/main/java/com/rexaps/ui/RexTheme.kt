@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** 37 curated app-owned themes; the selected palette never follows the device theme. */
+/** App-owned themes; the selected palette never follows the device theme. */
 enum class RexThemeOption(val label: String) {
     DARK_BLUE_MOON("Dark Blue Moon"),
     DARK_RED_MOON("Dark Red Moon"),
@@ -45,8 +45,8 @@ enum class RexThemeOption(val label: String) {
     companion object {
         /** The curated 30-theme catalogue in the product's canonical category/order. */
         val curatedOptions: List<RexThemeOption> = listOf(
-            GLASS_BLUE_MOON, GLASS_RED_MOON, GLASS_PURPLE_MOON, GLASS_HOLLOW_PURPLE, GLASS_EMERALD_MOON, GLASS_GOLD_MOON,
             DARK_BLUE_MOON, DARK_RED_MOON, DARK_PURPLE_MOON, DARK_HOLLOW_PURPLE, DARK_ONYX_MOON, DARK_MIDNIGHT_SILVER,
+            GLASS_BLUE_MOON, GLASS_RED_MOON, GLASS_PURPLE_MOON, GLASS_HOLLOW_PURPLE, GLASS_EMERALD_MOON, GLASS_GOLD_MOON,
             LIGHT_BLUE_MOON, LIGHT_RED_MOON, LIGHT_PURPLE_MOON, LIGHT_HOLLOW_PURPLE, LIGHT_PEARL_WHITE, LIGHT_SAKURA_PINK,
             NEON_CYAN_MOON, NEON_GREEN_MOON, NEON_PINK_MOON, NEON_YELLOW_MOON,
             ASTRAL_GALAXY_MOON, NEBULA_VOID_MOON, ECLIPSE_BLACK_MOON, STARLIGHT_SILVER_MOON,
@@ -62,8 +62,8 @@ class RexThemeStore(context: Context) {
     private val engine = com.rexaps.ui.theme.RexThemeManager(appContext)
     fun load(): RexThemeOption {
         val saved = prefs.getString(KEY_THEME, null)
-        val option = if (saved == null || saved == "BLOOD_MOON") RexThemeOption.GLASS_BLUE_MOON
-            else RexThemeOption.values().firstOrNull { it.name == saved } ?: RexThemeOption.GLASS_BLUE_MOON
+        val option = if (saved == null || saved == "BLOOD_MOON") RexThemeOption.DARK_BLUE_MOON
+            else RexThemeOption.values().firstOrNull { it.name == saved } ?: RexThemeOption.DARK_BLUE_MOON
         if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())
         return option
     }
@@ -83,10 +83,17 @@ data class RexPaletteSpec(
         fun of(option: RexThemeOption): RexPaletteSpec {
             if (option in RexThemeOption.curatedOptions) {
                 val t = com.rexaps.ui.theme.RexThemeRegistry.get(option.labelToThemeId())
+                val container = com.rexaps.ui.theme.blend(t.primary, t.background, .42f)
+                val darkForeground = 0xFF10131AL
+                val lightForeground = 0xFFFFFFFFL
+                val onPrimary = if (com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(darkForeground, t.primary) >=
+                    com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(lightForeground, t.primary)) darkForeground else lightForeground
+                val onContainer = if (com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(darkForeground, container) >=
+                    com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(lightForeground, container)) darkForeground else lightForeground
                 return RexPaletteSpec(
-                    dark = t.category != "Light", primary = t.primary, onPrimary = t.onPrimary,
-                    container = com.rexaps.ui.theme.blend(t.primary, t.background, .42f),
-                    onContainer = t.text, tertiary = t.secondary, background = t.background,
+                    dark = t.category != "Light", primary = t.primary, onPrimary = onPrimary,
+                    container = container, onContainer = onContainer,
+                    tertiary = t.secondary, background = t.background,
                     card = t.surface, muted = t.textMuted, outline = t.border, text = t.text
                 )
             }

@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val neon_pink_moon = RexDesignTokens(
     id = "neon_pink_moon", name = "Neon Pink Moon", category = "Neon",
     primary = argb("FF2BD6"), primaryHover = blend(argb("FF2BD6"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("FF2BD6"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("FF2BD6"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("FF5FA2"), accent = argb("FFB0F0"),
     background = argb("0A030A"), backgroundAlt = argb("16081A"),
     surface = argb("FF16081A"), surfaceElevated = argb("FF241728"), surfaceHover = argb("FF2D2131"),

@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val abyssal_ocean_moon = RexDesignTokens(
     id = "abyssal_ocean_moon", name = "Abyssal Ocean Moon", category = "Elemental",
     primary = argb("0EA5B7"), primaryHover = blend(argb("0EA5B7"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("0EA5B7"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("0EA5B7"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("1D4ED8"), accent = argb("5EEAD4"),
     background = argb("020B14"), backgroundAlt = argb("06283C"),
     surface = argb("FF06283C"), surfaceElevated = argb("FF153548"), surfaceHover = argb("FF1F3E50"),

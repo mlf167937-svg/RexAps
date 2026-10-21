@@ -3,7 +3,7 @@
 ## Architecture
 - `tokens.kt`: complete shared design-token schema and token validation.
 - `engine.kt`: persisted theme selection, live subscribers, preview/commit/cancel, motion preferences.
-- `registry.kt`: ordered catalogue of exactly 30 themes; first entry is the default.
+- `registry.kt`: ordered catalogue of exactly 30 themes; Dark Blue Moon is first-run default.
 - `themes/<category>/<theme>.kt`: one complete token configuration per theme.
 - `descriptions.txt`: theme specifications in the required nine-line format.
 - `../motion`: transition presets, motion limits and reduce-motion policy.

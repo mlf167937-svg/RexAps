@@ -8,7 +8,7 @@ import com.rexaps.ui.theme.blend
 val glass_red_moon = RexDesignTokens(
     id = "glass_red_moon", name = "Glass Red Moon", category = "Glass",
     primary = argb("FF4D6D"), primaryHover = blend(argb("FF4D6D"), 0xFFFFFFFFL, .10f),
-    primaryPressed = blend(argb("FF4D6D"), 0xFF000000L, .12f), onPrimary = argb("FFFFFF"),
+    primaryPressed = blend(argb("FF4D6D"), 0xFF000000L, .12f), onPrimary = argb("10131A"),
     secondary = argb("FF7A90"), accent = argb("FFB3C1"),
     background = argb("1A0A10"), backgroundAlt = argb("2A0F1A"),
     surface = argb("FF2A0F1A"), surfaceElevated = argb("FF371D28"), surfaceHover = argb("FF3F2731"),

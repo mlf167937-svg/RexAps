@@ -32,9 +32,9 @@
 - Signature: tiny stars appear around interaction points.
 
 [Glass Hollow Purple]
-- Warna: primary #8A2BE2, secondary #4F8CFF, accent #FF3B6B, background #0C0716 → #170A2E, surface #170A2E, text #F1EAFF, border #8A2BE2
+- Warna: primary #B06FF2, secondary #4F8CFF, accent #FF3B6B, background #0C0716 → #170A2E, surface #170A2E, text #F1EAFF, border #B06FF2
 - Karakter: glassmorphism yang lembut dan berkilau
-- Efek visual: blur 20px, glow #8A2BE2, gradient berlapis, noise .03
+- Efek visual: blur 20px, glow #B06FF2, gradient berlapis, noise .03
 - Animasi background: blue and red orbs merge into a pulsing violet core; lapisan ambient bergerak perlahan sesuai kategori Glass
 - Animasi transisi: Glass, fade + transform kompositoris selama 250–400ms
 - Animasi hover/tap: ripple warna utama, elevasi ringan, press scale 0.97, dan ring fokus kontras tinggi
@@ -87,9 +87,9 @@
 - Signature: main emblem has a restrained slow heartbeat pulse.
 
 [Dark Purple Moon]
-- Warna: primary #8B5CF6, secondary #A78BFA, accent #C4B5FD, background #0A0614 → #150E26, surface #150E26, text #EFE9FF, border #2C1F4D
+- Warna: primary #9368F7, secondary #A78BFA, accent #C4B5FD, background #0A0614 → #150E26, surface #150E26, text #EFE9FF, border #2C1F4D
 - Karakter: fokus profesional dengan kontras tinggi
-- Efek visual: blur terkontrol, glow #8B5CF6, gradient berlapis, noise .02
+- Efek visual: blur terkontrol, glow #9368F7, gradient berlapis, noise .02
 - Animasi background: fine constellation lines draw into empty areas; lapisan ambient bergerak perlahan sesuai kategori Dark
 - Animasi transisi: Dark, fade + transform kompositoris selama 250–400ms
 - Animasi hover/tap: ripple warna utama, elevasi ringan, press scale 0.97, dan ring fokus kontras tinggi
@@ -98,9 +98,9 @@
 - Signature: fine constellation lines draw into empty areas.
 
 [Dark Hollow Purple]
-- Warna: primary #7C3AED, secondary #3B82F6, accent #F43F5E, background #07040F → #120A22, surface #120A22, text #EEE8FF, border #2A1650
+- Warna: primary #A67CFF, secondary #3B82F6, accent #F43F5E, background #07040F → #120A22, surface #120A22, text #EEE8FF, border #2A1650
 - Karakter: fokus profesional dengan kontras tinggi
-- Efek visual: blur terkontrol, glow #7C3AED, gradient berlapis, noise .02
+- Efek visual: blur terkontrol, glow #A67CFF, gradient berlapis, noise .02
 - Animasi background: violet core emits a thin wave after important actions; lapisan ambient bergerak perlahan sesuai kategori Dark
 - Animasi transisi: Dark, fade + transform kompositoris selama 250–400ms
 - Animasi hover/tap: ripple warna utama, elevasi ringan, press scale 0.97, dan ring fokus kontras tinggi
@@ -186,9 +186,9 @@
 - Signature: pearl iridescence shifts slowly along the border.
 
 [Light Sakura Pink]
-- Warna: primary #EC6A9C, secondary #F5A3C0, accent #FFD1E1, background #FFF7FA → #FFFFFF, surface #FFFFFF, text #3A1624, border #F8D7E3
+- Warna: primary #B9366D, secondary #F5A3C0, accent #FFD1E1, background #FFF7FA → #FFFFFF, surface #FFFFFF, text #3A1624, border #F8D7E3
 - Karakter: terang, bersih, dan ramah
-- Efek visual: blur 8px, glow #EC6A9C, gradient berlapis, noise .01
+- Efek visual: blur 8px, glow #B9366D, gradient berlapis, noise .01
 - Animasi background: a gentle sakura petal drift follows successful actions; lapisan ambient bergerak perlahan sesuai kategori Light
 - Animasi transisi: Light, fade + transform kompositoris selama 250–400ms
 - Animasi hover/tap: ripple warna utama, elevasi ringan, press scale 0.97, dan ring fokus kontras tinggi
@@ -241,9 +241,9 @@
 - Signature: electric current travels along panel dividers.
 
 [Astral Galaxy Moon]
-- Warna: primary #7B5CFF, secondary #00C2FF, accent #FF7AD9, background #04030F → #141032, surface #141032, text #ECE9FF, border #7B5CFF
+- Warna: primary #8268FF, secondary #00C2FF, accent #FF7AD9, background #04030F → #141032, surface #141032, text #ECE9FF, border #8268FF
 - Karakter: luas, misterius, dan berlapis
-- Efek visual: blur 16px, glow #7B5CFF, gradient berlapis, noise .02
+- Efek visual: blur 16px, glow #8268FF, gradient berlapis, noise .02
 - Animasi background: orbital rings rotate around the hero moon; lapisan ambient bergerak perlahan sesuai kategori Cosmic
 - Animasi transisi: Cosmic, fade + transform kompositoris selama 250–400ms
 - Animasi hover/tap: ripple warna utama, elevasi ringan, press scale 0.97, dan ring fokus kontras tinggi

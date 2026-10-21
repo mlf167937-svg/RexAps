@@ -16,7 +16,8 @@ data class RexMotionSettings(
 
 /** One process-wide source of truth. Subscribe for live theme updates; preview never persists until commit. */
 class RexThemeManager(context: Context) {
-    private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences("rexaps_theme_engine", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs: SharedPreferences = appContext.getSharedPreferences("rexaps_theme_engine", Context.MODE_PRIVATE)
     private val listeners = CopyOnWriteArraySet<(RexDesignTokens) -> Unit>()
     private var committedId: String = RexThemeRegistry.get(prefs.getString(KEY_THEME, RexThemeRegistry.default.id).orEmpty()).id
     private var previewId: String? = null
@@ -36,6 +37,9 @@ class RexThemeManager(context: Context) {
         val theme = RexThemeRegistry.get(themeId)
         previewId = null; committedId = theme.id; current = theme
         prefs.edit().putString(KEY_THEME, theme.id).apply()
+        // Keep the user-facing theme picker preference in sync with the engine ID.
+        appContext.getSharedPreferences("rexaps_settings", Context.MODE_PRIVATE)
+            .edit().putString("theme_option", theme.id.uppercase()).apply()
         listeners.forEach { it(theme) }
     }
     fun previewTheme(themeId: String) {
