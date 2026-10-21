@@ -1,7 +1,6 @@
 package com.rexaps.rexmusic
 
 import androidx.compose.foundation.layout.*
-
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
@@ -20,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Landscape shell: a persistent navigation rail and a separate content/player region
+ * Landscape shell: persistent navigation and a separate content/player region
  * make better use of horizontal space without stretching the portrait bottom bar.
  */
 @Composable
@@ -31,86 +30,94 @@ internal fun RexMusicScreenLandscape(
     snackbarHost: @Composable () -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
-    Row(Modifier.fillMaxSize()) {
-        if (selectedTab != TAB_SYNC) {
-            NavigationRail(
-                modifier = Modifier.fillMaxHeight(),
-                containerColor = MaterialTheme.colorScheme.surface
-            ) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Rex",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                NavigationRailItem(
-                    selected = selectedTab == TAB_HOME,
-                    onClick = { onTabSelected(TAB_HOME) },
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Beranda", maxLines = 1) },
-                    alwaysShowLabel = false
-                )
-                NavigationRailItem(
-                    selected = selectedTab == TAB_SEARCH,
-                    onClick = { onTabSelected(TAB_SEARCH) },
-                    icon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    label = { Text("Cari", maxLines = 1) },
-                    alwaysShowLabel = false
-                )
-                NavigationRailItem(
-                    selected = selectedTab == TAB_PLAYLIST,
-                    onClick = { onTabSelected(TAB_PLAYLIST) },
-                    icon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
-                    label = { Text("Playlist", maxLines = 1) },
-                    alwaysShowLabel = false
-                )
-                NavigationRailItem(
-                    selected = selectedTab == TAB_LIBRARY,
-                    onClick = { onTabSelected(TAB_LIBRARY) },
-                    icon = { Icon(Icons.Default.LibraryMusic, contentDescription = null) },
-                    label = { Text("Koleksi", maxLines = 1) },
-                    alwaysShowLabel = false
-                )
-                NavigationRailItem(
-                    selected = selectedTab == TAB_SYNC,
-                    onClick = { onTabSelected(TAB_SYNC) },
-                    icon = { Icon(Icons.Default.Groups, contentDescription = null) },
-                    label = { Text("Sync", maxLines = 1) },
-                    alwaysShowLabel = false
-                )
-            }
-        }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Desktop-width windows can afford persistent labels; compact landscape keeps
+        // the rail narrow so the player and content remain the visual priority.
+        val showNavigationLabels = maxWidth >= 900.dp
 
-        Scaffold(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = snackbarHost,
-            bottomBar = {
-                if (selectedTab != TAB_SYNC) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(Modifier.widthIn(max = 1000.dp)) {
-                            miniPlayer()
+        Row(Modifier.fillMaxSize()) {
+            if (selectedTab != TAB_SYNC) {
+                NavigationRail(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(if (showNavigationLabels) 100.dp else 80.dp),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Rex",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    NavigationRailItem(
+                        selected = selectedTab == TAB_HOME,
+                        onClick = { onTabSelected(TAB_HOME) },
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                        label = { Text("Beranda", maxLines = 1) },
+                        alwaysShowLabel = showNavigationLabels
+                    )
+                    NavigationRailItem(
+                        selected = selectedTab == TAB_SEARCH,
+                        onClick = { onTabSelected(TAB_SEARCH) },
+                        icon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        label = { Text("Cari", maxLines = 1) },
+                        alwaysShowLabel = showNavigationLabels
+                    )
+                    NavigationRailItem(
+                        selected = selectedTab == TAB_PLAYLIST,
+                        onClick = { onTabSelected(TAB_PLAYLIST) },
+                        icon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
+                        label = { Text("Playlist", maxLines = 1) },
+                        alwaysShowLabel = showNavigationLabels
+                    )
+                    NavigationRailItem(
+                        selected = selectedTab == TAB_LIBRARY,
+                        onClick = { onTabSelected(TAB_LIBRARY) },
+                        icon = { Icon(Icons.Default.LibraryMusic, contentDescription = null) },
+                        label = { Text("Koleksi", maxLines = 1) },
+                        alwaysShowLabel = showNavigationLabels
+                    )
+                    NavigationRailItem(
+                        selected = selectedTab == TAB_SYNC,
+                        onClick = { onTabSelected(TAB_SYNC) },
+                        icon = { Icon(Icons.Default.Groups, contentDescription = null) },
+                        label = { Text("Sync", maxLines = 1) },
+                        alwaysShowLabel = showNavigationLabels
+                    )
+                }
+            }
+
+            Scaffold(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                containerColor = MaterialTheme.colorScheme.background,
+                snackbarHost = snackbarHost,
+                bottomBar = {
+                    if (selectedTab != TAB_SYNC) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(Modifier.widthIn(max = 1000.dp)) {
+                                miniPlayer()
+                            }
                         }
                     }
                 }
-            }
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.TopCenter
-            ) {
+            ) { padding ->
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 1440.dp)
                         .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    content(Modifier.fillMaxSize())
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 1440.dp)
+                            .fillMaxSize()
+                    ) {
+                        content(Modifier.fillMaxSize())
+                    }
                 }
             }
         }

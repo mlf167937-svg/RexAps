@@ -23,10 +23,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -473,23 +475,165 @@ fun PlaylistTab(
     state: RexMusicUiState,
     actions: RexActions,
     listState: LazyListState,
+    selectedPlaylistName: String?,
+    onOpenPlaylist: (String) -> Unit,
+    onBackFromDetail: () -> Unit,
+    onRequestDeletePlaylist: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
-    LazyColumn(
-        modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        item(key = "playlist-hero") {
-            PlaylistHeroCard(
-                count = state.playlists.size,
-                onCreate = { showCreate = true },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-            )
+    var playlistQuery by rememberSaveable { mutableStateOf("") }
+    val detailListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val selectedPlaylist = state.playlists.firstOrNull { it.name == selectedPlaylistName }
+
+    LaunchedEffect(selectedPlaylistName) {
+        if (selectedPlaylistName != null) detailListState.scrollToItem(0)
+    }
+    LaunchedEffect(selectedPlaylistName, state.playlists) {
+        if (selectedPlaylistName != null && selectedPlaylist == null) onBackFromDetail()
+    }
+
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val columns = when {
+            maxWidth >= 1120.dp -> 3
+            maxWidth >= 650.dp -> 2
+            else -> 1
         }
-        playlistSection(state, actions, onCreate = { showCreate = true })
+        val wideDetail = maxWidth >= 720.dp
+
+        if (selectedPlaylist != null) {
+            PlaylistDetailScreen(
+                playlist = selectedPlaylist,
+                state = state,
+                actions = actions,
+                listState = detailListState,
+                wide = wideDetail,
+                onBack = onBackFromDetail,
+                onDelete = { onRequestDeletePlaylist(selectedPlaylist.name) }
+            )
+        } else {
+            val filteredPlaylists = remember(state.playlists, playlistQuery) {
+                val query = playlistQuery.trim()
+                if (query.isBlank()) state.playlists
+                else state.playlists.filter { playlist ->
+                    playlist.name.contains(query, ignoreCase = true) ||
+                        playlist.tracks.any { it.title.contains(query, true) || it.artist.contains(query, true) }
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(bottom = 30.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                item(key = "playlist-page-header") {
+                    Column(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "KOLEKSI MUSIK",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 1.2.sp
+                                )
+                                Text("Playlist", style = MaterialTheme.typography.headlineLarge)
+                            }
+                            FilledTonalButton(
+                                onClick = { showCreate = true },
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(19.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text("Buat playlist")
+                            }
+                        }
+                        Text(
+                            "Susun lagu sesuai suasana, aktivitas, atau momen favoritmu.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "${state.playlists.size} playlist · tersimpan di perangkat",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                item(key = "playlist-search") {
+                    OutlinedTextField(
+                        value = playlistQuery,
+                        onValueChange = { playlistQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (playlistQuery.isNotBlank()) {
+                                IconButton(onClick = { playlistQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Hapus pencarian")
+                                }
+                            }
+                        },
+                        placeholder = { Text("Cari playlist atau lagu di dalamnya") }
+                    )
+                }
+
+                if (state.playlists.isEmpty()) {
+                    item(key = "playlist-empty") {
+                        PlaylistEmptyState(onCreate = { showCreate = true })
+                    }
+                } else if (filteredPlaylists.isEmpty()) {
+                    item(key = "playlist-no-search-results") {
+                        EmptyState(
+                            Icons.Default.Search,
+                            "Playlist tidak ditemukan",
+                            "Coba kata kunci lain atau hapus pencarian."
+                        )
+                    }
+                } else {
+                    item(key = "playlist-list-heading") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Koleksi kamu", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            Text("${filteredPlaylists.size} item", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    items(
+                        items = filteredPlaylists.chunked(columns),
+                        key = { row -> "playlist-row-${row.firstOrNull()?.name.orEmpty()}" }
+                    ) { rowPlaylists ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            rowPlaylists.forEach { playlist ->
+                                PlaylistGridCard(
+                                    playlist = playlist,
+                                    compact = columns == 1,
+                                    onOpen = { onOpenPlaylist(playlist.name) },
+                                    onPlay = { actions.playPlaylist(playlist.name) },
+                                    onDelete = { onRequestDeletePlaylist(playlist.name) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat((columns - rowPlaylists.size).coerceAtLeast(0)) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showCreate) {
@@ -522,115 +666,321 @@ fun PlaylistTab(
 }
 
 @Composable
-private fun PlaylistHeroCard(count: Int, onCreate: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(RexHeroBrush)
-            .padding(20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text("Playlist", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-            Text(
-                if (count == 0) "Buat koleksi musikmu sendiri" else "$count playlist tersimpan di perangkat",
-                style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.84f),
-                maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
-        }
-        FilledTonalButton(
-            onClick = onCreate,
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = Color.White, contentColor = RexPlayerBase
-            )
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(5.dp))
-            Text("Buat")
-        }
-    }
-}
-
-@Composable
-private fun LibraryChip(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    Box(
-        Modifier.height(36.dp).clip(CircleShape)
-            .background(if (selected) scheme.primary else scheme.surfaceVariant)
-            .clickable(role = Role.Tab, onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            if (count > 0) "$label $count" else label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) scheme.onPrimary else scheme.onSurface,
-            maxLines = 1
-        )
-    }
-}
-
-private fun LazyListScope.playlistSection(
-    state: RexMusicUiState,
-    actions: RexActions,
-    onCreate: () -> Unit
+private fun PlaylistGridCard(
+    playlist: RexPlaylist,
+    compact: Boolean,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    item(key = "playlist-head") {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Playlist kamu", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("JSON · ${RexPlaylistStore.DISPLAY_PATH}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            TextButton(onClick = onCreate) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Buat")
-            }
-        }
-    }
-    if (state.playlists.isEmpty()) {
-        item(key = "playlist-empty") {
-            EmptyState(Icons.Default.QueueMusic, "Belum ada playlist", "Buat playlist lalu tambahkan lagu dari menu ⋮ pada lagu.")
-        }
-    } else {
-        items(state.playlists, key = { "pl-${it.name}" }) { playlist ->
-            ElevatedCard(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-                shape = RoundedCornerShape(18.dp)
+    val scheme = MaterialTheme.colorScheme
+    ElevatedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = scheme.surfaceVariant),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+    ) {
+        if (compact) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                PlaylistArtwork(playlist, Modifier.size(88.dp))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${playlist.tracks.size} lagu",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                    Text(
+                        if (playlist.tracks.isEmpty()) "Playlist kosong" else playlist.tracks.take(2).joinToString(" · ") { it.title },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = onPlay, enabled = playlist.tracks.isNotEmpty()) {
+                        Icon(Icons.Default.PlayCircle, contentDescription = "Putar ${playlist.name}", tint = scheme.primary, modifier = Modifier.size(30.dp))
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist ${playlist.name}", tint = scheme.onSurfaceVariant)
+                    }
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                Box(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(12.dp)) {
+                    PlaylistArtwork(playlist, Modifier.fillMaxWidth().aspectRatio(1.12f))
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).padding(22.dp).size(48.dp)
+                            .clip(CircleShape).background(scheme.primary)
+                            .clickable(enabled = playlist.tracks.isNotEmpty(), onClick = onPlay),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Putar ${playlist.name}", tint = scheme.onPrimary, modifier = Modifier.size(28.dp))
+                    }
+                }
                 Row(
-                    Modifier.fillMaxWidth().clickable { actions.playPlaylist(playlist.name) }.padding(16.dp),
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(RexHeroBrush), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).clickable(onClick = onOpen), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${playlist.tracks.size} lagu", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (playlist.tracks.isEmpty()) "Playlist kosong" else "${playlist.tracks.size} lagu",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
-                    IconButton(onClick = { actions.playPlaylist(playlist.name) }) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Putar playlist")
-                    }
-                    IconButton(onClick = { actions.deletePlaylist(playlist.name) }) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist")
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist ${playlist.name}", tint = scheme.onSurfaceVariant)
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun PlaylistArtwork(
+    playlist: RexPlaylist,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    val tracks = playlist.tracks.take(4)
+    Box(
+        modifier.clip(RoundedCornerShape(17.dp)).background(scheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            tracks.isEmpty() -> {
+                Box(Modifier.fillMaxSize().background(RexHeroBrush), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
+                }
+            }
+            tracks.size == 1 -> CoverImage(
+                tracks.first().cover,
+                Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(17.dp),
+                contentDescription = "Sampul ${tracks.first().title}"
+            )
+            else -> {
+                Column(
+                    Modifier.fillMaxSize().padding(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        PlaylistArtworkTile(tracks.getOrNull(0), Modifier.weight(1f).fillMaxHeight())
+                        PlaylistArtworkTile(tracks.getOrNull(1), Modifier.weight(1f).fillMaxHeight())
+                    }
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        PlaylistArtworkTile(tracks.getOrNull(2), Modifier.weight(1f).fillMaxHeight())
+                        PlaylistArtworkTile(tracks.getOrNull(3), Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistArtworkTile(track: RexTrack?, modifier: Modifier = Modifier) {
+    if (track == null) {
+        Box(
+            modifier.clip(RoundedCornerShape(5.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+        }
+    } else {
+        CoverImage(
+            track.cover,
+            modifier,
+            shape = RoundedCornerShape(5.dp),
+            contentDescription = "Sampul ${track.title}"
+        )
+    }
+}
+
+@Composable
+private fun PlaylistDetailScreen(
+    playlist: RexPlaylist,
+    state: RexMusicUiState,
+    actions: RexActions,
+    listState: LazyListState,
+    wide: Boolean,
+    onBack: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        contentPadding = PaddingValues(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        item(key = "playlist-detail-toolbar") {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali ke playlist")
+                }
+                Text("Detail playlist", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist", tint = scheme.onSurfaceVariant)
+                }
+            }
+        }
+        item(key = "playlist-detail-hero") {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                if (wide) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                            .background(scheme.surfaceVariant).padding(22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        PlaylistArtwork(playlist, Modifier.size(minOf(maxWidth * 0.31f, 236.dp)))
+                        PlaylistDetailText(playlist, onPlay = { actions.playPlaylist(playlist.name) }, modifier = Modifier.weight(1f))
+                    }
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                            .background(scheme.surfaceVariant).padding(18.dp),
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            PlaylistArtwork(playlist, Modifier.fillMaxWidth(0.76f).aspectRatio(1f))
+                        }
+                        PlaylistDetailText(playlist, onPlay = { actions.playPlaylist(playlist.name) }, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+        item(key = "playlist-detail-list-heading") {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Lagu di playlist", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "${playlist.tracks.size} lagu · pilih lagu untuk mulai mendengarkan",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                if (playlist.tracks.isNotEmpty()) {
+                    TextButton(onClick = { actions.playPlaylist(playlist.name) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Putar semua")
+                    }
+                }
+            }
+        }
+        if (playlist.tracks.isEmpty()) {
+            item(key = "playlist-detail-empty") {
+                EmptyState(
+                    Icons.Default.QueueMusic,
+                    "Playlist masih kosong",
+                    "Tambahkan lagu lewat menu ⋮ pada lagu di Beranda, Cari, atau Koleksi."
+                )
+            }
+        } else {
+            itemsIndexed(playlist.tracks, key = { index, track -> "detail-${playlist.name}-${track.id}-$index" }) { _, track ->
+                TrackRowFor(track, state, actions) {
+                    actions.playPlaylistTrack(playlist.name, track.id)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistDetailText(
+    playlist: RexPlaylist,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "REX MUSIC · PLAYLIST PRIBADI",
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.primary,
+            letterSpacing = 1.1.sp
+        )
+        Text(
+            playlist.name,
+            style = MaterialTheme.typography.headlineMedium,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            "${playlist.tracks.size} lagu · koleksi pribadimu",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant
+        )
+        Text(
+            if (playlist.tracks.isEmpty()) "Mulai bangun playlist ini dengan lagu favoritmu." else playlist.tracks.take(3).joinToString("  ·  ") { it.title },
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Button(
+            onClick = onPlay,
+            enabled = playlist.tracks.isNotEmpty(),
+            shape = RoundedCornerShape(15.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 13.dp)
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Putar playlist")
+        }
+    }
+}
+
+@Composable
+private fun PlaylistEmptyState(onCreate: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp)
+            .clip(RoundedCornerShape(24.dp)).background(scheme.surfaceVariant).padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier.size(76.dp).clip(RoundedCornerShape(24.dp)).background(RexHeroBrush),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+        }
+        Text("Mulai koleksi musikmu", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(
+            "Buat playlist untuk mengelompokkan lagu sesuai mood. Sampul playlist akan terbentuk otomatis dari thumbnail lagu di dalamnya.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Button(onClick = onCreate, shape = RoundedCornerShape(14.dp)) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Buat playlist pertama")
+        }
+    }
+}
+
 
 private fun LazyListScope.historySection(state: RexMusicUiState, actions: RexActions) {
     if (state.history.isEmpty()) {

@@ -164,14 +164,21 @@ object RexPlayerController {
         }
     }
 
-    fun playPlaylist(name: String) {
+    fun playPlaylist(name: String, startTrackId: String? = null) {
         val playlist = playlistStore.load(name) ?: return
         val tracks = if (offlineMode()) playlist.tracks.filter { RexOfflineManager.isDownloaded(it) } else playlist.tracks
         if (tracks.isEmpty()) {
             postNotice(if (offlineMode()) "Playlist ini belum punya lagu offline" else "Playlist masih kosong")
             return
         }
-        startQueue(tracks, 0, follow = true)
+        // When a track is tapped inside playlist details, start at that track while
+        // keeping the playlist as the active playback context for Next / Previous.
+        val startIndex = if (startTrackId == null) 0 else tracks.indexOfFirst { it.id == startTrackId }
+        if (startIndex < 0) {
+            postNotice(if (offlineMode()) "Lagu ini belum tersedia offline" else "Lagu tidak ditemukan di playlist")
+            return
+        }
+        startQueue(tracks, startIndex, follow = true)
     }
 
     /** Putar lagu dari perpustakaan offline; Next mengikuti urutan perpustakaan. */

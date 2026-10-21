@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -80,6 +81,8 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
     var showPlayer by rememberSaveable { mutableStateOf(false) }
+    var selectedPlaylistName by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeletePlaylistName by rememberSaveable { mutableStateOf<String?>(null) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showRepeat by rememberSaveable { mutableStateOf(false) }
     // Permission/track-target dialogs are transient because their selected RexTrack is not saveable.
@@ -202,8 +205,13 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
         showPlayer = false
     }
 
-    BackHandler(enabled = !showPlayer && tab != TAB_HOME) {
+    BackHandler(enabled = !showPlayer && tab == TAB_PLAYLIST && selectedPlaylistName != null) {
+        selectedPlaylistName = null
+    }
+
+    BackHandler(enabled = !showPlayer && tab != TAB_HOME && !(tab == TAB_PLAYLIST && selectedPlaylistName != null)) {
         tab = TAB_HOME
+        selectedPlaylistName = null
     }
 
     val actions = RexActions(
@@ -331,6 +339,12 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             showPlayer = true
         },
 
+        playPlaylistTrack = { playlistName, trackId ->
+            requestNotifications()
+            vm.playPlaylist(playlistName, trackId)
+            showPlayer = true
+        },
+
         createPlaylist = { name ->
             vm.createPlaylist(name)
         },
@@ -394,7 +408,11 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                             PlaylistTab(
                                 state = state,
                                 actions = actions,
-                                listState = playlistList
+                                listState = playlistList,
+                                selectedPlaylistName = selectedPlaylistName,
+                                onOpenPlaylist = { selectedPlaylistName = it },
+                                onBackFromDetail = { selectedPlaylistName = null },
+                                onRequestDeletePlaylist = { pendingDeletePlaylistName = it }
                             )
                         }
 
@@ -438,7 +456,10 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             if (useLandscapeLayout) {
                 RexMusicScreenLandscape(
                     selectedTab = tab,
-                    onTabSelected = { tab = it },
+                    onTabSelected = { nextTab ->
+                        tab = nextTab
+                        if (nextTab != TAB_PLAYLIST) selectedPlaylistName = null
+                    },
                     miniPlayer = miniPlayerContent,
                     snackbarHost = snackbarContent,
                     content = screenContent
@@ -446,7 +467,10 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             } else {
                 RexMusicScreenPortrait(
                     selectedTab = tab,
-                    onTabSelected = { tab = it },
+                    onTabSelected = { nextTab ->
+                        tab = nextTab
+                        if (nextTab != TAB_PLAYLIST) selectedPlaylistName = null
+                    },
                     miniPlayer = miniPlayerContent,
                     snackbarHost = snackbarContent,
                     content = screenContent
@@ -662,6 +686,27 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
                 ) { Text("Buat & simpan") }
             },
             dismissButton = { TextButton(onClick = { showCreatePlaylist = false }) { Text("Batal") } }
+        )
+    }
+
+    pendingDeletePlaylistName?.let { playlistName ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletePlaylistName = null },
+            icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null) },
+            title = { Text("Hapus playlist?") },
+            text = { Text("Playlist \"$playlistName\" akan dihapus. Lagu di dalamnya tidak akan dihapus dari koleksi atau unduhan.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    actions.deletePlaylist(playlistName)
+                    if (selectedPlaylistName == playlistName) selectedPlaylistName = null
+                    pendingDeletePlaylistName = null
+                }) {
+                    Text("Hapus", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletePlaylistName = null }) { Text("Batal") }
+            }
         )
     }
 
@@ -907,6 +952,7 @@ private fun MiniPlayer(
             .padding(horizontal = 8.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(scheme.surfaceVariant)
+            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.48f), RoundedCornerShape(14.dp))
             .clickable(onClick = onOpen)
     ) {
         Row(

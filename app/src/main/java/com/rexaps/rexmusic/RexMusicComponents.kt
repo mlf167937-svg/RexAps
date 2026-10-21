@@ -90,6 +90,7 @@ class RexActions(
     val openMenu: (MenuTarget) -> Unit,
     val openPlaylistPicker: (RexTrack) -> Unit,
     val playPlaylist: (String) -> Unit,
+    val playPlaylistTrack: (String, String) -> Unit,
     val createPlaylist: (String) -> Unit,
     val deletePlaylist: (String) -> Unit,
     val dismissError: () -> Unit
