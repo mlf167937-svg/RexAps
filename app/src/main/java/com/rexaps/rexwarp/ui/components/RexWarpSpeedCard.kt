@@ -1,5 +1,7 @@
 package com.rexaps.rexwarp.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -13,7 +15,7 @@ import com.rexaps.rexwarp.RexWarpSpeed
 
 @Composable
 fun RexWarpSpeedCard(speed: RexWarpSpeed, connected: Boolean, modifier: Modifier = Modifier) {
-    ElevatedCard(modifier.fillMaxWidth()) {
+    ElevatedCard(modifier.fillMaxWidth().animateContentSize(tween(260)), shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Network speed", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

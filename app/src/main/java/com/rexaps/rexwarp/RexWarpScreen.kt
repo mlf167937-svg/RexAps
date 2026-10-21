@@ -3,25 +3,32 @@ package com.rexaps.rexwarp
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.VpnService
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -30,9 +37,11 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rexaps.rexwarp.ui.*
+import com.rexaps.rexwarp.ui.components.RexWarpAnimatedBackdrop
 import java.time.LocalDate
+import androidx.compose.ui.graphics.vector.ImageVector
 
-private enum class Dest(val title: String, val navLabel: String, val icon: ImageVector?) {
+internal enum class Dest(val title: String, val navLabel: String, val icon: ImageVector?) {
     HOME("RexWARP", "Home", Icons.Filled.Home),
     USAGE("Usage", "Usage", Icons.Filled.DateRange),
     HISTORY("Usage History", "History", Icons.AutoMirrored.Filled.List),
@@ -42,8 +51,7 @@ private enum class Dest(val title: String, val navLabel: String, val icon: Image
     ABOUT("About & Privacy", "About", null)
 }
 
-/** Satu-satunya entry point yang dipanggil main shell RexAps. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Entry point for the RexAps shell. The active RexAps MaterialTheme is intentionally left untouched. */
 @Composable
 fun RexWarpScreen(
     modifier: Modifier = Modifier,
@@ -51,6 +59,8 @@ fun RexWarpScreen(
     viewModel: RexWarpViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val periods by viewModel.periods.collectAsStateWithLifecycle()
@@ -64,17 +74,17 @@ fun RexWarpScreen(
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
 
-    // Back sistem: sub-halaman -> induknya, Home -> keluar ke shell RexAps
-    BackHandler(enabled = dest != Dest.HOME || onExit != null) {
+    fun goBack() {
         when (dest) {
             Dest.HOME -> onExit?.invoke()
             Dest.ABOUT -> dest = Dest.SETTINGS
             else -> dest = Dest.HOME
         }
     }
+    BackHandler(enabled = dest != Dest.HOME || onExit != null, onBack = ::goBack)
 
-    val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK) viewModel.startVpn() else viewModel.onPermissionDenied()
+    val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) viewModel.startVpn() else viewModel.onPermissionDenied()
     }
     fun proceedVpn() {
         val intent = VpnService.prepare(context)
@@ -88,8 +98,10 @@ fun RexWarpScreen(
                 if (state.pausedReason != null) viewModel.disconnect()
                 else if (Build.VERSION.SDK_INT >= 33 && !askedNotification &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) { askedNotification = true; notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                else proceedVpn()
+                ) {
+                    askedNotification = true
+                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else proceedVpn()
             RexWarpConnectionState.CONNECTING, RexWarpConnectionState.CONNECTED -> viewModel.disconnect()
             RexWarpConnectionState.DISCONNECTING -> Unit
         }
@@ -100,76 +112,60 @@ fun RexWarpScreen(
 
     val navSelected = when (dest) { Dest.DETAILS -> Dest.HOME; Dest.ABOUT -> Dest.SETTINGS; else -> dest }
     val navItems = listOf(Dest.HOME, Dest.USAGE, Dest.HISTORY, Dest.SPEED_TEST, Dest.SETTINGS)
+    val pageContent: @Composable (Boolean) -> Unit = { roomy ->
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+            Box(Modifier.widthIn(max = if (roomy) 1_280.dp else 840.dp).fillMaxSize()) {
+                AnimatedContent(
+                    targetState = dest,
+                    transitionSpec = {
+                        (fadeIn(tween(240)) + slideInHorizontally(tween(240)) { it / 24 }) togetherWith
+                            (fadeOut(tween(150)) + slideOutHorizontally(tween(150)) { -it / 32 })
+                    },
+                    label = "rexwarp-page-transition"
+                ) { page ->
+                    when (page) {
+                        Dest.HOME -> RexWarpHome(
+                            state = state, periods = periods, hasUsage = usageUi?.hasAnyData == true, wide = roomy,
+                            onConnectClick = onConnectClick, onOpenDetails = { dest = Dest.DETAILS }
+                        )
+                        Dest.USAGE -> RexWarpUsageScreen(
+                            ui = usageUi, onPreset = viewModel::selectPreset, onGraph = viewModel::selectGraph,
+                            onCustomRange = viewModel::setCustomRange
+                        )
+                        Dest.HISTORY -> RexWarpHistoryScreen(rows = history)
+                        Dest.SPEED_TEST -> RexWarpSpeedTestScreen()
+                        Dest.SETTINGS -> RexWarpSettingsScreen(
+                            settings = settings, capabilities = viewModel.capabilities,
+                            engineReason = state.engineUnavailableReason,
+                            onChange = viewModel::saveSettings,
+                            onExport = { exportLauncher.launch("rexwarp-usage-${LocalDate.now()}.json") },
+                            onImport = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
+                            onResetToday = viewModel::resetToday, onResetAll = viewModel::resetAll,
+                            onOpenAbout = { dest = Dest.ABOUT }
+                        )
+                        Dest.DETAILS -> RexWarpDetailsScreen(state)
+                        Dest.ABOUT -> RexWarpAboutScreen()
+                    }
+                }
+            }
+        }
+    }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val wide = maxWidth >= 600.dp
-        val twoPane = maxWidth >= 840.dp
-        Row(Modifier.fillMaxSize()) {
-            if (wide) NavigationRail {
-                Spacer(Modifier.weight(1f))
-                navItems.forEach { d ->
-                    NavigationRailItem(
-                        selected = navSelected == d, onClick = { dest = d },
-                        icon = { Icon(d.icon!!, contentDescription = null) }, label = { Text(d.navLabel) }
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-            }
-            Scaffold(
-                modifier = Modifier.weight(1f),
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                snackbarHost = { SnackbarHost(snackbar) },
-                topBar = {
-                    TopAppBar(
-                        title = { Text(dest.title) },
-                        navigationIcon = {
-                            val sub = dest == Dest.DETAILS || dest == Dest.ABOUT
-                            if (sub || onExit != null) IconButton(onClick = {
-                                if (sub) dest = if (dest == Dest.ABOUT) Dest.SETTINGS else Dest.HOME
-                                else onExit?.invoke()
-                            }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                        }
-                    )
-                },
-                bottomBar = {
-                    if (!wide) NavigationBar {
-                        navItems.forEach { d ->
-                            NavigationBarItem(
-                                selected = navSelected == d, onClick = { dest = d },
-                                icon = { Icon(d.icon!!, contentDescription = null) }, label = { Text(d.navLabel) }
-                            )
-                        }
-                    }
-                }
-            ) { padding ->
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                    Box(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
-                        when (dest) {
-                            Dest.HOME -> RexWarpHome(
-                                state = state, periods = periods, hasUsage = usageUi?.hasAnyData == true, wide = twoPane,
-                                onConnectClick = onConnectClick, onOpenDetails = { dest = Dest.DETAILS }
-                            )
-                            Dest.USAGE -> RexWarpUsageScreen(
-                                ui = usageUi, onPreset = viewModel::selectPreset, onGraph = viewModel::selectGraph,
-                                onCustomRange = viewModel::setCustomRange
-                            )
-                            Dest.HISTORY -> RexWarpHistoryScreen(rows = history)
-                            Dest.SPEED_TEST -> RexWarpSpeedTestScreen()
-                            Dest.SETTINGS -> RexWarpSettingsScreen(
-                                settings = settings, capabilities = viewModel.capabilities,
-                                engineReason = state.engineUnavailableReason,
-                                onChange = viewModel::saveSettings,
-                                onExport = { exportLauncher.launch("rexwarp-usage-${LocalDate.now()}.json") },
-                                onImport = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
-                                onResetToday = viewModel::resetToday, onResetAll = viewModel::resetAll,
-                                onOpenAbout = { dest = Dest.ABOUT }
-                            )
-                            Dest.DETAILS -> RexWarpDetailsScreen(state)
-                            Dest.ABOUT -> RexWarpAboutScreen()
-                        }
-                    }
-                }
-            }
+    val showBack = dest == Dest.DETAILS || dest == Dest.ABOUT || onExit != null
+    Box(modifier.fillMaxSize()) {
+        RexWarpAnimatedBackdrop(Modifier.matchParentSize())
+        if (landscape) {
+            RexWarpScreenLandscape(
+                title = dest.title, showBack = showBack, onBack = ::goBack,
+                navItems = navItems, navSelected = navSelected, onNavigate = { dest = it },
+                snackbarHostState = snackbar, content = pageContent
+            )
+        } else {
+            RexWarpScreenPortrait(
+                title = dest.title, showBack = showBack, onBack = ::goBack,
+                navItems = navItems, navSelected = navSelected, onNavigate = { dest = it },
+                snackbarHostState = snackbar, content = pageContent
+            )
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.rexaps.rexwarp.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -18,7 +20,7 @@ import com.rexaps.rexwarp.model.RexWarpUsageSummary
 fun RexWarpUsageCard(title: String, summary: RexWarpUsageSummary, modifier: Modifier = Modifier) {
     val dl = RexWarpFormat.bytes(summary.downloadBytes); val ul = RexWarpFormat.bytes(summary.uploadBytes)
     val total = RexWarpFormat.bytes(summary.totalBytes)
-    Card(modifier.semantics(mergeDescendants = true) { contentDescription = "$title. Download $dl. Upload $ul. Total $total." }) {
+    Card(modifier.animateContentSize(tween(260)).semantics(mergeDescendants = true) { contentDescription = "$title. Download $dl. Upload $ul. Total $total." }) {
         Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("↓ $dl", style = MaterialTheme.typography.bodyMedium)

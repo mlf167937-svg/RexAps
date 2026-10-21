@@ -1,5 +1,13 @@
 package com.rexaps.rexwarp.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
@@ -7,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -21,10 +30,14 @@ import com.rexaps.rexwarp.RexWarpState
 @Composable
 fun RexWarpStatusBadge(state: S, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
-    val dot = when (state) { S.CONNECTED -> c.primary; S.ERROR -> c.error; S.CONNECTING, S.DISCONNECTING -> c.tertiary; S.DISCONNECTED -> c.outline }
-    Surface(shape = CircleShape, color = c.surfaceVariant, modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(10.dp).background(dot, CircleShape))
+    val targetDot = when (state) { S.CONNECTED -> c.primary; S.ERROR -> c.error; S.CONNECTING, S.DISCONNECTING -> c.tertiary; S.DISCONNECTED -> c.outline }
+    val dot by animateColorAsState(targetDot, animationSpec = tween(320), label = "status-dot-color")
+    val transition = rememberInfiniteTransition(label = "status-dot-pulse")
+    val pulse by transition.animateFloat(1f, 1.28f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "status-dot-scale")
+    val active = state == S.CONNECTING || state == S.DISCONNECTING
+    Surface(shape = CircleShape, color = c.surfaceContainerHigh, modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(10.dp).scale(if (active || state == S.CONNECTED) pulse else 1f).background(dot, CircleShape))
             Text(state.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -44,8 +57,8 @@ fun RexWarpStatusCard(state: RexWarpState, sessionSeconds: Long?, onOpenDetails:
     val connected = state.connection == S.CONNECTED
     val i = state.info.takeIf { connected }
     val na = "N/A"
-    ElevatedCard(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
+    ElevatedCard(modifier.fillMaxWidth().animateContentSize(tween(280))) {
+        Column(Modifier.padding(18.dp)) {
             Text("Connection", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             RexWarpInfoRow("Status", state.connection.name)
