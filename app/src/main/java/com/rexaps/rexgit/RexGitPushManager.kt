@@ -13,11 +13,19 @@ class RexGitPushManager {
         bumpVersion: Boolean = true,
         commitType: RexGitCommitType = RexGitCommitType.FIX,
         commitFolder: String = "",
+        gitDev: RexGitGitDevConfig = RexGitGitDevConfig(),
         username: String? = null,
         token: String? = null,
         onProgress: (stage: String, detail: String, logLine: String?) -> Unit = { _, _, _ -> }
     ): RexGitPushResult {
         val dir = File(repository.path)
+
+        if (!gitDev.isReady) {
+            return RexGitPushResult(
+                false,
+                "Push is locked. Activate GitDev mode for this repository first."
+            )
+        }
 
         onProgress("Checking Files...", "Reading repository status", null)
 
@@ -50,11 +58,11 @@ class RexGitPushManager {
                 return RexGitPushResult(false, "Commit description is empty")
             }
 
-            val detectedFolders = RexGitCommitMeta.detectFolders(repository, status.changes)
+            val detectedFolders = RexGitCommitMeta.detectFolders(repository, status.changes, gitDev)
             if (commitFolder.isBlank() || commitFolder !in detectedFolders) {
                 return RexGitPushResult(
                     false,
-                    "Invalid commit folder. Choose a folder detected under com/rexaps."
+                    "Invalid commit folder. Choose a folder detected under ${gitDev.packagePath}."
                 )
             }
 

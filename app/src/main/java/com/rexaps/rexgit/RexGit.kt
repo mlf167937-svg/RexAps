@@ -15,7 +15,7 @@ fun RexGit() {
     RexGitTheme {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background.copy(alpha = 0.92f)
+            color = MaterialTheme.colorScheme.background
         ) {
             RexGitScreen(viewModel = viewModel)
         }

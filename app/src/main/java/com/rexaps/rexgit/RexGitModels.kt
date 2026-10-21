@@ -74,6 +74,12 @@ data class RexGitUiState(
     val githubRepositories: List<RexGitGithubRepository> = emptyList(),
     val githubUsername: String? = null,
     val isGithubConnected: Boolean = false,
+    /** Usernames of every connected account (max 2). [activeAccount] indexes into it. */
+    val accounts: List<String> = emptyList(),
+    val activeAccount: Int = 0,
+
+    /** GitDev mode for the selected repository. Push stays locked until it is ready. */
+    val gitDev: RexGitGitDevConfig = RexGitGitDevConfig(),
 
     val editorPath: String? = null,
     val editorContent: String = "",

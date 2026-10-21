@@ -20,6 +20,16 @@ class RexGitViewModel(
     private val pushManager = RexGitPushManager()
     private val github = RexGitGithubApi()
     private val authStore = RexGitAuthStore(application)
+    private val gitDevStore = RexGitGitDevStore(application)
+    private val accountPrefs = application
+        .getSharedPreferences("rexgit_accounts", android.content.Context.MODE_PRIVATE)
+
+    // Verified accounts (username resolved from the token) and which one is in use.
+    @Volatile
+    private var accounts: List<RexGitAuth> = emptyList()
+
+    @Volatile
+    private var activeIndex: Int = 0
 
     private val _state = MutableStateFlow(RexGitUiState(isLoading = true))
     val state: StateFlow<RexGitUiState> = _state.asStateFlow()
@@ -31,8 +41,7 @@ class RexGitViewModel(
     companion object {
         private const val MAX_EDITOR_BYTES = 400_000L
 
-        private const val TOKEN_FILE_PATH =
-            "/sdcard/Download/RexAps/Github/token.env"
+        private const val ACTIVE_KEY = "active_username"
     }
 
     init {
@@ -69,58 +78,87 @@ class RexGitViewModel(
         return RexGitStorage.githubRoot.absolutePath to RexGitStorage.usingFallback
     }
 
-    /**
-     * Reads the GitHub token from:
-     *
-     * /sdcard/Download/RexAps/Github/token.env
-     *
-     * Example:
-     *
-     * token="ghp_anuanu"
-     *
-     * Also accepts:
-     *
-     * token='ghp_anuanu'
-     * token=ghp_anuanu
-     */
-    private fun externalGithubToken(): String? {
-        val file = File(TOKEN_FILE_PATH)
+    private fun missingAuthError(): IllegalStateException {
+        return IllegalStateException(
+            "No GitHub account connected.\n\n" +
+                "Open the GitHub dialog and log in with your username and token, " +
+                "or create:\n" +
+                authStore.tokenPath()
+        )
+    }
 
-        if (!file.isFile) {
-            return null
-        }
+    private fun publishAccounts() {
+        val list = accounts
+        val index = activeIndex.coerceIn(0, (list.size - 1).coerceAtLeast(0))
+        activeIndex = index
 
-        return try {
-            val content = file.readText(Charsets.UTF_8)
-
-            val regex = Regex(
-                """(?m)^\s*token\s*=\s*["']?([^"'\r\n]+)["']?\s*$"""
+        _state.update {
+            it.copy(
+                accounts = list.map { auth -> auth.username },
+                activeAccount = index,
+                githubUsername = list.getOrNull(index)?.username,
+                isGithubConnected = list.isNotEmpty()
             )
-
-            regex.find(content)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-        } catch (_: Throwable) {
-            null
         }
     }
 
     /**
-     * Loads the token from token.env and asks GitHub
-     * for the username belonging to that token.
+     * Reads token.env (up to 2 accounts) and asks GitHub which username each
+     * token belongs to. Accounts with a bad token are skipped; if EVERY token
+     * fails, the first error is thrown like before.
      */
-    private suspend fun externalGithubAuth(): RexGitAuth? {
-        val token = externalGithubToken()
-            ?: return null
+    private fun reloadAccounts(): List<String> {
+        val entries = authStore.loadAccounts()
 
-        val username = github.getUser(token)
+        val resolved = mutableListOf<RexGitAuth>()
+        val skipped = mutableListOf<String>()
+        var firstError: Throwable? = null
 
-        return RexGitAuth(
-            username = username,
-            token = token
-        )
+        entries.forEachIndexed { index, entry ->
+            try {
+                resolved += RexGitAuth(
+                    username = github.getUser(entry.token),
+                    token = entry.token
+                )
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                if (firstError == null) firstError = t
+                skipped += entry.username ?: "account ${index + 1}"
+            }
+        }
+
+        val error = firstError
+        if (resolved.isEmpty() && error != null) throw error
+
+        accounts = resolved
+
+        val saved = accountPrefs.getString(ACTIVE_KEY, null)
+        activeIndex = resolved
+            .indexOfFirst { it.username.equals(saved, ignoreCase = true) }
+            .takeIf { it >= 0 }
+            ?: activeIndex.coerceIn(0, (resolved.size - 1).coerceAtLeast(0))
+
+        publishAccounts()
+
+        return skipped
+    }
+
+    /**
+     * Returns the account currently in use.
+     * [reload] re-reads token.env (used by refresh / connect).
+     */
+    private suspend fun externalGithubAuth(reload: Boolean = false): RexGitAuth? {
+        if (reload || accounts.isEmpty()) {
+            val skipped = reloadAccounts()
+
+            if (skipped.isNotEmpty()) {
+                _state.update {
+                    it.copy(message = "Skipped invalid token: ${skipped.joinToString()}")
+                }
+            }
+        }
+
+        return accounts.getOrNull(activeIndex)
     }
 
     // ---------- home ----------
@@ -179,7 +217,7 @@ class RexGitViewModel(
                 }
 
                 try {
-                    val auth = externalGithubAuth()
+                    val auth = externalGithubAuth(reload = true)
 
                     if (auth != null) {
                         _state.update {
@@ -195,6 +233,7 @@ class RexGitViewModel(
                             it.copy(
                                 githubUsername = null,
                                 isGithubConnected = false,
+                                accounts = emptyList(),
                                 githubRepositories = emptyList()
                             )
                         }
@@ -267,6 +306,7 @@ class RexGitViewModel(
                         editorPath = null,
                         editorContent = "",
                         editorDirty = false,
+                        gitDev = gitDevStore.load(repository.name),
                         message = null
                     )
                 }
@@ -287,6 +327,7 @@ class RexGitViewModel(
                 files = emptyList(),
                 currentDirectory = null,
                 gitStatus = RexGitStatus(),
+                gitDev = RexGitGitDevConfig(),
                 editorPath = null,
                 editorContent = "",
                 editorDirty = false
@@ -584,6 +625,12 @@ class RexGitViewModel(
 
     // ---------- editor ----------
 
+    /**
+     * Latest editor text. The UI reads it when the layout switches between
+     * portrait and landscape so unsaved typing is never lost.
+     */
+    fun editorText(): String = editorBuffer
+
     fun updateEditor(content: String) {
         editorBuffer = content
 
@@ -651,14 +698,9 @@ class RexGitViewModel(
     // ---------- GitHub ----------
 
     /**
-     * The token parameter is intentionally ignored.
-     *
-     * This parameter remains here so the current RexGitScreen.kt
-     * can still call:
-     *
-     * viewModel.connectGithub(...)
-     *
-     * The real token always comes from token.env.
+     * Loads the account(s) from token.env. The parameter is ignored; it stays
+     * so older callers keep compiling. To log in with a typed username and
+     * token use [addAccount].
      */
     fun connectGithub(
         @Suppress("UNUSED_PARAMETER")
@@ -674,12 +716,8 @@ class RexGitViewModel(
             }
 
             try {
-                val auth = externalGithubAuth()
-                    ?: throw IllegalStateException(
-                        "GitHub token tidak ditemukan.\n\n" +
-                            "Buat file:\n" +
-                            TOKEN_FILE_PATH
-                    )
+                val auth = externalGithubAuth(reload = true)
+                    ?: throw missingAuthError()
 
                 _state.update {
                     it.copy(
@@ -715,15 +753,168 @@ class RexGitViewModel(
          *
          * The token is managed externally.
          */
+        accounts = emptyList()
+
         _state.update {
             it.copy(
                 githubUsername = null,
                 isGithubConnected = false,
+                accounts = emptyList(),
+                activeAccount = 0,
                 githubRepositories = emptyList(),
                 message = "GitHub disconnected"
             )
         }
     }
+
+    /**
+     * Logs in with a typed username + token, checks the token with GitHub and
+     * saves it to token.env (slot 1, or slot 2 when an account already exists).
+     */
+    fun addAccount(username: String, token: String) {
+        launchIO {
+            _state.update {
+                it.copy(
+                    isGithubLoading = true,
+                    error = null,
+                    message = null
+                )
+            }
+
+            try {
+                val typedName = username.trim().removePrefix("@")
+                val typedToken = token.trim()
+
+                if (typedName.isEmpty() || typedToken.isEmpty()) {
+                    throw IllegalArgumentException("Enter both your GitHub username and token.")
+                }
+
+                val raw = authStore.loadAccounts()
+
+                if (raw.size >= RexGitAuthStore.MAX_ACCOUNTS) {
+                    throw IllegalStateException(
+                        "You can connect up to ${RexGitAuthStore.MAX_ACCOUNTS} accounts. " +
+                            "Remove one first."
+                    )
+                }
+
+                if (raw.any { it.token == typedToken }) {
+                    throw IllegalStateException("This token is already added.")
+                }
+
+                val login = github.getUser(typedToken)
+
+                if (!login.equals(typedName, ignoreCase = true)) {
+                    throw IllegalStateException(
+                        "This token belongs to @$login, not @$typedName.\n" +
+                            "Check the username or use another token."
+                    )
+                }
+
+                if (accounts.any { it.username.equals(login, ignoreCase = true) }) {
+                    throw IllegalStateException("@$login is already connected.")
+                }
+
+                // Fill in usernames we already know so token.env stays readable.
+                val known = accounts.associate { it.token to it.username }
+                val merged = raw.map { it.copy(username = it.username ?: known[it.token]) } +
+                    RexGitEnvAccount(login, typedToken)
+
+                authStore.saveAccounts(merged)
+
+                accountPrefs.edit().putString(ACTIVE_KEY, login).apply()
+
+                val auth = externalGithubAuth(reload = true)
+                    ?: throw missingAuthError()
+
+                _state.update {
+                    it.copy(message = "Connected as @${auth.username}")
+                }
+
+                fetchGithubRepositories(auth)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                fail(
+                    "Could not add the account:\n" +
+                        t.readableMessage("Invalid or expired token")
+                )
+            } finally {
+                _state.update {
+                    it.copy(isGithubLoading = false)
+                }
+            }
+        }
+    }
+
+    /** Switches which connected account is used for the GitHub list, clone, pull and push. */
+    fun switchAccount(index: Int) {
+        val list = accounts
+
+        if (index !in list.indices || index == activeIndex) return
+
+        activeIndex = index
+        accountPrefs.edit().putString(ACTIVE_KEY, list[index].username).apply()
+
+        _state.update {
+            it.copy(githubRepositories = emptyList())
+        }
+
+        publishAccounts()
+
+        launchIO {
+            _state.update {
+                it.copy(message = "Using @${list[index].username}")
+            }
+
+            fetchGithubRepositories(list[index])
+        }
+    }
+
+    /** Removes an account from token.env. */
+    fun removeAccount(index: Int) {
+        val target = accounts.getOrNull(index) ?: return
+
+        launchIO {
+            _state.update {
+                it.copy(isGithubLoading = true, error = null)
+            }
+
+            try {
+                val remaining = authStore.loadAccounts()
+                    .filterNot { it.token == target.token }
+
+                authStore.saveAccounts(remaining)
+
+                accounts = accounts.filterNot { it.token == target.token }
+                activeIndex = 0
+
+                accounts.firstOrNull()?.let {
+                    accountPrefs.edit().putString(ACTIVE_KEY, it.username).apply()
+                }
+
+                publishAccounts()
+
+                _state.update {
+                    it.copy(
+                        githubRepositories = emptyList(),
+                        message = "Removed @${target.username}"
+                    )
+                }
+
+                accounts.getOrNull(activeIndex)?.let { fetchGithubRepositories(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                fail(t.readableMessage("Could not update token.env"))
+            } finally {
+                _state.update {
+                    it.copy(isGithubLoading = false)
+                }
+            }
+        }
+    }
+
 
     private fun fetchGithubRepositories(
         auth: RexGitAuth
@@ -761,13 +952,10 @@ class RexGitViewModel(
     fun reloadGithub() {
         launchIO {
             try {
-                val auth = externalGithubAuth()
+                val auth = externalGithubAuth(reload = true)
 
                 if (auth == null) {
-                    fail(
-                        "GitHub token tidak ditemukan.\n\n" +
-                            TOKEN_FILE_PATH
-                    )
+                    fail(missingAuthError().message ?: "No GitHub account connected.")
                     return@launchIO
                 }
 
@@ -807,10 +995,7 @@ class RexGitViewModel(
 
             try {
                 val auth = externalGithubAuth()
-                    ?: throw IllegalStateException(
-                        "GitHub token tidak ditemukan.\n\n" +
-                            TOKEN_FILE_PATH
-                    )
+                    ?: throw missingAuthError()
 
                 val result = repositoryManager.clone(
                     url = repository.cloneUrl,
@@ -866,10 +1051,7 @@ class RexGitViewModel(
 
             try {
                 val auth = externalGithubAuth()
-                    ?: throw IllegalStateException(
-                        "GitHub token tidak ditemukan.\n\n" +
-                            TOKEN_FILE_PATH
-                    )
+                    ?: throw missingAuthError()
 
                 val result = repositoryManager.pull(
                     repo,
@@ -934,10 +1116,7 @@ class RexGitViewModel(
 
             try {
                 val auth = externalGithubAuth()
-                    ?: throw IllegalStateException(
-                        "GitHub token tidak ditemukan.\n\n" +
-                            TOKEN_FILE_PATH
-                    )
+                    ?: throw missingAuthError()
 
                 val result = pushManager.push(
                     repository = repo,
@@ -945,6 +1124,7 @@ class RexGitViewModel(
                     bumpVersion = bumpVersion,
                     commitType = commitType,
                     commitFolder = commitFolder,
+                    gitDev = current.gitDev,
                     username = auth.username,
                     token = auth.token,
                     onProgress = { stage, detail, logLine ->
@@ -1012,6 +1192,47 @@ class RexGitViewModel(
             }
         }
     }
+
+    // ---------- GitDev ----------
+
+    /**
+     * Saves GitDev mode for the selected repository. Turning it ON needs a
+     * package path that really contains folders (e.g. com/rexaps).
+     */
+    fun saveGitDev(config: RexGitGitDevConfig) {
+        val repo = _state.value.selectedRepository
+            ?: return
+
+        val clean = RexGitGitDev.normalize(config)
+
+        if (clean.enabled) {
+            if (clean.packagePath.isBlank()) {
+                fail("Fill in the package path first, for example: com/rexaps")
+                return
+            }
+
+            val found = RexGitGitDev.detectFolders(File(repo.path), clean)
+
+            if (found.isEmpty()) {
+                fail(
+                    "No folders found under ${clean.packagePath}.\n" +
+                        "Check the package path (and module) in the GitDev guide."
+                )
+                return
+            }
+        }
+
+        gitDevStore.save(repo.name, clean)
+
+        _state.update {
+            it.copy(
+                gitDev = clean,
+                message = if (clean.enabled) "GitDev mode on, Push unlocked"
+                else "GitDev mode off, Push locked"
+            )
+        }
+    }
+
 
     fun clearPushState() {
         _state.update {
