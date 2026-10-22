@@ -25,22 +25,22 @@ fun RexAmbientBackground(
     level: RexAnimationLevel = RexAnimationLevel.BALANCED,
     intensity: Float = .72f
 ) {
-    val motionEnabled = level != RexAnimationLevel.OFF
+    val motionEnabled = level != RexAnimationLevel.OFF && intensity > 0f
     val transition = rememberInfiniteTransition(label = "rex-ambient")
     val phase by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 0f, targetValue = if (motionEnabled) 1f else 0f,
+        animationSpec = if (motionEnabled) infiniteRepeatable(
             tween(if (level == RexAnimationLevel.SAVER) 26000 else 16500, easing = LinearEasing),
             RepeatMode.Reverse
-        ),
+        ) else tween(0),
         label = "ambient-phase"
     )
     val sweep by transition.animateFloat(
-        initialValue = -0.25f, targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
+        initialValue = if (motionEnabled) -0.25f else 0f, targetValue = if (motionEnabled) 1.25f else 0f,
+        animationSpec = if (motionEnabled) infiniteRepeatable(
             tween(if (level == RexAnimationLevel.SAVER) 30000 else 19000, easing = LinearEasing),
             RepeatMode.Reverse
-        ),
+        ) else tween(0),
         label = "ambient-sweep"
     )
     val particleCount = when (level) {
@@ -100,13 +100,62 @@ fun RexAmbientBackground(
             drawCircle(particleColor.copy(alpha = alpha * if (i % 5 == 0) .72f else .34f), radius, Offset(x, y))
         }
 
-        // Category signatures: neon/cosmic themes get a soft scan lattice; others stay airy.
-        if (theme.category == "Neon" || theme.category == "Cosmic") {
-            val step = (min / 12f).coerceAtLeast(30f)
-            var x = 0f
-            while (x < w) {
-                drawLine(Color(theme.accent).copy(alpha = alpha * .08f), Offset(x, 0f), Offset(x, h), 1f)
-                x += step
+        // Category-specific motifs remain on this single Canvas to avoid extra layout/bitmap work.
+        when (theme.category) {
+            "Neon" -> {
+                val step = (min / 12f).coerceAtLeast(30f)
+                var x = 0f
+                while (x < w) {
+                    drawLine(Color(theme.accent).copy(alpha = alpha * .11f), Offset(x, 0f), Offset(x, h), 1f)
+                    x += step
+                }
+                val scanY = h * ((sweep + 1f) / 2f).coerceIn(0f, 1f)
+                drawLine(Color(theme.accent).copy(alpha = alpha * .22f), Offset(0f, scanY), Offset(w, scanY), 1.4f)
+                drawLine(Color(theme.primary).copy(alpha = alpha * .09f), Offset(0f, scanY + 3f), Offset(w, scanY + 3f), 1f)
+            }
+            "Cosmic" -> {
+                // Three softly breathing orbital ellipses and occasional brighter star points.
+                drawCircle(Color(theme.accent).copy(alpha = alpha * .26f), min * .095f, Offset(w * (.18f + .05f * phase), h * (.32f - .03f * phase)), style = Stroke(1.1f))
+                drawCircle(Color(theme.secondary).copy(alpha = alpha * .18f), min * .12f, Offset(w * (.18f + .05f * phase), h * (.32f - .03f * phase)), style = Stroke(.8f))
+                repeat(8) { i ->
+                    val x = (i * 127f + sweep * 0.14f * w).rem(w).let { if (it < 0f) it + w else it }
+                    val y = (i * 83f + phase * h * .06f).rem(h)
+                    drawCircle(Color(theme.accent).copy(alpha = alpha * if (i % 3 == 0) .42f else .18f), if (i % 3 == 0) 1.8f else 1.0f, Offset(x, y))
+                }
+            }
+            "Light" -> {
+                // Pearl-like highlights drift slowly instead of using a sharp grid.
+                repeat(5) { i ->
+                    val x = w * ((i * .21f + phase * .08f) % 1f)
+                    val y = h * (0.16f + i * .17f + .018f * sin((phase * 6.283f + i).toDouble()).toFloat())
+                    drawCircle(Color.White.copy(alpha = alpha * .17f), min * (if (i % 2 == 0) .018f else .012f), Offset(x, y))
+                }
+            }
+            "Glass" -> {
+                // Specular streak moves slowly over the glass surface, with a faint reflected edge.
+                drawLine(Color.White.copy(alpha = alpha * .16f), Offset(w * (sweep * .72f), 0f), Offset(w * (sweep * .72f) - h * .16f, h), min * .0025f)
+                drawLine(Color(theme.accent).copy(alpha = alpha * .10f), Offset(w * (sweep * .72f) + 4f, 0f), Offset(w * (sweep * .72f) - h * .16f + 4f, h), 1f)
+            }
+            "Elemental" -> {
+                // Layered sine ribbons give each elemental palette a fluid / energetic undercurrent.
+                repeat(3) { band ->
+                    val baseY = h * (.36f + band * .17f)
+                    val amp = min * (.018f + band * .004f)
+                    val step = (w / 36f).coerceAtLeast(8f)
+                    var x0 = 0f
+                    var y0 = baseY + sin((phase * 6.283f + band).toDouble()).toFloat() * amp
+                    var x = step
+                    while (x <= w + step) {
+                        val y = baseY + sin((x / w * 6.283f * (1.0 + band * .35) + phase * 6.283f + band).toDouble()).toFloat() * amp
+                        drawLine(Color(if (band == 1) theme.secondary else theme.accent).copy(alpha = alpha * (.12f - band * .02f)), Offset(x0, y0), Offset(x, y), 1.1f)
+                        x0 = x; y0 = y; x += step
+                    }
+                }
+            }
+            else -> {
+                // A quiet diagonal contour gives dark themes depth without competing with content.
+                drawLine(Color(theme.borderStrong).copy(alpha = alpha * .10f), Offset(0f, h * .72f), Offset(w * .32f, h), 1f)
+                drawLine(Color(theme.primary).copy(alpha = alpha * .08f), Offset(w * .68f, 0f), Offset(w, h * .20f), 1f)
             }
         }
     }
