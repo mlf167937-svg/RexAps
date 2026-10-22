@@ -29,18 +29,32 @@ fun RexAmbientBackground(
     val transition = rememberInfiniteTransition(label = "rex-ambient")
     val phase by transition.animateFloat(
         initialValue = 0f, targetValue = if (motionEnabled) 1f else 0f,
-        animationSpec = if (motionEnabled) infiniteRepeatable(
-            tween(if (level == RexAnimationLevel.SAVER) 26000 else 16500, easing = LinearEasing),
-            RepeatMode.Reverse
-        ) else tween(0),
+        animationSpec = if (motionEnabled) {
+            infiniteRepeatable<Float>(
+                animation = tween<Float>(
+                    durationMillis = if (level == RexAnimationLevel.SAVER) 26000 else 16500,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            tween<Float>(durationMillis = 0)
+        },
         label = "ambient-phase"
     )
     val sweep by transition.animateFloat(
         initialValue = if (motionEnabled) -0.25f else 0f, targetValue = if (motionEnabled) 1.25f else 0f,
-        animationSpec = if (motionEnabled) infiniteRepeatable(
-            tween(if (level == RexAnimationLevel.SAVER) 30000 else 19000, easing = LinearEasing),
-            RepeatMode.Reverse
-        ) else tween(0),
+        animationSpec = if (motionEnabled) {
+            infiniteRepeatable<Float>(
+                animation = tween<Float>(
+                    durationMillis = if (level == RexAnimationLevel.SAVER) 30000 else 19000,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            tween<Float>(durationMillis = 0)
+        },
         label = "ambient-sweep"
     )
     val particleCount = when (level) {

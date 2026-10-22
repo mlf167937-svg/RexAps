@@ -89,10 +89,17 @@ fun RexSkeleton(tokens: RexDesignTokens, modifier: Modifier = Modifier, height: 
     val transition = rememberInfiniteTransition(label = "rex-skeleton-shimmer")
     val sweep by transition.animateFloat(
         initialValue = if (animate) -320f else 0f, targetValue = if (animate) 520f else 0f,
-        animationSpec = if (animate) infiniteRepeatable(
-            animation = tween(durationMillis = tokens.motionSlower * 2, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ) else tween(0),
+        animationSpec = if (animate) {
+            infiniteRepeatable<Float>(
+                animation = tween<Float>(
+                    durationMillis = tokens.motionSlower * 2,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Restart
+            )
+        } else {
+            tween<Float>(durationMillis = 0)
+        },
         label = "rex-skeleton-sweep"
     )
     val shape = RoundedCornerShape(tokens.radiusSm.dp)
