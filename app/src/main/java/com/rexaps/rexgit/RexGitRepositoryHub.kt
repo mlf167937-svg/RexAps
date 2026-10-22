@@ -147,7 +147,16 @@ internal fun RexGitReadmePreview(
                             "quote" -> Surface(color = scheme.surfaceVariant.copy(alpha = 0.7f), shape = RoundedCornerShape(topEnd = 13.dp, bottomEnd = 13.dp), border = BorderStroke(0.dp, Color.Transparent)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Surface(Modifier.width(4.dp).heightIn(min = 34.dp), color = scheme.primary, shape = CircleShape) {}
-                                    Text(markdownInline(chunk.text), modifier = Modifier.padding(vertical = 11.dp, end = 12.dp), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                                    Text(
+                                        markdownInline(chunk.text),
+                                        modifier = Modifier.padding(
+                                            top = 11.dp,
+                                            bottom = 11.dp,
+                                            end = 12.dp
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = scheme.onSurfaceVariant
+                                    )
                                 }
                             }
                             "code" -> Surface(color = scheme.surfaceVariant.copy(alpha = 0.8f), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, scheme.outlineVariant)) {
@@ -181,7 +190,7 @@ internal fun RexGitActionsPanel(
                 }
                 Column(Modifier.weight(1f)) {
                     Text("GitHub Actions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("${state.workflows.size} workflow(s) · ${state.workflowRuns.size} recent run(s)", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Text("${state.workflows.size} workflow(s) ·${state.workflowRuns.size} recent run(s)", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
                 OutlinedButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -205,7 +214,7 @@ internal fun RexGitActionsPanel(
                         StatusDot(workflow.state)
                         Column(Modifier.weight(1f)) {
                             Text(workflow.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text("${workflow.state} · ${workflow.path}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("${workflow.state} ·${workflow.path}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         OpenWebButton(workflow.htmlUrl)
                     }
@@ -221,7 +230,7 @@ internal fun RexGitActionsPanel(
                             StatusDot(run.conclusion ?: run.status)
                             Column(Modifier.weight(1f)) {
                                 Text(run.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text("#${run.runNumber} · ${run.event} · ${run.status}${run.conclusion?.let { " / $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                                Text("#${run.runNumber} · ${run.event} ·${run.status}${run.conclusion?.let { " / $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                                 Text("Started ${run.createdAt.replace('T', ' ').removeSuffix("Z").take(19)} · Updated ${run.updatedAt.replace('T', ' ').removeSuffix("Z").take(19)}", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                             }
                             OpenWebButton(run.htmlUrl)
