@@ -8,4 +8,6 @@ The Apks all in one
 
 #License
 
-//Do not share the application without permission from ©RexStudio
+//Do not share the application without permission from
+
+ ©RexStudio
