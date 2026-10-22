@@ -573,10 +573,7 @@ internal fun RepositoryFiles(
     }
 }
 
-/**
- * Pull / Push bar. Push shows "Unlock Push" until GitDev mode is on
- * and a package path is filled in.
- */
+/** Pull / Push bar. Standard Push is available even when GitDev is disabled. */
 @Composable
 internal fun ActionBar(
     isGit: Boolean,
@@ -623,34 +620,18 @@ internal fun ActionBar(
                     Text(if (pulling) "Pulling" else "Pull")
                 }
 
-                if (gitDevReady) {
-                    GradientButton(
-                        text = when {
-                            pushing -> "Pushing"
-                            changeCount > 0 -> "Push ($changeCount)"
-                            else -> "Push"
-                        },
-                        icon = Icons.Default.CloudUpload,
-                        onClick = onPush,
-                        enabled = isGit && !busy,
-                        loading = pushing,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    OutlinedButton(
-                        onClick = onUnlockPush,
-                        enabled = isGit && !busy,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, scheme.primary),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 52.dp)
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Unlock Push", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+                GradientButton(
+                    text = when {
+                        pushing -> "Pushing"
+                        changeCount > 0 -> "Push ($changeCount)"
+                        else -> "Push"
+                    },
+                    icon = Icons.Default.CloudUpload,
+                    onClick = onPush,
+                    enabled = isGit && !busy,
+                    loading = pushing,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
@@ -1134,7 +1115,19 @@ internal fun RepositoryCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = if (repo.globalClone) {
+                        "Global / ${repo.globalOwner ?: "Unknown"}/${repo.name}"
+                    } else {
+                        "${repo.accountNickname ?: "Local"} / ${repo.name}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(6.dp))
 
                 InfoPill(
                     icon = if (repo.isGitRepository) Icons.Default.CallSplit else Icons.Default.Folder,
@@ -1713,7 +1706,7 @@ internal fun GithubDialog(
                 }
             } else {
                 Text(
-                    "Maximum of ${RexGitAuthStore.MAX_ACCOUNTS} accounts connected.",
+                    "Unable to add another account.",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant
                 )
@@ -1751,8 +1744,8 @@ internal fun GithubDialog(
 
         Text(
             "Accounts are saved in Download/RexAps/Github/token.env as " +
-                "username/token and username2/token2. Anyone who can read that " +
-                "file can use the tokens.",
+                "Account-1-Username, Account-1-Token, Account-2-Username, Account-2-Token, and so on. " +
+                "Anyone who can read that file can use the tokens.",
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant
         )
@@ -1850,7 +1843,8 @@ private fun GitDevGuide() {
             "only com/rexaps."
     )
     GuideText(
-        "Push stays locked until GitDev mode is on and a package path is filled in. " +
+        "Normal Push works without GitDev. Enable the optional GitDev metadata mode " +
+            "when you want package-folder scopes, version bumps, and structured commit prefixes. " +
             "Settings are saved per repository."
     )
 
@@ -2130,6 +2124,9 @@ internal fun PushDialog(
     folder: String,
     folders: List<String>,
     packagePath: String,
+    useGitDev: Boolean,
+    gitDevAvailable: Boolean,
+    onUseGitDevChange: (Boolean) -> Unit,
     onFolderChange: (String) -> Unit,
     bumpVersion: Boolean,
     onBumpChange: (Boolean) -> Unit,
@@ -2141,16 +2138,41 @@ internal fun PushDialog(
     var folderMenuOpen by remember { mutableStateOf(false) }
 
     val canCommit = changeCount == 0 || (
-        message.isNotBlank() &&
-            folder.isNotBlank() &&
-            folders.contains(folder)
-        )
+        message.isNotBlank() && (!useGitDev || (folder.isNotBlank() && folders.contains(folder)))
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Commit & push") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (gitDevAvailable) {
+                    Row(
+                        Modifier.fillMaxWidth().toggleable(
+                            value = useGitDev,
+                            role = Role.Switch,
+                            onValueChange = onUseGitDevChange
+                        ).heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("GitDev metadata", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (useGitDev) "Version prefix and package folder scope enabled" else "Standard commit message; no folder required",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = useGitDev, onCheckedChange = null)
+                    }
+                } else {
+                    Text(
+                        "Standard Push is ready. Configure GitDev only for repositories that need versioning and folder metadata.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 Text(
                     if (changeCount == 0) {
                         "No local changes. Existing commits will be pushed."
@@ -2165,7 +2187,7 @@ internal fun PushDialog(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(Modifier.weight(0.9f)) {
+                        Box(Modifier.weight(1f)) {
                             OutlinedButton(
                                 onClick = { typeMenuOpen = true },
                                 modifier = Modifier.fillMaxWidth(),
@@ -2179,7 +2201,7 @@ internal fun PushDialog(
                             ) {
                                 RexGitCommitType.values().forEach { option ->
                                     DropdownMenuItem(
-                                        text = { Text(option.label) },
+                                        text = { Text("${option.label} · ${option.description}") },
                                         onClick = {
                                             onTypeChange(option)
                                             typeMenuOpen = false
@@ -2189,37 +2211,35 @@ internal fun PushDialog(
                             }
                         }
 
-                        Box(Modifier.weight(1.1f)) {
-                            OutlinedButton(
-                                onClick = { folderMenuOpen = true },
-                                enabled = folders.isNotEmpty(),
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 12.dp)
-                            ) {
-                                Text(
-                                    folder.ifBlank { "Folder" },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = folderMenuOpen,
-                                onDismissRequest = { folderMenuOpen = false }
-                            ) {
-                                folders.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(option) },
-                                        onClick = {
-                                            onFolderChange(option)
-                                            folderMenuOpen = false
-                                        }
-                                    )
+                        if (useGitDev) {
+                            Box(Modifier.weight(1f)) {
+                                OutlinedButton(
+                                    onClick = { folderMenuOpen = true },
+                                    enabled = folders.isNotEmpty(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 12.dp)
+                                ) {
+                                    Text(folder.ifBlank { "Folder" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                DropdownMenu(
+                                    expanded = folderMenuOpen,
+                                    onDismissRequest = { folderMenuOpen = false }
+                                ) {
+                                    folders.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option) },
+                                            onClick = {
+                                                onFolderChange(option)
+                                                folderMenuOpen = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                    if (folders.isEmpty()) {
+                    if (useGitDev && folders.isEmpty()) {
                         Text(
                             "No folder found under $packagePath.",
                             style = MaterialTheme.typography.bodySmall,
@@ -2237,7 +2257,7 @@ internal fun PushDialog(
                         singleLine = false
                     )
 
-                    Row(
+                    if (useGitDev) Row(
                         Modifier
                             .fillMaxWidth()
                             .toggleable(
@@ -2793,7 +2813,8 @@ internal fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null
 ) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(16.dp)
@@ -2832,6 +2853,8 @@ internal fun SearchField(
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface),
                 cursorBrush = SolidColor(scheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Done),
+                keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -2840,7 +2863,12 @@ internal fun SearchField(
             IconButton(onClick = { onValueChange("") }) {
                 Icon(Icons.Default.Close, contentDescription = "Clear search")
             }
-        } else {
+        }
+        if (onSearch != null) {
+            IconButton(onClick = onSearch, enabled = value.isNotBlank()) {
+                Icon(Icons.Default.Search, contentDescription = "Search GitHub")
+            }
+        } else if (value.isEmpty()) {
             Spacer(Modifier.width(10.dp))
         }
     }

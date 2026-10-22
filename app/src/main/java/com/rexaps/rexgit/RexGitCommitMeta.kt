@@ -2,11 +2,14 @@ package com.rexaps.rexgit
 
 import java.io.File
 
-enum class RexGitCommitType(val label: String) {
-    FIX("Fix"),
-    CHANGE("Change"),
-    DELETE("Delete"),
-    ADD("Add")
+enum class RexGitCommitType(val label: String, val description: String) {
+    CHANGE("Change", "Behavior or structure changed"),
+    FIX("Fix", "Bug or defect fixed"),
+    ADD("Add", "New functionality or files added"),
+    UPGRADE("Upgrade", "Version or major dependency/project upgrade"),
+    UPDATE("Update", "General maintenance or content update"),
+    TESTING("Testing", "Tests or validation changes"),
+    DELETE("Delete", "Files or functionality removed")
 }
 
 /** Detects real package folders below the package path chosen in GitDev mode. */
@@ -38,7 +41,7 @@ object RexGitCommitMeta {
         return when {
             kinds.isNotEmpty() && kinds.all { it == RexGitChangeKind.ADDED || it == RexGitChangeKind.UNTRACKED } -> RexGitCommitType.ADD
             kinds.isNotEmpty() && kinds.all { it == RexGitChangeKind.DELETED } -> RexGitCommitType.DELETE
-            kinds.isNotEmpty() && kinds.all { it == RexGitChangeKind.MODIFIED } -> RexGitCommitType.FIX
+            kinds.isNotEmpty() && kinds.all { it == RexGitChangeKind.MODIFIED } -> RexGitCommitType.UPDATE
             else -> RexGitCommitType.CHANGE
         }
     }
@@ -67,6 +70,10 @@ object RexGitCommitMeta {
         description: String
     ): String {
         val prefix = version?.versionName?.let { "[$it] " }.orEmpty()
-        return "$prefix${type.label}: $folder: ${description.trim()}"
+        val scope = folder.trim().takeIf { it.isNotEmpty() }?.let { "$it: " }.orEmpty()
+        return "$prefix${type.label}: $scope${description.trim()}"
     }
+
+    fun buildStandardMessage(type: RexGitCommitType, description: String): String =
+        "${type.label}: ${description.trim()}"
 }

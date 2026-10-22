@@ -22,9 +22,16 @@ class RexGitAuthStore(
         private const val ROOT_DIR = "RexAps"
         private const val GITHUB_DIR = "Github"
 
-        const val MAX_ACCOUNTS = 2
+        // A practically unbounded account count; no artificial two-account limit.
+        const val MAX_ACCOUNTS = Int.MAX_VALUE
 
-        /** username=, user=, token= with an optional slot: token2=, token_2=, username2= ... */
+        /** New format: Account-1-Username / Account-1-Token. */
+        private val ACCOUNT_REGEX = Regex(
+            """^\s*Account-(\d+)-(Username|Token)\s*=\s*["']?([^"'\r\n]*)["']?\s*$""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /** Backward compatibility with username=, token=, username2=, token_2=, etc. */
         private val KEY_REGEX = Regex(
             """^\s*(username|user|token)_?(\d*)\s*=\s*["']?([^"'\r\n]*)["']?\s*$""",
             RegexOption.IGNORE_CASE
@@ -61,44 +68,47 @@ class RexGitAuthStore(
     }
 
     /**
-     * token.env supports up to two accounts:
+     * Reads any number of accounts from token.env. The preferred format is:
+     * Account-1-Username=octocat
+     * Account-1-Token=ghp_...
      *
-     * username="rex"
-     * token="ghp_xxxxxxxxx"
-     *
-     * username2="rex-work"
-     * token2="ghp_yyyyyyyyy"
-     *
-     * A file that only has token="..." still works (username comes from GitHub).
+     * Older username/token and username2/token2 formats remain readable.
      */
     fun loadAccounts(): List<RexGitEnvAccount> {
         val file = readableFile() ?: return emptyList()
-
         val content = try {
             file.readText(Charsets.UTF_8)
         } catch (_: Throwable) {
             return emptyList()
         }
 
-        val usernames = mutableMapOf<Int, String>()
-        val tokens = mutableMapOf<Int, String>()
-
+        val usernames = sortedMapOf<Int, String>()
+        val tokens = sortedMapOf<Int, String>()
         content.lineSequence().forEach { line ->
-            val match = KEY_REGEX.find(line) ?: return@forEach
+            val modern = ACCOUNT_REGEX.find(line)
+            if (modern != null) {
+                val slot = modern.groupValues[1].toIntOrNull() ?: return@forEach
+                if (slot < 1) return@forEach
+                val kind = modern.groupValues[2].lowercase()
+                val value = modern.groupValues[3].trim()
+                if (value.isNotEmpty()) {
+                    if (kind == "token") tokens.putIfAbsent(slot, value)
+                    else usernames.putIfAbsent(slot, value)
+                }
+                return@forEach
+            }
 
-            val key = match.groupValues[1].lowercase()
-            val slot = match.groupValues[2].toIntOrNull() ?: 1
-            val value = match.groupValues[3].trim()
-
-            if (value.isEmpty() || slot !in 1..MAX_ACCOUNTS) return@forEach
-
-            if (key == TOKEN_KEY) tokens.putIfAbsent(slot, value)
+            val legacy = KEY_REGEX.find(line) ?: return@forEach
+            val kind = legacy.groupValues[1].lowercase()
+            val slot = legacy.groupValues[2].toIntOrNull() ?: 1
+            val value = legacy.groupValues[3].trim()
+            if (slot < 1 || value.isEmpty()) return@forEach
+            if (kind == "token") tokens.putIfAbsent(slot, value)
             else usernames.putIfAbsent(slot, value)
         }
 
-        return tokens.keys
-            .sorted()
-            .map { slot -> RexGitEnvAccount(usernames[slot], tokens.getValue(slot)) }
+        return tokens.keys.sorted()
+            .mapNotNull { slot -> tokens[slot]?.let { RexGitEnvAccount(usernames[slot], it) } }
             .distinctBy { it.token }
     }
 
@@ -111,57 +121,41 @@ class RexGitAuthStore(
         return loadAccounts().firstOrNull()?.token
     }
 
-    /**
-     * Writes up to two accounts to token.env. Lines that are not account
-     * entries (comments, other keys) are kept untouched.
-     *
-     * Returns the path that was written. If /Download/RexAps/Github isn't
-     * writable the file is written to private app storage instead.
-     */
+    /** Writes all connected accounts using the explicit Account-N-* format. */
     fun saveAccounts(accounts: List<RexGitEnvAccount>): String {
-        val limited = accounts.take(MAX_ACCOUNTS)
-
         val target = readableFile() ?: tokenFile()
-
         return try {
-            write(target, limited)
+            write(target, accounts)
             target.absolutePath
         } catch (_: Throwable) {
             val fallback = privateTokenFile()
-            write(fallback, limited)
+            write(fallback, accounts)
             fallback.absolutePath
         }
     }
 
     private fun write(file: File, accounts: List<RexGitEnvAccount>) {
         file.parentFile?.mkdirs()
-
         val kept = if (file.isFile) {
             file.readText(Charsets.UTF_8)
                 .lineSequence()
-                .filterNot { KEY_REGEX.matches(it) }
+                .filterNot { ACCOUNT_REGEX.matches(it) || KEY_REGEX.matches(it) }
                 .toList()
                 .dropLastWhile { it.isBlank() }
-        } else {
-            emptyList()
-        }
+        } else emptyList()
 
         val out = StringBuilder()
-
         kept.forEach { out.append(it).append('\n') }
         if (kept.isNotEmpty() && accounts.isNotEmpty()) out.append('\n')
 
         accounts.forEachIndexed { index, account ->
-            val suffix = if (index == 0) "" else "${index + 1}"
-
-            if (!account.username.isNullOrBlank()) {
-                out.append("username$suffix=\"${account.username}\"\n")
-            }
-            out.append("token$suffix=\"${account.token}\"\n")
-
+            val slot = index + 1
+            val username = account.username.orEmpty().trim().replace('\n', ' ').replace('\r', ' ')
+            val token = account.token.trim().replace('\n', ' ').replace('\r', ' ')
+            if (username.isNotEmpty()) out.append("Account-$slot-Username=$username\n")
+            out.append("Account-$slot-Token=$token\n")
             if (index != accounts.lastIndex) out.append('\n')
         }
-
         file.writeText(out.toString(), Charsets.UTF_8)
     }
 

@@ -14,17 +14,15 @@ class RexGitPushManager {
         commitType: RexGitCommitType = RexGitCommitType.FIX,
         commitFolder: String = "",
         gitDev: RexGitGitDevConfig = RexGitGitDevConfig(),
+        useGitDev: Boolean = false,
         username: String? = null,
         token: String? = null,
         onProgress: (stage: String, detail: String, logLine: String?) -> Unit = { _, _, _ -> }
     ): RexGitPushResult {
         val dir = File(repository.path)
 
-        if (!gitDev.isReady) {
-            return RexGitPushResult(
-                false,
-                "Push is locked. Activate GitDev mode for this repository first."
-            )
+        if (useGitDev && !gitDev.isReady) {
+            return RexGitPushResult(false, "Configure GitDev for this repository first, or turn GitDev metadata off.")
         }
 
         onProgress("Checking Files...", "Reading repository status", null)
@@ -58,12 +56,14 @@ class RexGitPushManager {
                 return RexGitPushResult(false, "Commit description is empty")
             }
 
-            val detectedFolders = RexGitCommitMeta.detectFolders(repository, status.changes, gitDev)
-            if (commitFolder.isBlank() || commitFolder !in detectedFolders) {
-                return RexGitPushResult(
-                    false,
-                    "Invalid commit folder. Choose a folder detected under ${gitDev.packagePath}."
-                )
+            if (useGitDev) {
+                val detectedFolders = RexGitCommitMeta.detectFolders(repository, status.changes, gitDev)
+                if (commitFolder.isBlank() || commitFolder !in detectedFolders) {
+                    return RexGitPushResult(
+                        false,
+                        "Invalid commit folder. Choose a folder detected under ${gitDev.packagePath}."
+                    )
+                }
             }
 
             // Show the actual Git changes, not simulated entries.
@@ -82,7 +82,7 @@ class RexGitPushManager {
         var newVersion: RexGitVersion? = null
 
         if (hadChanges) {
-            if (bumpVersion) {
+            if (useGitDev && bumpVersion) {
                 onProgress("Updating", "Updating app version", null)
                 newVersion = try {
                     version.bump(repository)
@@ -99,12 +99,16 @@ class RexGitPushManager {
                 }
             }
 
-            val finalMessage = RexGitCommitMeta.buildMessage(
-                version = newVersion,
-                type = commitType,
-                folder = commitFolder,
-                description = commitMessage
-            )
+            val finalMessage = if (useGitDev) {
+                RexGitCommitMeta.buildMessage(
+                    version = newVersion,
+                    type = commitType,
+                    folder = commitFolder,
+                    description = commitMessage
+                )
+            } else {
+                RexGitCommitMeta.buildStandardMessage(commitType, commitMessage)
+            }
 
             onProgress("Staging", "Preparing files for commit", null)
 

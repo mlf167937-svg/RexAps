@@ -5,7 +5,12 @@ data class RexGitRepository(
     val path: String,
     val remoteUrl: String? = null,
     val branch: String = "main",
-    val isGitRepository: Boolean = false
+    val isGitRepository: Boolean = false,
+    /** Account directory that contains this repository, when it is an account repo. */
+    val accountNickname: String? = null,
+    /** True for repositories cloned from global GitHub search. */
+    val globalClone: Boolean = false,
+    val globalOwner: String? = null
 )
 
 data class RexGitFile(
@@ -56,7 +61,60 @@ data class RexGitGithubRepository(
     val cloneUrl: String,
     val private: Boolean,
     val defaultBranch: String,
-    val description: String? = null
+    val description: String? = null,
+    val stars: Int = 0,
+    val htmlUrl: String? = null
+)
+
+data class RexGitWorkflow(
+    val id: Long,
+    val name: String,
+    val path: String,
+    val state: String,
+    val htmlUrl: String
+)
+
+data class RexGitWorkflowRun(
+    val id: Long,
+    val name: String,
+    val title: String,
+    val event: String,
+    val status: String,
+    val conclusion: String?,
+    val createdAt: String,
+    val updatedAt: String,
+    val htmlUrl: String,
+    val runNumber: Int
+)
+
+data class RexGitArtifact(
+    val id: Long,
+    val name: String,
+    val sizeInBytes: Long,
+    val expired: Boolean,
+    val archiveDownloadUrl: String,
+    val workflowRunId: Long,
+    val workflowName: String
+)
+
+data class RexGitReleaseAsset(
+    val id: Long,
+    val name: String,
+    val sizeInBytes: Long,
+    val downloadUrl: String,
+    val contentType: String
+)
+
+data class RexGitRelease(
+    val id: Long,
+    val tagName: String,
+    val name: String,
+    val body: String,
+    val publishedAt: String,
+    val htmlUrl: String,
+    val draft: Boolean,
+    val prerelease: Boolean,
+    val assets: List<RexGitReleaseAsset> = emptyList()
 )
 
 data class RexGitAuth(
@@ -72,14 +130,26 @@ data class RexGitUiState(
     val gitStatus: RexGitStatus = RexGitStatus(),
 
     val githubRepositories: List<RexGitGithubRepository> = emptyList(),
+    val githubSearchMode: Boolean = false,
+    val githubSearchQuery: String = "",
+    val githubSearchResults: List<RexGitGithubRepository> = emptyList(),
     val githubUsername: String? = null,
     val isGithubConnected: Boolean = false,
-    /** Usernames of every connected account (max 2). [activeAccount] indexes into it. */
+    /** Usernames of every connected account. [activeAccount] indexes into this list. */
     val accounts: List<String> = emptyList(),
     val activeAccount: Int = 0,
 
-    /** GitDev mode for the selected repository. Push stays locked until it is ready. */
+    /** Optional GitDev metadata configuration for the selected repository; standard Push never depends on it. */
     val gitDev: RexGitGitDevConfig = RexGitGitDevConfig(),
+
+    val readmeContent: String = "",
+    val workflows: List<RexGitWorkflow> = emptyList(),
+    val workflowRuns: List<RexGitWorkflowRun> = emptyList(),
+    val workflowArtifacts: List<RexGitArtifact> = emptyList(),
+    val releases: List<RexGitRelease> = emptyList(),
+    val isRepoHubLoading: Boolean = false,
+    val repoHubError: String? = null,
+    val downloadingArtifact: String? = null,
 
     val editorPath: String? = null,
     val editorContent: String = "",

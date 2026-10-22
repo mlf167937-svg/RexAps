@@ -243,8 +243,11 @@ internal fun RexGitScreenPortrait(
                         host = host,
                         onBack = viewModel::backToRepositories,
                         onRefresh = viewModel::refreshStatus,
+                        onRefreshHub = viewModel::refreshRepositoryHub,
+                        onDownloadAsset = viewModel::downloadGithubAsset,
                         onOpen = viewModel::openFile,
                         onNavigate = { path ->
+                            host.repoTab.value = 1
                             if (path == null) viewModel.openRoot()
                             else viewModel.openDirectory(path)
                         },
@@ -257,7 +260,8 @@ internal fun RexGitScreenPortrait(
                         onRefresh = viewModel::refresh,
                         onSelect = viewModel::selectRepository,
                         onClone = viewModel::cloneRepository,
-                        onSwitch = viewModel::switchAccount
+                        onSwitch = viewModel::switchAccount,
+                        onSearchGithub = viewModel::searchGithubRepositories
                     )
                 }
             }
@@ -276,7 +280,8 @@ private fun HomeScreenPortrait(
     onRefresh: () -> Unit,
     onSelect: (RexGitRepository) -> Unit,
     onClone: (RexGitGithubRepository) -> Unit,
-    onSwitch: (Int) -> Unit
+    onSwitch: (Int) -> Unit,
+    onSearchGithub: (String) -> Unit
 ) {
     var tab by host.homeTab
     val busy = state.isLoading || state.isRepoLoading
@@ -316,7 +321,8 @@ private fun HomeScreenPortrait(
                 onConnect = onGithub,
                 onSwitch = onSwitch,
                 onClone = onClone,
-                onOpen = onSelect
+                onOpen = onSelect,
+                onSearch = onSearchGithub
             )
         }
     }
@@ -414,13 +420,14 @@ private fun GithubTab(
     onConnect: () -> Unit,
     onSwitch: (Int) -> Unit,
     onClone: (RexGitGithubRepository) -> Unit,
-    onOpen: (RexGitRepository) -> Unit
+    onOpen: (RexGitRepository) -> Unit,
+    onSearch: (String) -> Unit
 ) {
 
-    val repos = remember(state.githubRepositories, query) {
-        state.githubRepositories.filter {
-            it.fullName.contains(query.trim(), ignoreCase = true)
-        }
+    val activeSearch = query.isNotBlank() && state.githubSearchMode && state.githubSearchQuery.equals(query.trim(), ignoreCase = true)
+    val repoSource = if (activeSearch) state.githubSearchResults else state.githubRepositories
+    val repos = remember(repoSource, query, activeSearch) {
+        if (activeSearch) repoSource else repoSource.filter { it.fullName.contains(query.trim(), ignoreCase = true) }
     }
 
     if (!state.isGithubConnected) {
@@ -466,7 +473,7 @@ private fun GithubTab(
             Column(Modifier.weight(1f)) {
                 Text("@${state.githubUsername}", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "${state.githubRepositories.size} repositories",
+                    if (activeSearch) "${state.githubSearchResults.size} search results" else "${state.githubRepositories.size} repositories",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant
                 )
@@ -491,8 +498,9 @@ private fun GithubTab(
         SearchField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = "Search GitHub repositories",
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+            placeholder = "Search repositories (press search for GitHub-wide results)",
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+            onSearch = { onSearch(query) }
         )
 
         ProgressSlot(state.isGithubLoading)
@@ -508,13 +516,17 @@ private fun GithubTab(
                         icon = Icons.Default.Search,
                         title = if (query.isBlank()) "No repositories found" else "No matches",
                         body = if (query.isBlank()) "Your account has no repositories yet."
-                        else "Nothing matches \"${query.trim()}\"."
+                        else if (activeSearch) "No GitHub repositories matched \"${query.trim()}\"."
+                        else "Type a keyword and tap the search icon to search GitHub-wide."
                     )
                 }
             }
 
             items(repos, key = { it.fullName }) { repo ->
-                val local = state.repositories.firstOrNull { it.name == repo.name }
+                val owner = repo.fullName.substringBefore('/')
+                val local = state.repositories.firstOrNull {
+                    it.name.equals(repo.name, true) && if (it.globalClone) it.globalOwner.equals(owner, true) else it.accountNickname.equals(owner, true)
+                }
 
                 GithubRepositoryCard(
                     repo = repo,
@@ -539,6 +551,8 @@ private fun RepositoryScreenPortrait(
     host: RexGitScreenHost,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onRefreshHub: () -> Unit,
+    onDownloadAsset: (String, String) -> Unit,
     onOpen: (RexGitFile) -> Unit,
     onNavigate: (String?) -> Unit,
     onPull: () -> Unit
@@ -583,17 +597,39 @@ private fun RepositoryScreenPortrait(
             )
         }
 
-        RepositoryFiles(
-            state = state,
-            repo = repo,
-            onOpen = onOpen,
-            onMore = { host.actionTarget.value = it },
-            onNavigate = onNavigate,
-            onNew = { host.createMenu.value = true },
-            modifier = Modifier.weight(1f)
+        RepositoryTabBar(
+            selected = host.repoTab.value,
+            onSelect = { host.repoTab.value = it }
         )
 
-        if (repo.isGitRepository && changes.isNotEmpty()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (host.repoTab.value) {
+                0 -> RexGitReadmePreview(repo = repo, content = state.readmeContent, modifier = Modifier.fillMaxSize())
+                1 -> RepositoryFiles(
+                    state = state,
+                    repo = repo,
+                    onOpen = onOpen,
+                    onMore = { host.actionTarget.value = it },
+                    onNavigate = onNavigate,
+                    onNew = { host.createMenu.value = true },
+                    modifier = Modifier.fillMaxSize()
+                )
+                2 -> RexGitActionsPanel(
+                    state = state,
+                    onRefresh = onRefreshHub,
+                    onDownload = onDownloadAsset,
+                    modifier = Modifier.fillMaxSize()
+                )
+                else -> RexGitReleasePanel(
+                    state = state,
+                    onRefresh = onRefreshHub,
+                    onDownload = onDownloadAsset,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        if (host.repoTab.value == 1 && repo.isGitRepository && changes.isNotEmpty()) {
             ChangesPanel(
                 changes = changes,
                 expanded = showChanges,

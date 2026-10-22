@@ -42,6 +42,7 @@ class RexGitViewModel(
         private const val MAX_EDITOR_BYTES = 400_000L
 
         private const val ACTIVE_KEY = "active_username"
+        private const val REPO_ACCOUNT_PREFIX = "repo_account:"
     }
 
     init {
@@ -103,7 +104,7 @@ class RexGitViewModel(
     }
 
     /**
-     * Reads token.env (up to 2 accounts) and asks GitHub which username each
+     * Reads every account in token.env and asks GitHub which username each
      * token belongs to. Accounts with a bad token are skipped; if EVERY token
      * fails, the first error is thrown like before.
      */
@@ -266,6 +267,19 @@ class RexGitViewModel(
             }
 
             try {
+                val savedAccount = accountPrefs.getString(REPO_ACCOUNT_PREFIX + repository.path, null)
+                val desiredAccount = savedAccount ?: repository.accountNickname
+                val desiredIndex = accounts.indexOfFirst { it.username.equals(desiredAccount, ignoreCase = true) }
+                if (desiredIndex >= 0 && desiredIndex != activeIndex) {
+                    activeIndex = desiredIndex
+                    accountPrefs.edit().putString(ACTIVE_KEY, accounts[desiredIndex].username).apply()
+                    publishAccounts()
+                }
+                val selectedAccountName = accounts.getOrNull(activeIndex)?.username
+                if (selectedAccountName != null) {
+                    accountPrefs.edit().putString(REPO_ACCOUNT_PREFIX + repository.path, selectedAccountName).apply()
+                }
+
                 val isGit = File(repository.path, ".git").exists()
 
                 val branch =
@@ -306,10 +320,18 @@ class RexGitViewModel(
                         editorPath = null,
                         editorContent = "",
                         editorDirty = false,
-                        gitDev = gitDevStore.load(repository.name),
+                        gitDev = gitDevStore.load(repository.path),
+                        readmeContent = readReadme(repository.path),
+                        workflows = emptyList(),
+                        workflowRuns = emptyList(),
+                        workflowArtifacts = emptyList(),
+                        releases = emptyList(),
+                        isRepoHubLoading = true,
+                        repoHubError = null,
                         message = null
                     )
                 }
+                loadRepositoryGithubData(repository.copy(branch = branch, remoteUrl = remote, isGitRepository = isGit))
             } finally {
                 _state.update {
                     it.copy(isRepoLoading = false)
@@ -328,6 +350,14 @@ class RexGitViewModel(
                 currentDirectory = null,
                 gitStatus = RexGitStatus(),
                 gitDev = RexGitGitDevConfig(),
+                readmeContent = "",
+                workflows = emptyList(),
+                workflowRuns = emptyList(),
+                workflowArtifacts = emptyList(),
+                releases = emptyList(),
+                isRepoHubLoading = false,
+                repoHubError = null,
+                downloadingArtifact = null,
                 editorPath = null,
                 editorContent = "",
                 editorDirty = false
@@ -364,6 +394,7 @@ class RexGitViewModel(
                 cur.copy(
                     gitStatus = status,
                     files = files,
+                    readmeContent = readReadme(repo.path),
                     currentDirectory = dir,
                     selectedRepository = selected.copy(
                         branch = branch
@@ -684,6 +715,7 @@ class RexGitViewModel(
                     it.copy(
                         editorDirty = editorBuffer != content,
                         gitStatus = status ?: it.gitStatus,
+                        readmeContent = if (File(path).name.equals("README.md", true)) content else it.readmeContent,
                         message = "File saved"
                     )
                 }
@@ -691,6 +723,92 @@ class RexGitViewModel(
                 _state.update {
                     it.copy(isSaving = false)
                 }
+            }
+        }
+    }
+
+    private fun readReadme(repositoryPath: String): String {
+        return try {
+            val root = File(repositoryPath)
+            val readme = root.listFiles()?.firstOrNull { it.isFile && it.name.equals("README.md", true) }
+                ?: return ""
+            if (readme.length() > MAX_EDITOR_BYTES) return "README is too large to preview in RexGit. Open the file from Code to inspect it."
+            readme.readText(Charsets.UTF_8)
+        } catch (_: Throwable) { "" }
+    }
+
+    private fun repositorySlug(repo: RexGitRepository): Pair<String, String>? {
+        val remote = repo.remoteUrl?.trim().orEmpty()
+        val match = Regex("""(?:github\.com[:/])([^/]+)/([^/]+?)(?:\.git)?/?$""", RegexOption.IGNORE_CASE).find(remote)
+        if (match != null) return match.groupValues[1] to match.groupValues[2]
+        val globalOwner = repo.globalOwner
+        if (!globalOwner.isNullOrBlank()) return globalOwner to repo.name
+        val account = repo.accountNickname
+        if (!account.isNullOrBlank()) return account to repo.name
+        return null
+    }
+
+    private fun loadRepositoryGithubData(repo: RexGitRepository) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val slug = repositorySlug(repo)
+                if (slug == null) {
+                    _state.update { it.copy(isRepoHubLoading = false, repoHubError = "No GitHub remote is configured for this repository.") }
+                    return@launch
+                }
+                val auth = try { externalGithubAuth() } catch (_: Throwable) { null }
+                val snapshot = try { github.loadActions(auth?.token, slug.first, slug.second) } catch (t: Throwable) {
+                    RexGitActionsSnapshot(emptyList(), emptyList(), emptyList())
+                }
+                val releaseData = try { github.listReleases(auth?.token, slug.first, slug.second) } catch (_: Throwable) { emptyList() }
+                _state.update { cur ->
+                    if (cur.selectedRepository?.path != repo.path) cur else cur.copy(
+                        workflows = snapshot.workflows,
+                        workflowRuns = snapshot.runs,
+                        workflowArtifacts = snapshot.artifacts,
+                        releases = releaseData,
+                        isRepoHubLoading = false,
+                        repoHubError = if (snapshot.workflows.isEmpty() && snapshot.runs.isEmpty() && releaseData.isEmpty()) {
+                            "No GitHub Actions or releases were found, or this token cannot access them."
+                        } else null
+                    )
+                }
+            } catch (t: Throwable) {
+                _state.update { cur -> if (cur.selectedRepository?.path != repo.path) cur else cur.copy(isRepoHubLoading = false, repoHubError = t.readableMessage("Could not load GitHub details")) }
+            }
+        }
+    }
+
+    fun refreshRepositoryHub() {
+        val repo = _state.value.selectedRepository ?: return
+        _state.update { it.copy(isRepoHubLoading = true, repoHubError = null) }
+        loadRepositoryGithubData(repo)
+    }
+
+    fun downloadGithubAsset(url: String, rawName: String) {
+        if (_state.value.selectedRepository == null) return
+        val name = rawName.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifBlank { "github-download.zip" }
+        launchIO {
+            _state.update { it.copy(downloadingArtifact = name, repoHubError = null) }
+            try {
+                val auth = try { externalGithubAuth() } catch (_: Throwable) { null }
+                val downloadDir = RexGitStorage.downloadsDirectory()
+                val requested = File(downloadDir, name)
+                val output = if (!requested.exists()) requested else {
+                    val base = requested.nameWithoutExtension
+                    val extension = requested.extension.takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
+                    var index = 2
+                    var candidate = File(downloadDir, "$base-$index$extension")
+                    while (candidate.exists()) { index++; candidate = File(downloadDir, "$base-$index$extension") }
+                    candidate
+                }
+                val accept = if (url.contains("/releases/assets/")) "application/octet-stream" else "application/vnd.github+json"
+                github.download(url, auth?.token, output, accept)
+                _state.update { it.copy(message = "Downloaded $name to ${output.parentFile?.absolutePath}") }
+            } catch (t: Throwable) {
+                _state.update { it.copy(repoHubError = t.readableMessage("Download failed")) }
+            } finally {
+                _state.update { it.copy(downloadingArtifact = null) }
             }
         }
     }
@@ -855,9 +973,17 @@ class RexGitViewModel(
 
         activeIndex = index
         accountPrefs.edit().putString(ACTIVE_KEY, list[index].username).apply()
+        _state.value.selectedRepository?.let { repo ->
+            accountPrefs.edit().putString(REPO_ACCOUNT_PREFIX + repo.path, list[index].username).apply()
+        }
 
         _state.update {
-            it.copy(githubRepositories = emptyList())
+            it.copy(
+                githubRepositories = emptyList(),
+                githubSearchMode = false,
+                githubSearchQuery = "",
+                githubSearchResults = emptyList()
+            )
         }
 
         publishAccounts()
@@ -949,6 +1075,35 @@ class RexGitViewModel(
         }
     }
 
+    fun searchGithubRepositories(query: String) {
+        val clean = query.trim()
+        if (clean.isBlank()) {
+            _state.update { it.copy(githubSearchMode = false, githubSearchQuery = "", githubSearchResults = emptyList()) }
+            return
+        }
+        launchIO {
+            _state.update { it.copy(isGithubLoading = true, githubSearchMode = true, repoHubError = null) }
+            try {
+                val auth = externalGithubAuth() ?: throw missingAuthError()
+                val results = github.searchRepositories(auth.token, clean)
+                _state.update {
+                    it.copy(
+                        githubSearchMode = true,
+                        githubSearchQuery = clean,
+                        githubSearchResults = results,
+                        message = "Found ${results.size} repositories for \"$clean\""
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                fail("GitHub repository search failed:\n" + t.readableMessage("Search failed"))
+            } finally {
+                _state.update { it.copy(isGithubLoading = false) }
+            }
+        }
+    }
+
     fun reloadGithub() {
         launchIO {
             try {
@@ -997,11 +1152,14 @@ class RexGitViewModel(
                 val auth = externalGithubAuth()
                     ?: throw missingAuthError()
 
+                val upstreamOwner = repository.fullName.substringBefore('/')
                 val result = repositoryManager.clone(
                     url = repository.cloneUrl,
                     name = repository.name,
                     username = auth.username,
-                    token = auth.token
+                    token = auth.token,
+                    accountNickname = auth.username,
+                    globalOwner = upstreamOwner.takeIf { !it.equals(auth.username, ignoreCase = true) }
                 )
 
                 if (!result.success) {
@@ -1082,7 +1240,8 @@ class RexGitViewModel(
         message: String,
         bumpVersion: Boolean,
         commitType: RexGitCommitType = RexGitCommitType.FIX,
-        commitFolder: String = ""
+        commitFolder: String = "",
+        useGitDev: Boolean = false
     ) {
         val repo = _state.value.selectedRepository
             ?: return
@@ -1125,6 +1284,7 @@ class RexGitViewModel(
                     commitType = commitType,
                     commitFolder = commitFolder,
                     gitDev = current.gitDev,
+                    useGitDev = useGitDev,
                     username = auth.username,
                     token = auth.token,
                     onProgress = { stage, detail, logLine ->
@@ -1151,12 +1311,12 @@ class RexGitViewModel(
                         pushError = result.message.takeIf { !result.success },
                         pushVersion = result.version,
                         pushCommitMessage = if (result.success && message.isNotBlank()) {
-                            RexGitCommitMeta.buildMessage(
+                            if (useGitDev) RexGitCommitMeta.buildMessage(
                                 version = result.version,
                                 type = commitType,
                                 folder = commitFolder,
                                 description = message
-                            )
+                            ) else RexGitCommitMeta.buildStandardMessage(commitType, message)
                         } else null
                     )
                 }
@@ -1222,13 +1382,13 @@ class RexGitViewModel(
             }
         }
 
-        gitDevStore.save(repo.name, clean)
+        gitDevStore.save(repo.path, clean)
 
         _state.update {
             it.copy(
                 gitDev = clean,
-                message = if (clean.enabled) "GitDev mode on, Push unlocked"
-                else "GitDev mode off, Push locked"
+                message = if (clean.enabled) "GitDev metadata is ready for this repository."
+                else "GitDev is off. Standard Push remains available."
             )
         }
     }

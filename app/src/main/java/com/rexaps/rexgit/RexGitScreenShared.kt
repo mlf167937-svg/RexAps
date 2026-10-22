@@ -211,6 +211,7 @@ internal class RexGitScreenHost(
     val bumpVersion: MutableState<Boolean>,
     val commitType: MutableState<String>,
     val commitFolder: MutableState<String>,
+    val useGitDevOnPush: MutableState<Boolean>,
 
     // home
     val homeTab: MutableState<Int>,
@@ -219,15 +220,16 @@ internal class RexGitScreenHost(
 
     // repository
     val showChanges: MutableState<Boolean>,
+    val repoTab: MutableState<Int>,
     val createMenu: MutableState<Boolean>,
     val createKind: MutableState<CreateKind?>,
     val actionTarget: MutableState<RexGitFile?>,
     val deleteTarget: MutableState<RexGitFile?>
 ) {
-    /** Push opens the commit dialog, or the GitDev guide while it is still locked. */
+    /** Normal Push is always available; GitDev is an optional metadata mode. */
     fun requestPush(state: RexGitUiState) {
-        if (state.gitDev.isReady) pushDialog.value = true
-        else gitDevDialog.value = true
+        useGitDevOnPush.value = false
+        pushDialog.value = true
     }
 }
 
@@ -244,12 +246,14 @@ internal fun rememberRexGitScreenHost(): RexGitScreenHost {
     val bumpVersion = rememberSaveable { mutableStateOf(true) }
     val commitType = rememberSaveable { mutableStateOf(RexGitCommitType.FIX.name) }
     val commitFolder = rememberSaveable { mutableStateOf("") }
+    val useGitDevOnPush = rememberSaveable { mutableStateOf(false) }
 
     val homeTab = rememberSaveable { mutableStateOf(0) }
     val localQuery = rememberSaveable { mutableStateOf("") }
     val githubQuery = rememberSaveable { mutableStateOf("") }
 
     val showChanges = rememberSaveable { mutableStateOf(false) }
+    val repoTab = rememberSaveable { mutableStateOf(0) }
     val createMenu = remember { mutableStateOf(false) }
     val createKind = remember { mutableStateOf<CreateKind?>(null) }
     val actionTarget = remember { mutableStateOf<RexGitFile?>(null) }
@@ -266,10 +270,12 @@ internal fun rememberRexGitScreenHost(): RexGitScreenHost {
             bumpVersion = bumpVersion,
             commitType = commitType,
             commitFolder = commitFolder,
+            useGitDevOnPush = useGitDevOnPush,
             homeTab = homeTab,
             localQuery = localQuery,
             githubQuery = githubQuery,
             showChanges = showChanges,
+            repoTab = repoTab,
             createMenu = createMenu,
             createKind = createKind,
             actionTarget = actionTarget,
@@ -322,6 +328,7 @@ internal fun RexGitScreenController(
             val suggestedType = RexGitCommitMeta.inferType(state.gitStatus.changes)
             host.commitFolder.value = suggested ?: detectedCommitFolders.firstOrNull().orEmpty()
             host.commitType.value = suggestedType.name
+            host.bumpVersion.value = suggestedType == RexGitCommitType.UPGRADE
         }
     }
 
@@ -343,6 +350,10 @@ internal fun RexGitScreenController(
             state.currentDirectory != null -> viewModel.openParent()
             else -> viewModel.backToRepositories()
         }
+    }
+
+    LaunchedEffect(state.selectedRepository?.path) {
+        host.repoTab.value = 0
     }
 
     val onRepositoryScreen = state.selectedRepository != null && state.editorPath == null
@@ -456,10 +467,16 @@ internal fun RexGitScreenController(
                 message = host.commitMessage.value,
                 onMessageChange = { host.commitMessage.value = it },
                 type = RexGitCommitType.valueOf(host.commitType.value),
-                onTypeChange = { host.commitType.value = it.name },
+                onTypeChange = {
+                    host.commitType.value = it.name
+                    host.bumpVersion.value = it == RexGitCommitType.UPGRADE
+                },
                 folder = host.commitFolder.value,
                 folders = detectedCommitFolders,
                 packagePath = gitDev.packagePath,
+                useGitDev = host.useGitDevOnPush.value,
+                gitDevAvailable = gitDev.isReady,
+                onUseGitDevChange = { host.useGitDevOnPush.value = it },
                 onFolderChange = { host.commitFolder.value = it },
                 bumpVersion = host.bumpVersion.value,
                 onBumpChange = { host.bumpVersion.value = it },
@@ -470,7 +487,8 @@ internal fun RexGitScreenController(
                         message = host.commitMessage.value.trim(),
                         bumpVersion = host.bumpVersion.value,
                         commitType = RexGitCommitType.valueOf(host.commitType.value),
-                        commitFolder = host.commitFolder.value
+                        commitFolder = host.commitFolder.value,
+                        useGitDev = host.useGitDevOnPush.value
                     )
                 }
             )

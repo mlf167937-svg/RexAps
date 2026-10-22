@@ -244,11 +244,18 @@ class RexGitRepositoryManager {
         url: String,
         name: String,
         username: String? = null,
-        token: String? = null
+        token: String? = null,
+        accountNickname: String? = username,
+        globalOwner: String? = null
     ): RexGitNativeResult {
+        val destination = if (!globalOwner.isNullOrBlank()) {
+            RexGitStorage.globalRepository(globalOwner, name)
+        } else {
+            RexGitStorage.repository(name, accountNickname)
+        }
         return native.clone(
             url = url,
-            destination = RexGitStorage.repository(name),
+            destination = destination,
             username = username,
             token = token
         )

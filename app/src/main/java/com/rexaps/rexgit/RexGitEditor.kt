@@ -652,6 +652,13 @@ internal fun EditorTextArea(
     val language = remember(path) { RexGitSyntax.detect(path) }
     val field = editor.textField
     val fontPx = editor.fontPx
+    val editorScroll = remember(path) { androidx.compose.foundation.ScrollState(0) }
+    val lineCount = field.text.count { it == '\n' } + 1
+    val gutterWidth = when {
+        lineCount >= 1000 -> 44.dp
+        lineCount >= 100 -> 36.dp
+        else -> 28.dp
+    }
 
     val syntaxColors = RexGitSyntaxColors(
         keyword = scheme.primary,
@@ -687,27 +694,52 @@ internal fun EditorTextArea(
         color = scheme.surface,
         border = BorderStroke(1.dp, scheme.outlineVariant)
     ) {
-        BasicTextField(
-            value = field,
-            onValueChange = editor::onValueChange,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = FontFamily.Monospace,
-                color = scheme.onSurface,
-                fontSize = fontPx.sp,
-                lineHeight = (fontPx * 1.4f).sp
-            ),
-            visualTransformation = visualTransformation,
-            cursorBrush = SolidColor(scheme.primary),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
-                autoCorrect = false
-            ),
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .focusRequester(editor.focusRequester)
-                .padding(14.dp)
-        )
+        Row(Modifier.fillMaxSize()) {
+            // A synchronized, low-contrast gutter keeps code line numbers visible while scrolling.
+            Column(
+                modifier = Modifier
+                    .width(gutterWidth)
+                    .fillMaxHeight()
+                    .verticalScroll(editorScroll)
+                    .padding(start = 8.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    (1..lineCount).joinToString("\n"),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                        color = scheme.onSurfaceVariant.copy(alpha = 0.72f),
+                        fontSize = fontPx.sp,
+                        lineHeight = (fontPx * 1.4f).sp
+                    ),
+                    maxLines = Int.MAX_VALUE,
+                    softWrap = false
+                )
+            }
+            BasicTextField(
+                value = field,
+                onValueChange = editor::onValueChange,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = FontFamily.Monospace,
+                    color = scheme.onSurface,
+                    fontSize = fontPx.sp,
+                    lineHeight = (fontPx * 1.4f).sp
+                ),
+                visualTransformation = visualTransformation,
+                cursorBrush = SolidColor(scheme.primary),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    autoCorrect = false
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .horizontalScroll(rememberScrollState())
+                    .verticalScroll(editorScroll)
+                    .focusRequester(editor.focusRequester)
+                    .padding(top = 14.dp, bottom = 14.dp, end = 14.dp)
+            )
+        }
     }
 }
 

@@ -259,8 +259,11 @@ internal fun RexGitScreenLandscape(
                         host = host,
                         onBack = viewModel::backToRepositories,
                         onRefresh = viewModel::refreshStatus,
+                        onRefreshHub = viewModel::refreshRepositoryHub,
+                        onDownloadAsset = viewModel::downloadGithubAsset,
                         onOpen = viewModel::openFile,
                         onNavigate = { path ->
+                            host.repoTab.value = 1
                             if (path == null) viewModel.openRoot()
                             else viewModel.openDirectory(path)
                         },
@@ -273,7 +276,8 @@ internal fun RexGitScreenLandscape(
                         onRefresh = viewModel::refresh,
                         onSelect = viewModel::selectRepository,
                         onClone = viewModel::cloneRepository,
-                        onSwitch = viewModel::switchAccount
+                        onSwitch = viewModel::switchAccount,
+                        onSearchGithub = viewModel::searchGithubRepositories
                     )
                 }
             }
@@ -292,7 +296,8 @@ private fun HomeScreenLandscape(
     onRefresh: () -> Unit,
     onSelect: (RexGitRepository) -> Unit,
     onClone: (RexGitGithubRepository) -> Unit,
-    onSwitch: (Int) -> Unit
+    onSwitch: (Int) -> Unit,
+    onSearchGithub: (String) -> Unit
 ) {
     var tab by host.homeTab
     val busy = state.isLoading || state.isRepoLoading
@@ -381,7 +386,8 @@ private fun HomeScreenLandscape(
                     onQueryChange = { host.githubQuery.value = it },
                     onConnect = onGithub,
                     onClone = onClone,
-                    onOpen = onSelect
+                    onOpen = onSelect,
+                    onSearch = onSearchGithub
                 )
             }
         }
@@ -519,7 +525,8 @@ private fun GithubTabLandscape(
     onQueryChange: (String) -> Unit,
     onConnect: () -> Unit,
     onClone: (RexGitGithubRepository) -> Unit,
-    onOpen: (RexGitRepository) -> Unit
+    onOpen: (RexGitRepository) -> Unit,
+    onSearch: (String) -> Unit
 ) {
     if (!state.isGithubConnected) {
         EmptyState(
@@ -533,10 +540,10 @@ private fun GithubTabLandscape(
         return
     }
 
-    val repos = remember(state.githubRepositories, query) {
-        state.githubRepositories.filter {
-            it.fullName.contains(query.trim(), ignoreCase = true)
-        }
+    val activeSearch = query.isNotBlank() && state.githubSearchMode && state.githubSearchQuery.equals(query.trim(), ignoreCase = true)
+    val repoSource = if (activeSearch) state.githubSearchResults else state.githubRepositories
+    val repos = remember(repoSource, query, activeSearch) {
+        if (activeSearch) repoSource else repoSource.filter { it.fullName.contains(query.trim(), ignoreCase = true) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -544,8 +551,9 @@ private fun GithubTabLandscape(
         SearchField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = "Search GitHub repositories",
-            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp)
+            placeholder = "Search repositories (tap icon for global search)",
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp),
+            onSearch = { onSearch(query) }
         )
 
         ProgressSlot(state.isGithubLoading)
@@ -569,7 +577,10 @@ private fun GithubTabLandscape(
             }
 
             items(repos, key = { it.fullName }) { repo ->
-                val local = state.repositories.firstOrNull { it.name == repo.name }
+                val owner = repo.fullName.substringBefore('/')
+                val local = state.repositories.firstOrNull {
+                    it.name.equals(repo.name, true) && if (it.globalClone) it.globalOwner.equals(owner, true) else it.accountNickname.equals(owner, true)
+                }
 
                 GithubRepositoryCard(
                     repo = repo,
@@ -594,6 +605,8 @@ private fun RepositoryScreenLandscape(
     host: RexGitScreenHost,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onRefreshHub: () -> Unit,
+    onDownloadAsset: (String, String) -> Unit,
     onOpen: (RexGitFile) -> Unit,
     onNavigate: (String?) -> Unit,
     onPull: () -> Unit
@@ -686,19 +699,31 @@ private fun RepositoryScreenLandscape(
             )
         }
 
-        // ----- right pane: files -----
-        RepositoryFiles(
-            state = state,
-            repo = repo,
-            onOpen = onOpen,
-            onMore = { host.actionTarget.value = it },
-            onNavigate = onNavigate,
-            onNew = { host.createMenu.value = true },
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .padding(top = 8.dp)
-        )
+        // ----- right pane: README / Code / Actions / Release -----
+        Column(
+            Modifier.weight(1f).fillMaxHeight().padding(top = 8.dp)
+        ) {
+            RepositoryTabBar(
+                selected = host.repoTab.value,
+                onSelect = { host.repoTab.value = it }
+            )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (host.repoTab.value) {
+                    0 -> RexGitReadmePreview(repo = repo, content = state.readmeContent, modifier = Modifier.fillMaxSize())
+                    1 -> RepositoryFiles(
+                        state = state,
+                        repo = repo,
+                        onOpen = onOpen,
+                        onMore = { host.actionTarget.value = it },
+                        onNavigate = onNavigate,
+                        onNew = { host.createMenu.value = true },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                    else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
     }
 }
 
