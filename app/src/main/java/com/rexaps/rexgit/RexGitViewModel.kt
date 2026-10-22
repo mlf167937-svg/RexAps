@@ -326,8 +326,15 @@ class RexGitViewModel(
                         workflowRuns = emptyList(),
                         workflowArtifacts = emptyList(),
                         releases = emptyList(),
+                        repositoryMetadata = null,
+                        repositoryTags = emptyList(),
                         isRepoHubLoading = true,
                         repoHubError = null,
+                        actionsError = null,
+                        releasesError = null,
+                        downloadError = null,
+                        downloadedBytes = 0L,
+                        downloadTotalBytes = null,
                         message = null
                     )
                 }
@@ -355,8 +362,15 @@ class RexGitViewModel(
                 workflowRuns = emptyList(),
                 workflowArtifacts = emptyList(),
                 releases = emptyList(),
+                repositoryMetadata = null,
+                repositoryTags = emptyList(),
                 isRepoHubLoading = false,
                 repoHubError = null,
+                actionsError = null,
+                releasesError = null,
+                downloadError = null,
+                downloadedBytes = 0L,
+                downloadTotalBytes = null,
                 downloadingArtifact = null,
                 editorPath = null,
                 editorContent = "",
@@ -757,20 +771,34 @@ class RexGitViewModel(
                     return@launch
                 }
                 val auth = try { externalGithubAuth() } catch (_: Throwable) { null }
+                var actionsError: String? = null
+                var releasesError: String? = null
+                val metadata = try { github.getRepository(auth?.token, slug.first, slug.second) } catch (t: Throwable) {
+                    null
+                }
                 val snapshot = try { github.loadActions(auth?.token, slug.first, slug.second) } catch (t: Throwable) {
+                    actionsError = t.readableMessage("Could not load GitHub Actions")
                     RexGitActionsSnapshot(emptyList(), emptyList(), emptyList())
                 }
-                val releaseData = try { github.listReleases(auth?.token, slug.first, slug.second) } catch (_: Throwable) { emptyList() }
+                val releaseData = try { github.listReleases(auth?.token, slug.first, slug.second) } catch (t: Throwable) {
+                    releasesError = t.readableMessage("Could not load Releases")
+                    emptyList()
+                }
+                val tags = try { github.listTags(auth?.token, slug.first, slug.second) } catch (_: Throwable) { emptyList() }
                 _state.update { cur ->
                     if (cur.selectedRepository?.path != repo.path) cur else cur.copy(
                         workflows = snapshot.workflows,
                         workflowRuns = snapshot.runs,
                         workflowArtifacts = snapshot.artifacts,
                         releases = releaseData,
+                        repositoryMetadata = metadata,
+                        repositoryTags = tags,
                         isRepoHubLoading = false,
-                        repoHubError = if (snapshot.workflows.isEmpty() && snapshot.runs.isEmpty() && releaseData.isEmpty()) {
-                            "No GitHub Actions or releases were found, or this token cannot access them."
-                        } else null
+                        repoHubError = if (metadata == null && snapshot.workflows.isEmpty() && releaseData.isEmpty() && tags.isEmpty()) {
+                            "GitHub repository data is unavailable. Verify the owner/repository and selected account access."
+                        } else null,
+                        actionsError = actionsError,
+                        releasesError = releasesError
                     )
                 }
             } catch (t: Throwable) {
@@ -781,7 +809,7 @@ class RexGitViewModel(
 
     fun refreshRepositoryHub() {
         val repo = _state.value.selectedRepository ?: return
-        _state.update { it.copy(isRepoHubLoading = true, repoHubError = null) }
+        _state.update { it.copy(isRepoHubLoading = true, repoHubError = null, actionsError = null, releasesError = null) }
         loadRepositoryGithubData(repo)
     }
 
@@ -789,10 +817,17 @@ class RexGitViewModel(
         if (_state.value.selectedRepository == null) return
         val name = rawName.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifBlank { "github-download.zip" }
         launchIO {
-            _state.update { it.copy(downloadingArtifact = name, repoHubError = null) }
+            _state.update {
+                it.copy(
+                    downloadingArtifact = name,
+                    downloadedBytes = 0L,
+                    downloadTotalBytes = null,
+                    downloadError = null
+                )
+            }
             try {
                 val auth = try { externalGithubAuth() } catch (_: Throwable) { null }
-                val downloadDir = RexGitStorage.downloadsDirectory()
+                val downloadDir = RexGitStorage.artifactsDirectory()
                 val requested = File(downloadDir, name)
                 val output = if (!requested.exists()) requested else {
                     val base = requested.nameWithoutExtension
@@ -803,12 +838,25 @@ class RexGitViewModel(
                     candidate
                 }
                 val accept = if (url.contains("/releases/assets/")) "application/octet-stream" else "application/vnd.github+json"
-                github.download(url, auth?.token, output, accept)
+                github.download(url, auth?.token, output, accept) { received, total ->
+                    _state.update { cur ->
+                        cur.copy(
+                            downloadedBytes = received,
+                            downloadTotalBytes = total
+                        )
+                    }
+                }
                 _state.update { it.copy(message = "Downloaded $name to ${output.parentFile?.absolutePath}") }
             } catch (t: Throwable) {
-                _state.update { it.copy(repoHubError = t.readableMessage("Download failed")) }
+                _state.update { it.copy(downloadError = t.readableMessage("Download failed")) }
             } finally {
-                _state.update { it.copy(downloadingArtifact = null) }
+                _state.update {
+                    it.copy(
+                        downloadingArtifact = null,
+                        downloadedBytes = 0L,
+                        downloadTotalBytes = null
+                    )
+                }
             }
         }
     }

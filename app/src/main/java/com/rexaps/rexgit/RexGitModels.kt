@@ -63,7 +63,13 @@ data class RexGitGithubRepository(
     val defaultBranch: String,
     val description: String? = null,
     val stars: Int = 0,
-    val htmlUrl: String? = null
+    val htmlUrl: String? = null,
+    val forks: Int = 0,
+    val language: String? = null,
+    val licenseName: String? = null,
+    val updatedAt: String? = null,
+    val ownerLogin: String? = null,
+    val avatarUrl: String? = null
 )
 
 data class RexGitWorkflow(
@@ -84,7 +90,11 @@ data class RexGitWorkflowRun(
     val createdAt: String,
     val updatedAt: String,
     val htmlUrl: String,
-    val runNumber: Int
+    val runNumber: Int,
+    val branch: String = "",
+    val headSha: String = "",
+    val commitMessage: String = "",
+    val actor: String = ""
 )
 
 data class RexGitArtifact(
@@ -147,9 +157,16 @@ data class RexGitUiState(
     val workflowRuns: List<RexGitWorkflowRun> = emptyList(),
     val workflowArtifacts: List<RexGitArtifact> = emptyList(),
     val releases: List<RexGitRelease> = emptyList(),
+    val repositoryMetadata: RexGitGithubRepository? = null,
+    val repositoryTags: List<String> = emptyList(),
     val isRepoHubLoading: Boolean = false,
     val repoHubError: String? = null,
+    val actionsError: String? = null,
+    val releasesError: String? = null,
+    val downloadError: String? = null,
     val downloadingArtifact: String? = null,
+    val downloadedBytes: Long = 0L,
+    val downloadTotalBytes: Long? = null,
 
     val editorPath: String? = null,
     val editorContent: String = "",

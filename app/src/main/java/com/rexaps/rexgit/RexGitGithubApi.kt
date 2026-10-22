@@ -35,6 +35,21 @@ class RexGitGithubApi {
             .distinctBy { it.fullName }
     }
 
+    /** Reads full repository metadata for the repo header and README preview. */
+    fun getRepository(token: String?, owner: String, repository: String): RexGitGithubRepository {
+        val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}"
+        return parseRepository(JSONObject(request(slug, token.orEmpty())))
+    }
+
+    /** Lists tags separately because a repository can have tags without published Releases. */
+    fun listTags(token: String?, owner: String, repository: String): List<String> {
+        val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}/tags?per_page=100"
+        val json = JSONArray(request(slug, token.orEmpty()))
+        return (0 until json.length()).mapNotNull { index ->
+            json.getJSONObject(index).optString("name").takeIf { it.isNotBlank() && it != "null" }
+        }
+    }
+
     fun loadActions(token: String?, owner: String, repository: String): RexGitActionsSnapshot {
         val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}"
         val workflowsJson = JSONArray(request("$slug/actions/workflows?per_page=100", token.orEmpty()))
@@ -63,7 +78,11 @@ class RexGitGithubApi {
                 createdAt = item.optString("created_at"),
                 updatedAt = item.optString("updated_at"),
                 htmlUrl = item.optString("html_url"),
-                runNumber = item.optInt("run_number")
+                runNumber = item.optInt("run_number"),
+                branch = item.optString("head_branch"),
+                headSha = item.optString("head_sha"),
+                commitMessage = item.optJSONObject("head_commit")?.optString("message").orEmpty(),
+                actor = item.optJSONObject("actor")?.optString("login").orEmpty()
             )
         }
 
@@ -124,7 +143,13 @@ class RexGitGithubApi {
     }
 
     /** Downloads an artifact or release asset into a local file, following GitHub's signed redirects safely. */
-    fun download(url: String, token: String?, destination: File, accept: String = "application/vnd.github+json") {
+    fun download(
+        url: String,
+        token: String?,
+        destination: File,
+        accept: String = "application/vnd.github+json",
+        onProgress: (receivedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> }
+    ) {
         destination.parentFile?.mkdirs()
         var current = URL(url)
         var redirects = 0
@@ -154,8 +179,26 @@ class RexGitGithubApi {
                     val reason = try { JSONObject(body).optString("message") } catch (_: Throwable) { body.take(180) }
                     throw IllegalStateException("Download failed ($code): $reason")
                 }
-                connection.inputStream.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
+                val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
+                var receivedBytes = 0L
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                connection.inputStream.use { input ->
+                    destination.outputStream().buffered().use { output ->
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            receivedBytes += count
+                            onProgress(receivedBytes, totalBytes)
+                        }
+                    }
+                }
+                onProgress(receivedBytes, totalBytes ?: receivedBytes)
                 return
+            } catch (t: Throwable) {
+                // Do not leave a half-downloaded ZIP/asset behind after a network or storage failure.
+                destination.delete()
+                throw t
             } finally {
                 connection.disconnect()
             }
@@ -170,7 +213,13 @@ class RexGitGithubApi {
         defaultBranch = item.optString("default_branch", "main"),
         description = item.optString("description").takeIf { it.isNotBlank() && it != "null" },
         stars = item.optInt("stargazers_count"),
-        htmlUrl = item.optString("html_url").takeIf { it.isNotBlank() }
+        htmlUrl = item.optString("html_url").takeIf { it.isNotBlank() },
+        forks = item.optInt("forks_count"),
+        language = item.optString("language").takeIf { it.isNotBlank() && it != "null" },
+        licenseName = item.optJSONObject("license")?.optString("name")?.takeIf { it.isNotBlank() && it != "null" },
+        updatedAt = item.optString("updated_at").takeIf { it.isNotBlank() && it != "null" },
+        ownerLogin = item.optJSONObject("owner")?.optString("login")?.takeIf { it.isNotBlank() && it != "null" },
+        avatarUrl = item.optJSONObject("owner")?.optString("avatar_url")?.takeIf { it.isNotBlank() && it != "null" }
     )
 
     private fun pathPart(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
@@ -194,8 +243,8 @@ class RexGitGithubApi {
                 throw IllegalStateException(
                     when (code) {
                         401 -> "Invalid or expired token (401)"
-                        403 -> "Access denied or rate limited (403). $reason"
-                        404 -> "Repository, workflow, or release not found (404). Check visibility and token permissions."
+                        403 -> "Access denied or rate limited (403). For private repositories, check that the selected token can access this repository and has Actions: read permission. $reason"
+                        404 -> "Repository, workflow, or release not found (404). GitHub may also return 404 for a private repository the selected token cannot access; verify the owner/repository and token repository access."
                         else -> "GitHub API $code. $reason"
                     }.trim()
                 )

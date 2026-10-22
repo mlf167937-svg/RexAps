@@ -72,6 +72,10 @@ object RexGitStorage {
         return File(File(File(ensureDirectories(), GLOBAL_NAME), safeSegment(owner)), File(name).name)
     }
 
+    /** Dedicated public destination for GitHub Actions artifacts, logs and Release assets. */
+    fun artifactsDirectory(): File = File(ensureDirectories(), "Artefak").apply { mkdirs() }
+
+    /** Legacy general download location kept for callers outside the GitHub hub. */
     fun downloadsDirectory(): File = File(ensureDirectories(), "Downloads").apply { mkdirs() }
 
     /**
@@ -85,6 +89,7 @@ object RexGitStorage {
         val owners = root.listFiles()?.filter {
             it.isDirectory && !it.name.equals(GLOBAL_NAME, true) &&
                 !it.name.equals("Downloads", true) &&
+                !it.name.equals("Artefak", true) &&
                 !it.name.startsWith(".") && !File(it, ".git").exists()
         }.orEmpty()
         owners.forEach { accountDir ->

@@ -709,7 +709,14 @@ private fun RepositoryScreenLandscape(
             )
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (host.repoTab.value) {
-                    0 -> RexGitReadmePreview(repo = repo, content = state.readmeContent, modifier = Modifier.fillMaxSize())
+                    0 -> RexGitReadmePreview(
+                        repo = repo,
+                        content = state.readmeContent,
+                        metadata = state.repositoryMetadata,
+                        tags = state.repositoryTags,
+                        onFileLink = { link -> openReadmeFileLink(repo, link, onOpen) },
+                        modifier = Modifier.fillMaxSize()
+                    )
                     1 -> RepositoryFiles(
                         state = state,
                         repo = repo,
@@ -719,7 +726,7 @@ private fun RepositoryScreenLandscape(
                         onNew = { host.createMenu.value = true },
                         modifier = Modifier.fillMaxSize()
                     )
-                    2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                    2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, onChooseAccount = { host.githubDialog.value = true }, modifier = Modifier.fillMaxSize())
                     else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
                 }
             }
