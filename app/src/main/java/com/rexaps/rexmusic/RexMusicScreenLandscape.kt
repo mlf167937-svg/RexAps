@@ -10,6 +10,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
@@ -89,6 +91,22 @@ private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 private val TwoPi = (2.0 * PI).toFloat()
 private val DegToRad = (PI / 180.0).toFloat()
+
+/** Seeded, stable particle coordinates prevent shimmer caused by regenerating randomness per frame. */
+private data class AmbientParticle(
+    val x: Float,
+    val y: Float,
+    val radius: Float,
+    val phase: Float,
+    val speed: Float
+)
+
+private val LandscapeParticles = List(34) { index ->
+    // A deterministic low-discrepancy layout gives the canvas texture without a Random on every draw.
+    val x = ((index * 37 + 13) % 101) / 100f
+    val y = ((index * 61 + 29) % 97) / 96f
+    AmbientParticle(x, y, 0.7f + (index % 4) * 0.24f, index * 0.71f, 0.35f + (index % 5) * 0.13f)
+}
 
 /** Dua "jam" animasi bersama (lambat + denyut) agar hanya ada satu InfiniteTransition. */
 @Stable
@@ -343,6 +361,55 @@ private fun AmbientBackdrop(clock: MotionClock, modifier: Modifier) {
         val ring2 = Offset(w * 0.1f, h * 0.92f)
         drawCircle(tertiary.copy(alpha = 0.05f), radius = h * 0.18f, center = ring2, style = hairline)
         drawCircle(tertiary.copy(alpha = 0.035f), radius = h * 0.3f, center = ring2, style = hairline)
+
+        // A barely visible drafting grid gives the interface depth without competing with song art.
+        val gridStep = 42.dp.toPx()
+        val gridColor = scheme.outlineVariant.copy(alpha = 0.045f)
+        var gridX = (w % gridStep) / 2f
+        while (gridX < w) {
+            drawLine(gridColor, Offset(gridX, 0f), Offset(gridX, h), 0.55.dp.toPx())
+            gridX += gridStep
+        }
+        var gridY = (h % gridStep) / 2f
+        while (gridY < h) {
+            drawLine(gridColor, Offset(0f, gridY), Offset(w, gridY), 0.55.dp.toPx())
+            gridY += gridStep
+        }
+
+        // Slow dust particles are intentionally dim; motion remains fluid and palette-aware.
+        LandscapeParticles.forEach { particle ->
+            val drift = slow * TwoPi * particle.speed + particle.phase
+            val x = w * particle.x + sin(drift) * w * 0.009f
+            val y = h * particle.y + cos(drift * 0.73f) * h * 0.012f
+            val alpha = (0.035f + 0.055f * ((sin(drift) + 1f) / 2f)) * (0.7f + pulse * 0.3f)
+            drawCircle(
+                color = if (particle.phase.toInt() % 2 == 0) primary.copy(alpha = alpha)
+                else tertiary.copy(alpha = alpha * 0.8f),
+                radius = particle.radius.dp.toPx(),
+                center = Offset(x, y)
+            )
+        }
+
+        // A discreet audio-spectrum signature lives near the lower edge of the backdrop.
+        val spectrumBase = h * 0.94f
+        val spectrumWidth = w * 0.34f
+        val spectrumStart = w * 0.57f
+        val bars = 48
+        val barGap = 3.dp.toPx()
+        val barWidth = (spectrumWidth - barGap * (bars - 1)) / bars
+        for (index in 0 until bars) {
+            val envelope = sin((index.toFloat() / bars) * PI.toFloat()).toFloat()
+            val wave = abs(sin(index * 0.39f + slow * TwoPi * 1.5f))
+            val barHeight = (2.5f + envelope * (5f + 13f * wave) * (0.45f + pulse * 0.55f)).dp.toPx()
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    listOf(primary.copy(alpha = 0.13f), tertiary.copy(alpha = 0.035f))
+                ),
+                topLeft = Offset(spectrumStart + index * (barWidth + barGap), spectrumBase - barHeight),
+                size = Size(barWidth.coerceAtLeast(1f), barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+            )
+        }
     }
 }
 
@@ -474,8 +541,46 @@ private fun NavigationDock(
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
+        if (!compactHeight) {
+            Spacer(Modifier.height(7.dp))
+            DockStatusSignal(clock)
+            Spacer(Modifier.height(12.dp))
+        } else {
+            Spacer(Modifier.height(10.dp))
+        }
     }
+}
+
+@Composable
+private fun DockStatusSignal(clock: MotionClock) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            val offset = index * 0.23f
+            val height = 3.5.dp + (clock.pulse.value * (5 + index % 2 * 2) + sin(clock.slow.value * TwoPi + offset) * 2f + 2f).dp
+            Box(
+                Modifier
+                    .padding(horizontal = 1.5.dp)
+                    .width(2.5.dp)
+                    .height(height.coerceIn(3.dp, 12.dp))
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (index == 1) scheme.tertiary.copy(alpha = 0.8f) else scheme.primary.copy(alpha = 0.65f))
+            )
+        }
+    }
+    Text(
+        text = "AUDIO ENGINE",
+        style = MaterialTheme.typography.labelSmall,
+        color = scheme.onSurfaceVariant.copy(alpha = 0.58f),
+        maxLines = 1,
+        modifier = Modifier.padding(top = 5.dp)
+    )
 }
 
 @Composable
