@@ -9,13 +9,30 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -31,11 +48,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rexaps.rexmusic.player.MusicPlayerCard
@@ -365,87 +385,107 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
             val useLandscapeLayout = maxWidth > maxHeight
 
             val screenContent: @Composable (Modifier) -> Unit = { contentModifier ->
-                Box(contentModifier) {
-                    when (tab) {
-                        TAB_HOME -> {
-                            HomeTab(
-                                state,
-                                actions,
-                                homeList,
-                                onBack
-                            )
-                        }
+                AnimatedContent(
+                    targetState = tab,
+                    modifier = contentModifier,
+                    transitionSpec = {
+                        (fadeIn(tween(230, easing = FastOutSlowInEasing)) +
+                            slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 22 }) togetherWith
+                            (fadeOut(tween(150)) +
+                                slideOutHorizontally(tween(190, easing = FastOutSlowInEasing)) { -it / 30 })
+                    },
+                    label = "RexMusicTabTransition"
+                ) { visibleTab ->
+                    Box(Modifier.fillMaxSize()) {
+                        when (visibleTab) {
+                            TAB_HOME -> {
+                                HomeTab(
+                                    state,
+                                    actions,
+                                    homeList,
+                                    onBack
+                                )
+                            }
 
-                        TAB_SYNC -> {
-                            RexMusicSyncScreen(onBack = { tab = TAB_HOME })
-                        }
+                            TAB_SYNC -> {
+                                RexMusicSyncScreen(onBack = { tab = TAB_HOME })
+                            }
 
-                        TAB_SEARCH -> {
-                            SearchTab(
-                                state = state,
-                                query = query,
-                                typing = typing && !state.offline.enabled,
-                                onQueryChange = {
-                                    query = it
-                                    if (!state.offline.enabled) {
-                                        if (it.isBlank()) {
-                                            vm.clearSearch()
-                                        } else {
-                                            vm.search(it)
+                            TAB_SEARCH -> {
+                                SearchTab(
+                                    state = state,
+                                    query = query,
+                                    typing = typing && !state.offline.enabled,
+                                    onQueryChange = {
+                                        query = it
+                                        if (!state.offline.enabled) {
+                                            if (it.isBlank()) {
+                                                vm.clearSearch()
+                                            } else {
+                                                vm.search(it)
+                                            }
                                         }
-                                    }
-                                },
-                                onClear = {
-                                    query = ""
-                                    vm.clearSearch()
-                                },
-                                actions = actions,
-                                listState = searchList
-                            )
+                                    },
+                                    onClear = {
+                                        query = ""
+                                        vm.clearSearch()
+                                    },
+                                    actions = actions,
+                                    listState = searchList
+                                )
+                            }
+
+                            TAB_PLAYLIST -> {
+                                PlaylistTab(
+                                    state = state,
+                                    actions = actions,
+                                    listState = playlistList,
+                                    selectedPlaylistName = selectedPlaylistName,
+                                    onOpenPlaylist = { selectedPlaylistName = it },
+                                    onBackFromDetail = { selectedPlaylistName = null },
+                                    onRequestDeletePlaylist = { pendingDeletePlaylistName = it }
+                                )
+                            }
+
+                            else -> {
+                                LibraryTab(
+                                    state,
+                                    libTab,
+                                    { libTab = it },
+                                    actions,
+                                    libraryList
+                                )
+                            }
                         }
 
-                        TAB_PLAYLIST -> {
-                            PlaylistTab(
-                                state = state,
-                                actions = actions,
-                                listState = playlistList,
-                                selectedPlaylistName = selectedPlaylistName,
-                                onOpenPlaylist = { selectedPlaylistName = it },
-                                onBackFromDetail = { selectedPlaylistName = null },
-                                onRequestDeletePlaylist = { pendingDeletePlaylistName = it }
-                            )
-                        }
-
-                        else -> {
-                            LibraryTab(
-                                state,
-                                libTab,
-                                { libTab = it },
-                                actions,
-                                libraryList
-                            )
-                        }
+                        ErrorCard(
+                            error = state.error,
+                            onDismiss = actions.dismissError,
+                            modifier = Modifier.align(Alignment.TopCenter)
+                        )
                     }
-
-                    ErrorCard(
-                        error = state.error,
-                        onDismiss = actions.dismissError,
-                        modifier = Modifier.align(Alignment.TopCenter)
-                    )
                 }
             }
 
             val miniPlayerContent: @Composable () -> Unit = {
                 val now = state.nowPlaying
-                if (now != null && tab != TAB_SYNC) {
-                    MiniPlayer(
-                        track = now,
-                        state = state,
-                        positionState = positionState,
-                        onToggle = { vm.togglePlay() },
-                        onNext = { vm.next() },
-                        onOpen = { showPlayer = true }
-                    )
+                AnimatedVisibility(
+                    visible = now != null,
+                    enter = fadeIn(tween(200, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(250, easing = FastOutSlowInEasing)) { it / 3 },
+                    exit = fadeOut(tween(130)) +
+                        slideOutVertically(tween(180, easing = FastOutSlowInEasing)) { it / 4 }
+                ) {
+                    if (now != null) {
+                        MiniPlayer(
+                            track = now,
+                            state = state,
+                            positionState = positionState,
+                            onToggle = { vm.togglePlay() },
+                            onNext = { vm.next() },
+                            onOpen = { showPlayer = true }
+                        )
+                    }
                 }
             }
 
@@ -480,9 +520,16 @@ private fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
 
         AnimatedVisibility(
             visible = showPlayer,
-            enter = slideInVertically(tween(280)) { it } +
-                fadeIn(tween(200)),
-            exit = slideOutVertically(tween(220)) { it } +
+            enter = slideInVertically(tween(300, easing = FastOutSlowInEasing)) { it / 12 } +
+                scaleIn(
+                    initialScale = 0.965f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(tween(240, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it / 10 } +
+                scaleOut(targetScale = 0.985f, animationSpec = tween(200)) +
                 fadeOut(tween(160))
         ) {
             val track = state.nowPlaying
@@ -945,121 +992,236 @@ private fun MiniPlayer(
 ) {
     val scheme = MaterialTheme.colorScheme
     val busy = state.phase.isPlayerBusy
+    val shape = RoundedCornerShape(18.dp)
+    val elevation by animateDpAsState(
+        targetValue = if (state.isPlaying) 9.dp else 3.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "miniPlayerElevation"
+    )
+    val artworkScale by animateFloatAsState(
+        targetValue = if (state.isPlaying) 1.035f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "miniPlayerArtworkScale"
+    )
+    val cardBrush = if (state.isPlaying) {
+        Brush.horizontalGradient(
+            listOf(
+                scheme.primary.copy(alpha = 0.11f),
+                scheme.surfaceVariant.copy(alpha = 0.98f),
+                scheme.tertiary.copy(alpha = 0.07f)
+            )
+        )
+    } else {
+        Brush.horizontalGradient(listOf(scheme.surfaceVariant, scheme.surfaceVariant))
+    }
 
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(scheme.surfaceVariant)
-            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.48f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 9.dp, vertical = 6.dp)
+            .shadow(elevation, shape, clip = false)
+            .clip(shape)
+            .background(cardBrush)
+            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.42f), shape)
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
             .clickable(onClick = onOpen)
     ) {
-        Row(
-            Modifier.padding(
-                start = 8.dp,
-                end = 4.dp,
-                top = 8.dp,
-                bottom = 8.dp
-            ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CoverThumb(
-                track.cover,
-                44.dp
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(
-                Modifier.weight(1f)
+        AnimatedContent(
+            targetState = track,
+            transitionSpec = {
+                (fadeIn(tween(170)) +
+                    slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 5 }) togetherWith
+                    (fadeOut(tween(110)) +
+                        slideOutVertically(tween(170, easing = FastOutSlowInEasing)) { -it / 6 })
+            },
+            label = "miniPlayerTrackChange"
+        ) { displayedTrack ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 5.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    track.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                CoverThumb(
+                    displayedTrack.cover,
+                    46.dp,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = artworkScale
+                        scaleY = artworkScale
+                    },
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                Text(
-                    track.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                Spacer(Modifier.width(12.dp))
 
-            if (busy) {
-                Box(
-                    Modifier.size(44.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(22.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        displayedTrack.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            displayedTrack.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (state.isPlaying) {
+                            Spacer(Modifier.width(7.dp))
+                            MiniPlaybackPulse(scheme.primary)
+                        }
+                    }
                 }
-            } else {
+
+                if (busy) {
+                    Box(
+                        Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                } else {
+                    AnimatedContent(
+                        targetState = state.isPlaying,
+                        transitionSpec = {
+                            (fadeIn(tween(120)) + scaleIn(initialScale = 0.78f, animationSpec = tween(150))) togetherWith
+                                (fadeOut(tween(80)) + scaleOut(targetScale = 0.82f, animationSpec = tween(110)))
+                        },
+                        label = "miniPlayerPlayPauseMorph"
+                    ) { playing ->
+                        RexIconButton(
+                            icon = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            description = if (playing) "Jeda" else "Putar",
+                            onClick = onToggle,
+                            size = 48.dp,
+                            iconSize = 25.dp,
+                            tint = scheme.onPrimary,
+                            background = scheme.primary
+                        )
+                    }
+                }
+
                 RexIconButton(
-                    if (state.isPlaying) {
-                        Icons.Default.Pause
-                    } else {
-                        Icons.Default.PlayArrow
-                    },
-
-                    if (state.isPlaying) {
-                        "Jeda"
-                    } else {
-                        "Putar"
-                    },
-
-                    onToggle
+                    icon = Icons.Default.SkipNext,
+                    description = "Lagu berikutnya",
+                    onClick = onNext,
+                    size = 48.dp,
+                    iconSize = 24.dp,
+                    tint = scheme.onSurface
                 )
             }
-
-            RexIconButton(
-                Icons.Default.SkipNext,
-                "Lagu berikutnya",
-                onNext
-            )
         }
 
         MiniProgress(
-            positionState,
-            state.durationMs
+            positionState = positionState,
+            durationMs = state.durationMs,
+            isPlaying = state.isPlaying
         )
+    }
+}
+
+@Composable
+private fun MiniPlaybackPulse(color: Color) {
+    // Infinite transitions exist only while the playing indicator is composed.
+    val transition = rememberInfiniteTransition(label = "miniPlaybackPulse")
+    val first by transition.animateFloat(
+        initialValue = 4f,
+        targetValue = 12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(430, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseBarOne"
+    )
+    val second by transition.animateFloat(
+        initialValue = 10f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(360, delayMillis = 70, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseBarTwo"
+    )
+    val third by transition.animateFloat(
+        initialValue = 5f,
+        targetValue = 13f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(390, delayMillis = 130, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseBarThree"
+    )
+    Row(
+        modifier = Modifier.height(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        listOf(first, second, third).forEach { height ->
+            Box(
+                Modifier
+                    .width(2.5.dp)
+                    .height(height.dp.coerceAtLeast(3.dp))
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(color)
+            )
+        }
     }
 }
 
 @Composable
 private fun MiniProgress(
     positionState: State<Long>,
-    durationMs: Long
+    durationMs: Long,
+    isPlaying: Boolean
 ) {
     val scheme = MaterialTheme.colorScheme
-
-    val progress = if (durationMs > 0) {
-        (
-            positionState.value.toFloat() / durationMs
-        ).coerceIn(0f, 1f)
+    val rawProgress = if (durationMs > 0L) {
+        (positionState.value.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
+    val progress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(
+            durationMillis = if (isPlaying) 260 else 150,
+            easing = LinearEasing
+        ),
+        label = "miniPlayerProgress"
+    )
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(2.dp)
-            .background(
-                scheme.onSurface.copy(alpha = 0.1f)
-            )
+            .height(3.dp)
+            .background(scheme.onSurface.copy(alpha = 0.11f))
     ) {
         Box(
             Modifier
                 .fillMaxWidth(progress)
                 .fillMaxHeight()
-                .background(scheme.primary)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(scheme.primary, scheme.tertiary)
+                    )
+                )
         )
     }
 }
