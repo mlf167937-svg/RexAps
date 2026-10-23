@@ -51,12 +51,23 @@ internal enum class Dest(val title: String, val navLabel: String, val icon: Imag
     ABOUT("About & Privacy", "About", null)
 }
 
-/** Entry point for the RexAps shell. The active RexAps MaterialTheme is intentionally left untouched. */
+/** Entry point for the RexAps shell. RexWARP keeps the host color palette and applies local shape tokens. */
 @Composable
 fun RexWarpScreen(
     modifier: Modifier = Modifier,
     onExit: (() -> Unit)? = null,
     viewModel: RexWarpViewModel = viewModel()
+) {
+    RexWarpTheme {
+        RexWarpScreenContent(modifier, onExit, viewModel)
+    }
+}
+
+@Composable
+private fun RexWarpScreenContent(
+    modifier: Modifier,
+    onExit: (() -> Unit)?,
+    viewModel: RexWarpViewModel
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -66,6 +77,7 @@ fun RexWarpScreen(
     val periods by viewModel.periods.collectAsStateWithLifecycle()
     val usageUi by viewModel.usageUi.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val allUsage by viewModel.allUsage.collectAsStateWithLifecycle()
 
     var dest by rememberSaveable { mutableStateOf(Dest.HOME) }
     var askedNotification by rememberSaveable { mutableStateOf(false) }
@@ -132,8 +144,17 @@ fun RexWarpScreen(
                             ui = usageUi, onPreset = viewModel::selectPreset, onGraph = viewModel::selectGraph,
                             onCustomRange = viewModel::setCustomRange
                         )
-                        Dest.HISTORY -> RexWarpHistoryScreen(rows = history)
-                        Dest.SPEED_TEST -> RexWarpSpeedTestScreen()
+                        Dest.HISTORY -> {
+                            val historyHourly by viewModel.historyHourly.collectAsStateWithLifecycle()
+                            RexWarpHistoryScreen(rows = history, graphRows = allUsage, hourlyRows = historyHourly)
+                        }
+                        Dest.SPEED_TEST -> RexWarpSpeedTestScreen(
+                            vpnConnected = when (state.connection) {
+                                RexWarpConnectionState.CONNECTED -> true
+                                RexWarpConnectionState.DISCONNECTED, RexWarpConnectionState.ERROR -> false
+                                RexWarpConnectionState.CONNECTING, RexWarpConnectionState.DISCONNECTING -> null
+                            }
+                        )
                         Dest.SETTINGS -> RexWarpSettingsScreen(
                             settings = settings, capabilities = viewModel.capabilities,
                             engineReason = state.engineUnavailableReason,
@@ -143,7 +164,7 @@ fun RexWarpScreen(
                             onResetToday = viewModel::resetToday, onResetAll = viewModel::resetAll,
                             onOpenAbout = { dest = Dest.ABOUT }
                         )
-                        Dest.DETAILS -> RexWarpDetailsScreen(state)
+                        Dest.DETAILS -> RexWarpDetailsScreen(state, onConnectClick = onConnectClick)
                         Dest.ABOUT -> RexWarpAboutScreen()
                     }
                 }

@@ -32,7 +32,7 @@ private class HandshakeTimeoutException : IOException("WireGuard handshake timed
 private class WarpNotActiveException(val value: String) : IOException("Cloudflare trace says warp=$value")
 
 /** Hasil https://www.cloudflare.com/cdn-cgi/trace yang dibaca LEWAT tunnel. */
-private data class WarpTrace(val warp: String, val colo: String? = null, val ip: String? = null) {
+private data class WarpTrace(val warp: String, val colo: String? = null) {
     val isWarp: Boolean get() = warp == "on" || warp == "plus"
 }
 
@@ -105,7 +105,7 @@ class RexWarpWireGuardTunnel(context: Context) : RexWarpTunnel {
             shutdown()
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "connect failed: ${e.javaClass.simpleName}: ${e.message}", e)
+            Log.e(TAG, "connect failed: ${e.javaClass.simpleName}")
             shutdown()
             // Kredensial lama mungkin sudah tidak diterima server -> daftar ulang di percobaan berikutnya.
             if (e is HandshakeTimeoutException) store.clear()
@@ -153,7 +153,7 @@ class RexWarpWireGuardTunnel(context: Context) : RexWarpTunnel {
             if (last.isWarp) break
             delay(1_000)
         }
-        Log.i(TAG, "trace result: $last")
+        Log.i(TAG, "trace verification: warp=${last.warp}, colo=${last.colo ?: "unavailable"}")
         last
     }
 
@@ -170,7 +170,7 @@ class RexWarpWireGuardTunnel(context: Context) : RexWarpTunnel {
                 val map = text.lineSequence()
                     .mapNotNull { l -> l.indexOf('=').takeIf { it > 0 }?.let { l.substring(0, it) to l.substring(it + 1).trim() } }
                     .toMap()
-                WarpTrace(map["warp"] ?: "missing", map["colo"], map["ip"])
+                WarpTrace(map["warp"] ?: "missing", map["colo"])
             } finally {
                 c.disconnect()
             }

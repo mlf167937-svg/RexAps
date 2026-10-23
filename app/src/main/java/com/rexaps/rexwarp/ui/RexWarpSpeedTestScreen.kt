@@ -23,7 +23,8 @@ import com.rexaps.rexwarp.speedtest.CloudflareSpeedTestWebView
 @Composable
 fun RexWarpSpeedTestScreen(
     modifier: Modifier = Modifier,
-    viewModel: RexWarpSpeedTestViewModel = viewModel()
+    viewModel: RexWarpSpeedTestViewModel = viewModel(),
+    vpnConnected: Boolean? = null
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -45,6 +46,6 @@ fun RexWarpSpeedTestScreen(
         }
     }
 
-    if (landscape) RexWarpSpeedTestScreenLandscape(state, webView, viewModel, modifier)
-    else RexWarpSpeedTestScreenPortrait(state, webView, viewModel, modifier)
+    if (landscape) RexWarpSpeedTestScreenLandscape(state, webView, viewModel, modifier, vpnConnected)
+    else RexWarpSpeedTestScreenPortrait(state, webView, viewModel, modifier, vpnConnected)
 }

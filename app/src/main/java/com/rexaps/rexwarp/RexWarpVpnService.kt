@@ -116,7 +116,7 @@ class RexWarpVpnService : VpnService() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "connect failed", e)
+                Log.w(TAG, "connect failed: ${e.javaClass.simpleName}")
                 // Ambil penyebab spesifik dari tunnel (mis. WARP_NOT_ACTIVE, REGISTRATION_FAILED).
                 val specific = (tunnel?.state?.value as? RexWarpTunnelState.Failed)?.error
                 handleFailure(specific ?: RexWarpError.TUNNEL_FAILED)

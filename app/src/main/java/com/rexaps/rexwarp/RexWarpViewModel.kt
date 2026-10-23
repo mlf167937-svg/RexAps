@@ -54,6 +54,12 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
         combine(selection.map { it.graph == RexWarpGraphRange.HOURS_24 }.distinctUntilChanged(), tick) { h, _ -> h }
             .flatMapLatest { wanted -> if (wanted) repo.usage.observeHours(24) else flowOf(emptyList()) }
 
+    /** History-only hourly data uses recorded minute rows; missing buckets remain unobserved. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val historyHourly: StateFlow<List<RexWarpBucket>?> = tick
+        .flatMapLatest { repo.usage.observeHours(24) }
+        .stateIn(viewModelScope, sharing, null)
+
     val periods: StateFlow<RexWarpPeriodSummaries?> = combine(allUsage, today) { rows, t ->
         rows?.let {
             val weekStart = t.with(TemporalAdjusters.previousOrSame(WeekFields.of(Locale.getDefault()).firstDayOfWeek))
@@ -74,15 +80,15 @@ class RexWarpViewModel(app: Application) : AndroidViewModel(app) {
                 val graphRange = sel.graph.days?.let { n -> DateRange(t.minusDays((n - 1).toLong()), t) } ?: sel.custom
                 val byDate = it.associateBy { d -> d.date }
                 graphRange?.days()?.map { d ->
-                    byDate[d]?.let { u -> RexWarpBucket(d.toString(), u.downloadBytes, u.uploadBytes) }
-                        ?: RexWarpBucket(d.toString(), 0, 0)
+                    byDate[d]?.let { u -> RexWarpBucket(d.toString(), u.downloadBytes, u.uploadBytes, hasData = true) }
+                        ?: RexWarpBucket(d.toString(), 0, 0, hasData = false)
                 }.orEmpty()
             }
             RexWarpUsageUi(
                 selection = sel, range = range,
                 rangeSummary = range?.let { r -> it.summary(r) } ?: RexWarpUsageSummary(),
                 graphBuckets = buckets, hasAnyData = it.isNotEmpty(),
-                hasDataInGraphRange = buckets.any { b -> b.totalBytes > 0 }
+                hasDataInGraphRange = buckets.any { b -> b.hasData }
             )
         }
     }.stateIn(viewModelScope, sharing, null)

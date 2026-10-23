@@ -60,6 +60,7 @@ class RexWarpUsageRepository(
 
             val dl = LongArray(hours)
             val ul = LongArray(hours)
+            val observed = BooleanArray(hours)
 
             rows.forEach { r ->
                 val idx =
@@ -71,6 +72,7 @@ class RexWarpUsageRepository(
                 ) {
                     dl[idx] += r.downloadBytes
                     ul[idx] += r.uploadBytes
+                    observed[idx] = true
                 }
             }
 
@@ -78,7 +80,8 @@ class RexWarpUsageRepository(
                 RexWarpBucket(
                     start.plusHours(i.toLong()).format(fmt),
                     dl[i],
-                    ul[i]
+                    ul[i],
+                    hasData = observed[i]
                 )
             }
         }

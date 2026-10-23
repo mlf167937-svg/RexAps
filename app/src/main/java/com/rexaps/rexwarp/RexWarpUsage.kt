@@ -9,7 +9,7 @@ data class RexWarpDailyUsage(val date: LocalDate, val downloadBytes: Long, val u
 }
 
 /** Satu batang grafik: bisa mewakili satu jam atau satu hari. */
-data class RexWarpBucket(val label: String, val downloadBytes: Long, val uploadBytes: Long) {
+data class RexWarpBucket(val label: String, val downloadBytes: Long, val uploadBytes: Long, val hasData: Boolean = true) {
     val totalBytes: Long get() = downloadBytes + uploadBytes
 }
 

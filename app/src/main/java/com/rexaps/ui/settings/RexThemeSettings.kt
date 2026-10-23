@@ -19,10 +19,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -107,9 +110,13 @@ fun RexThemeSettings(manager: RexThemeManager, modifier: Modifier = Modifier) {
             )
         )
         Spacer(Modifier.height(9.dp))
+        // Keep the category controls on one scrollable row on narrow screens.
+        // A fixed-width Row previously risked clipping the last categories on phones.
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
         ) {
             categories.forEach { c ->
                 FilterChip(
@@ -131,6 +138,31 @@ fun RexThemeSettings(manager: RexThemeManager, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(11.dp),
             verticalArrangement = Arrangement.spacedBy(11.dp)
         ) {
+            if (filtered.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 28.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Tema tidak ditemukan",
+                            color = Color(theme.text),
+                            fontWeight = rexFontWeight(theme.weightSemibold),
+                            fontSize = theme.fontHeading.sp,
+                            fontFamily = rexFontFamily(theme.fontFamilyUI)
+                        )
+                        Text(
+                            "Coba kata kunci atau kategori lain.",
+                            color = Color(theme.textMuted),
+                            fontSize = theme.fontBody.sp,
+                            fontFamily = rexFontFamily(theme.fontFamilyUI)
+                        )
+                    }
+                }
+            }
             items(filtered, key = { it.id }) { item ->
                 val active = selectedId == item.id
                 val tileShape = RoundedCornerShape(item.radiusLg.dp)

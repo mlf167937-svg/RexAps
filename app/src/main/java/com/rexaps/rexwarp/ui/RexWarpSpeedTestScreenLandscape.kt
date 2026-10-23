@@ -56,6 +56,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rexaps.rexwarp.RexWarpSpeedTestUiState
 import com.rexaps.rexwarp.RexWarpSpeedTestViewModel
 import com.rexaps.rexwarp.speedtest.CloudflareSpeedTestWebView
+import com.rexaps.rexwarp.ui.components.RexWarpSpeedTestHistorySection
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
@@ -65,7 +66,8 @@ internal fun RexWarpSpeedTestScreenLandscape(
     state: RexWarpSpeedTestUiState,
     webView: WebView?,
     viewModel: RexWarpSpeedTestViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vpnConnected: Boolean? = null
 ) {
     Row(
         modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -95,13 +97,14 @@ internal fun RexWarpSpeedTestScreenLandscape(
                 when {
                     state.running -> { CloudflareSpeedTestWebView.cancel(webView); viewModel.onCancelRequested() }
                     state.error != null && !state.engineReady -> { viewModel.onRetryLoading(); webView?.reload() }
-                    else -> { viewModel.onStartRequested(); CloudflareSpeedTestWebView.start(webView) }
+                    else -> { viewModel.onStartRequested(vpnConnected); CloudflareSpeedTestWebView.start(webView) }
                 }
             }
             AnimatedVisibility(state.error != null, enter = fadeIn(tween(220)) + scaleIn(initialScale = .97f, animationSpec = tween(220)), exit = fadeOut(tween(160))) {
                 state.error?.let { ErrorPanel(it) }
             }
             PrivacyPanel()
+            RexWarpSpeedTestHistorySection(viewModel)
             Spacer(Modifier.height(8.dp))
         }
     }

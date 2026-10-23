@@ -10,12 +10,12 @@ import com.rexaps.rexwarp.RexWarpFormat
 import com.rexaps.rexwarp.RexWarpState
 
 @Composable
-fun RexWarpDetailsScreen(state: RexWarpState, modifier: Modifier = Modifier) {
+fun RexWarpDetailsScreen(state: RexWarpState, modifier: Modifier = Modifier, onConnectClick: (() -> Unit)? = null) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val connected = state.connection == RexWarpConnectionState.CONNECTED
     val seconds by rememberSessionSeconds(state.sessionStartElapsedMs, connected)
-    if (landscape) RexWarpDetailsScreenLandscape(state, seconds, modifier)
-    else RexWarpDetailsScreenPortrait(state, seconds, modifier)
+    if (landscape) RexWarpDetailsScreenLandscape(state, seconds, modifier, onConnectClick)
+    else RexWarpDetailsScreenPortrait(state, seconds, modifier, onConnectClick)
 }
 
 @Composable

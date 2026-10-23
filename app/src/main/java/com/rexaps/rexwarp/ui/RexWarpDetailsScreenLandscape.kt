@@ -12,9 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexwarp.RexWarpState
+import com.rexaps.rexwarp.ui.components.RexWarpDiagnosticsPanel
 
 @Composable
-internal fun RexWarpDetailsScreenLandscape(state: RexWarpState, seconds: Long?, modifier: Modifier = Modifier) {
+internal fun RexWarpDetailsScreenLandscape(state: RexWarpState, seconds: Long?, modifier: Modifier = Modifier, onConnectClick: (() -> Unit)? = null) {
     Row(
         modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -47,6 +48,8 @@ internal fun RexWarpDetailsScreenLandscape(state: RexWarpState, seconds: Long?, 
                         RexWarpDetailsNetworkRows(state)
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                RexWarpDiagnosticsPanel(state, onConnectClick)
             }
         }
     }

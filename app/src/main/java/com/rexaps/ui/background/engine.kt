@@ -27,26 +27,34 @@ fun RexAmbientBackground(
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = if (motionEnabled) 1f else 0f,
-        animationSpec = infiniteRepeatable<Float>(
-            animation = tween<Float>(
-                durationMillis = if (level == RexAnimationLevel.SAVER) 26000 else 16500,
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
+        animationSpec = if (motionEnabled) {
+            infiniteRepeatable<Float>(
+                animation = tween<Float>(
+                    durationMillis = if (level == RexAnimationLevel.SAVER) 26000 else 16500,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            snap()
+        },
         label = "ambient-phase"
     )
 
     val sweep by transition.animateFloat(
         initialValue = if (motionEnabled) -0.25f else 0f,
         targetValue = if (motionEnabled) 1.25f else 0f,
-        animationSpec = infiniteRepeatable<Float>(
-            animation = tween<Float>(
-                durationMillis = if (level == RexAnimationLevel.SAVER) 30000 else 19000,
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
+        animationSpec = if (motionEnabled) {
+            infiniteRepeatable<Float>(
+                animation = tween<Float>(
+                    durationMillis = if (level == RexAnimationLevel.SAVER) 30000 else 19000,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            snap()
+        },
         label = "ambient-sweep"
     )
 

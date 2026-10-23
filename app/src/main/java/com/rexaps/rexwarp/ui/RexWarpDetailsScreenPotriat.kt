@@ -13,9 +13,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.rexaps.rexwarp.RexWarpState
+import com.rexaps.rexwarp.ui.components.RexWarpDiagnosticsPanel
 
 @Composable
-internal fun RexWarpDetailsScreenPortrait(state: RexWarpState, seconds: Long?, modifier: Modifier = Modifier) {
+internal fun RexWarpDetailsScreenPortrait(state: RexWarpState, seconds: Long?, modifier: Modifier = Modifier, onConnectClick: (() -> Unit)? = null) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Live connection information", style = MaterialTheme.typography.titleLarge)
         AnimatedVisibility(true, enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 14 }) {
@@ -31,5 +32,6 @@ internal fun RexWarpDetailsScreenPortrait(state: RexWarpState, seconds: Long?, m
                 }
             }
         }
+        RexWarpDiagnosticsPanel(state, onConnectClick)
     }
 }
