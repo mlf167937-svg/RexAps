@@ -6,6 +6,12 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+// Hindari kelas anotasi IntelliJ ganda dari annotations-23.0.0 dan
+// annotations-java5-17.0.0 yang masuk melalui dependency transitif.
+configurations.configureEach {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
+}
+
 android {
     namespace = "com.rexaps"
     compileSdk = 35
@@ -14,8 +20,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2720
-        versionName = "27.20"
+        versionCode = 2719
+        versionName = "27.19"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
