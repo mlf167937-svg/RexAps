@@ -142,7 +142,34 @@ class RexGitPushManager {
         return if (push.success) {
             RexGitPushResult(true, push.message, newVersion)
         } else {
-            RexGitPushResult(false, push.message, newVersion)
+            RexGitPushResult(false, explainPushFailure(push.message), newVersion)
+        }
+    }
+
+    /**
+     * Translate common JGit remote rejections into actionable guidance.
+     * Never retries with force; commits already created locally remain intact.
+     */
+    private fun explainPushFailure(message: String): String {
+        val normalized = message.lowercase()
+        return when {
+            "rejected_nonfastforward" in normalized ||
+                "non-fast-forward" in normalized ||
+                "nonfastforward" in normalized -> {
+                "The remote branch has commits that are not integrated locally. " +
+                    "Your local commit is kept; no force-push was attempted. " +
+                    "Pull/integrate the remote changes, resolve any conflicts, then push again.\n\n$message"
+            }
+            "authentication" in normalized ||
+                "not authorized" in normalized ||
+                "permission denied" in normalized ||
+                "http 401" in normalized ||
+                "http 403" in normalized -> {
+                "GitHub rejected authentication or repository permission. " +
+                    "Check the selected account, token validity, and write access. " +
+                    "No force-push was attempted.\n\n$message"
+            }
+            else -> message
         }
     }
 }

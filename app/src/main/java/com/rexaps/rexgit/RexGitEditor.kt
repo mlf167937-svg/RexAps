@@ -363,7 +363,7 @@ internal fun rememberRexGitEditorState(
     val selEnd = rememberSaveable(path) { mutableStateOf(0) }
     val searchOpen = rememberSaveable(path) { mutableStateOf(false) }
     val searchQuery = rememberSaveable(path) { mutableStateOf("") }
-    val searchIndex = rememberSaveable(path) { mutableStateOf(0) }
+    val searchIndex = rememberSaveable(path) { mutableStateOf(-1) }
     val goToLineOpen = rememberSaveable(path) { mutableStateOf(false) }
     val goToLineText = rememberSaveable(path) { mutableStateOf("1") }
 
@@ -796,7 +796,9 @@ internal fun EditorDialogs(editor: RexGitEditorState) {
                         value = editor.searchQuery.value,
                         onValueChange = {
                             editor.searchQuery.value = it
-                            editor.searchIndex.value = 0
+                            // A new query starts before the first match so Next
+                            // selects result #1 instead of unintentionally skipping it.
+                            editor.searchIndex.value = -1
                         },
                         singleLine = true,
                         label = { Text("Find") },

@@ -6,6 +6,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import kotlinx.coroutines.CancellationException
 
 class RexGitGithubApi {
 
@@ -52,9 +53,14 @@ class RexGitGithubApi {
 
     fun loadActions(token: String?, owner: String, repository: String): RexGitActionsSnapshot {
         val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}"
-        val workflowsJson = JSONArray(request("$slug/actions/workflows?per_page=100", token.orEmpty()))
-        val workflows = (0 until workflowsJson.length()).map { i ->
-            val item = workflowsJson.getJSONObject(i)
+        // GitHub's workflows endpoint returns an envelope:
+        // { "total_count": N, "workflows": [...] }. It is not a top-level array.
+        // Accept an array as a defensive fallback for compatible API proxies/tests,
+        // but never silently convert an unexpected object into an empty list.
+        val workflowsPayload = request("$slug/actions/workflows?per_page=100", token.orEmpty())
+        val workflowsJson = responseArray(workflowsPayload, "workflows", "Actions workflows")
+        val workflows = (0 until workflowsJson.length()).mapNotNull { i ->
+            val item = workflowsJson.optJSONObject(i) ?: return@mapNotNull null
             RexGitWorkflow(
                 id = item.optLong("id"),
                 name = item.optString("name", "Workflow"),
@@ -64,10 +70,10 @@ class RexGitGithubApi {
             )
         }
 
-        val runsJson = JSONObject(request("$slug/actions/runs?per_page=20", token.orEmpty()))
-            .optJSONArray("workflow_runs") ?: JSONArray()
-        val runs = (0 until runsJson.length()).map { i ->
-            val item = runsJson.getJSONObject(i)
+        val runsPayload = request("$slug/actions/runs?per_page=20", token.orEmpty())
+        val runsJson = responseArray(runsPayload, "workflow_runs", "Actions workflow runs")
+        val runs = (0 until runsJson.length()).mapNotNull { i ->
+            val item = runsJson.optJSONObject(i) ?: return@mapNotNull null
             RexGitWorkflowRun(
                 id = item.optLong("id"),
                 name = item.optString("name", "Workflow"),
@@ -90,10 +96,10 @@ class RexGitGithubApi {
         val artifacts = mutableListOf<RexGitArtifact>()
         runs.take(8).forEach { run ->
             try {
-                val json = JSONObject(request("$slug/actions/runs/${run.id}/artifacts?per_page=100", token.orEmpty()))
-                    .optJSONArray("artifacts") ?: JSONArray()
+                val payload = request("$slug/actions/runs/${run.id}/artifacts?per_page=100", token.orEmpty())
+                val json = responseArray(payload, "artifacts", "Actions artifacts")
                 for (i in 0 until json.length()) {
-                    val item = json.getJSONObject(i)
+                    val item = json.optJSONObject(i) ?: continue
                     artifacts += RexGitArtifact(
                         id = item.optLong("id"),
                         name = item.optString("name", "artifact.zip"),
@@ -104,6 +110,8 @@ class RexGitGithubApi {
                         workflowName = run.title
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Throwable) {
                 // Missing workflow permission or a deleted run should not hide other runs.
             }
@@ -203,6 +211,26 @@ class RexGitGithubApi {
                 connection.disconnect()
             }
         }
+    }
+
+    /**
+     * Parses either a direct JSON array or GitHub's standard object envelope.
+     * An unexpected 2xx payload becomes a useful error instead of a misleading
+     * "0 workflows" empty state.
+     */
+    private fun responseArray(payload: String, arrayKey: String, endpointLabel: String): JSONArray {
+        val trimmed = payload.trimStart()
+        if (trimmed.startsWith("[")) return JSONArray(payload)
+        val envelope = try {
+            JSONObject(payload)
+        } catch (t: Throwable) {
+            throw IllegalStateException("$endpointLabel returned invalid JSON.", t)
+        }
+        return envelope.optJSONArray(arrayKey)
+            ?: throw IllegalStateException(
+                "$endpointLabel response did not contain the expected '$arrayKey' list. " +
+                    "Check the selected GitHub account's repository access and Actions: read permission."
+            )
     }
 
     private fun parseRepository(item: JSONObject) = RexGitGithubRepository(
