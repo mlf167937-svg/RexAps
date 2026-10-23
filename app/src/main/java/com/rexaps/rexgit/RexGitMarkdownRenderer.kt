@@ -132,7 +132,7 @@ internal fun RexGitMarkdownRichText(
                 textSize = 14f
                 setTextColor(foreground.toArgb())
                 setLinkTextColor(linkColor.toArgb())
-                setLineSpacing((resources.displayMetrics.density * 3f).toInt(), 1.0f)
+                setLineSpacing(resources.displayMetrics.density * 3f, 1.0f)
                 setPadding(
                     (resources.displayMetrics.density * 2f).toInt(),
                     (resources.displayMetrics.density * 4f).toInt(),

@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -13,8 +14,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2719
-        versionName = "27.19"
+        versionCode = 2720
+        versionName = "27.20"
 
         // Batasi ABI pada target ARM untuk mengurangi ukuran paket rilis.
         ndk {
@@ -123,6 +124,18 @@ dependencies {
 
     // Image loader
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // GitHub-style Markdown rendering (Markwon + Prism4j syntax highlighting)
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:html:4.6.2")
+    implementation("io.noties.markwon:image:4.6.2")
+    implementation("io.noties.markwon:linkify:4.6.2")
+    implementation("io.noties.markwon:syntax-highlight:4.6.2")
+    implementation("io.noties.markwon:ext-tables:4.6.2")
+    implementation("io.noties.markwon:ext-tasklist:4.6.2")
+    implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    implementation("io.noties:prism4j:2.0.0")
+    kapt("io.noties:prism4j-bundler:2.0.0")
 
     // editor
     implementation("androidx.media3:media3-exoplayer:1.4.1")
