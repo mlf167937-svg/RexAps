@@ -3,12 +3,12 @@ package com.rexaps.rexgit;
 import io.noties.prism4j.annotations.PrismBundle;
 
 /**
- * Generates RexGitGrammarLocator for Markwon syntax highlighting.
- * Kept in Java so Prism4j's annotation processor receives the includes array
- * directly instead of relying on Kotlin KAPT stubs for this annotation.
+ * Java marker for Prism4j's annotation processor.
+ * Keep this in Java: the generated RexGitGrammarLocator is referenced from Kotlin.
+ * Do not add a Kotlin class with the same name, or KAPT will report a duplicate class.
  */
 @PrismBundle(
-    includes = {
+    include = {
         "clike",
         "java",
         "javascript",
