@@ -18,42 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SegTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    val c = MaterialTheme.colorScheme
-    Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = c.surfaceVariant.copy(.4f),
-        border = BorderStroke(1.dp, c.outlineVariant.copy(.4f))
-    ) {
-        Row(Modifier.padding(4.dp)) {
-            labels.forEachIndexed { i, l ->
-                val sel = i == selected
-                val bg by animateColorAsState(if (sel) c.primary else Color.Transparent, label = "tabbg")
-                val fg by animateColorAsState(if (sel) c.onPrimary else c.onSurfaceVariant, label = "tabfg")
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(bg)
-                        .clickable { onSelect(i) }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        l,
-                        color = fg,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun ProfileTabs(ctl: RexProfileController, columns: Int, cellAspect: Float) {
+internal fun __splitImpl_ProfileTabs(ctl: RexProfileController, columns: Int, cellAspect: Float) {
     val colors = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SegTabs(listOf("Video saya", "Story 24 jam"), ctl.tab) { ctl.tab = it }
@@ -100,5 +65,40 @@ internal fun ProfileTabs(ctl: RexProfileController, columns: Int, cellAspect: Fl
             style = MaterialTheme.typography.labelSmall,
             color = colors.onSurfaceVariant.copy(.7f)
         )
+    }
+}
+
+@Composable
+internal fun __splitImpl_SegTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = c.surfaceVariant.copy(.4f),
+        border = BorderStroke(1.dp, c.outlineVariant.copy(.4f))
+    ) {
+        Row(Modifier.padding(4.dp)) {
+            labels.forEachIndexed { i, l ->
+                val sel = i == selected
+                val bg by animateColorAsState(if (sel) c.primary else Color.Transparent, label = "tabbg")
+                val fg by animateColorAsState(if (sel) c.onPrimary else c.onSurfaceVariant, label = "tabfg")
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(bg)
+                        .clickable { onSelect(i) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        l,
+                        color = fg,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
     }
 }

@@ -1,65 +1,74 @@
 package com.rexaps.ui
 
-import android.content.Context
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
 
-/** App-owned themes; the selected palette never follows the device theme. */
-enum class RexThemeOption(val label: String) {
-    DARK_BLUE_MOON("Dark Blue Moon"),
-    DARK_RED_MOON("Dark Red Moon"),
-    DARK_PURPLE_MOON("Dark Purple Moon"),
-    DARK_HOLLOW_PURPLE("Dark Holow Purple"),
-    LIGHT_BLUE_MOON("Light Blue Moon"),
-    LIGHT_RED_MOON("Light Red Moon"),
-    LIGHT_PURPLE_MOON("Light Purple Moon"),
-    LIGHT_HOLLOW_PURPLE("Light Holow Purple"),
-    LIGHT("Daylight"), DARK("Midnight"), AMOLED("AMOLED"),
-    LAVENDER("Lavender"), OCEAN("Oceanic"), CYBER("Cyber Pulse"), AURORA("Aurora"),
-    COSMIC("Cosmic"), NEBULA("Nebula"), SAPPHIRE("Sapphire"), EMERALD("Emerald"),
-    ROSE("Rose Quartz"), SAKURA("Sakura"), SUNSET("Sunset"), GOLD("Gold Luxe"),
-    GRAPHITE("Graphite"), OBSIDIAN("Obsidian"), ARCTIC("Arctic"), MINT("Mint"),
-    CRIMSON("Crimson"), VIOLET("Electric Violet"), TEAL("Deep Teal"),
-    MATRIX("Matrix"), SYNTHWAVE("Synthwave"), GLACIER("Glacier"),
-    MOCHA("Mocha"), PEARL("Pearl"), COBALT("Cobalt"), MAGENTA("Magenta"),
-    GLASS_BLUE_MOON("Glass Blue Moon"), GLASS_RED_MOON("Glass Red Moon"),
-    GLASS_PURPLE_MOON("Glass Purple Moon"), GLASS_HOLLOW_PURPLE("Glass Hollow Purple"),
-    GLASS_EMERALD_MOON("Glass Emerald Moon"), GLASS_GOLD_MOON("Glass Gold Moon"),
-    DARK_ONYX_MOON("Dark Onyx Moon"), DARK_MIDNIGHT_SILVER("Dark Midnight Silver"),
-    LIGHT_PEARL_WHITE("Light Pearl White"), LIGHT_SAKURA_PINK("Light Sakura Pink"),
-    NEON_CYAN_MOON("Neon Cyan Moon"), NEON_GREEN_MOON("Neon Green Moon"),
-    NEON_PINK_MOON("Neon Pink Moon"), NEON_YELLOW_MOON("Neon Yellow Moon"),
-    ASTRAL_GALAXY_MOON("Astral Galaxy Moon"), NEBULA_VOID_MOON("Nebula Void Moon"),
-    ECLIPSE_BLACK_MOON("Eclipse Black Moon"), STARLIGHT_SILVER_MOON("Starlight Silver Moon"),
-    FROST_ICE_BLUE_MOON("Frost Ice Blue Moon"), INFERNO_MAGMA_RED_MOON("Inferno Magma Red Moon"),
-    THUNDER_GOLD_MOON("Thunder Gold Moon"), ABYSSAL_OCEAN_MOON("Abyssal Ocean Moon");
-
-    companion object {
-        /** The curated 30-theme catalogue in the product's canonical category/order. */
-        val curatedOptions: List<RexThemeOption> = listOf(
-            DARK_BLUE_MOON, DARK_RED_MOON, DARK_PURPLE_MOON, DARK_HOLLOW_PURPLE, DARK_ONYX_MOON, DARK_MIDNIGHT_SILVER,
-            GLASS_BLUE_MOON, GLASS_RED_MOON, GLASS_PURPLE_MOON, GLASS_HOLLOW_PURPLE, GLASS_EMERALD_MOON, GLASS_GOLD_MOON,
-            LIGHT_BLUE_MOON, LIGHT_RED_MOON, LIGHT_PURPLE_MOON, LIGHT_HOLLOW_PURPLE, LIGHT_PEARL_WHITE, LIGHT_SAKURA_PINK,
-            NEON_CYAN_MOON, NEON_GREEN_MOON, NEON_PINK_MOON, NEON_YELLOW_MOON,
-            ASTRAL_GALAXY_MOON, NEBULA_VOID_MOON, ECLIPSE_BLACK_MOON, STARLIGHT_SILVER_MOON,
-            FROST_ICE_BLUE_MOON, INFERNO_MAGMA_RED_MOON, THUNDER_GOLD_MOON, ABYSSAL_OCEAN_MOON
-        )
-    }
-    val swatch: Long get() = RexPaletteSpec.of(this).primary
+internal fun RexPaletteSpec.__splitImpl_toColorScheme(): ColorScheme = if (dark) {
+    darkColorScheme(
+        primary = Color(primary), onPrimary = Color(onPrimary),
+        primaryContainer = Color(container), onPrimaryContainer = Color(onContainer),
+        secondary = Color(tertiary), onSecondary = Color(onPrimary),
+        tertiary = Color(tertiary), background = Color(background), onBackground = Color(text),
+        surface = Color(card), onSurface = Color(text), surfaceVariant = Color(card),
+        onSurfaceVariant = Color(muted), outline = Color(outline), outlineVariant = Color(outline),
+        surfaceContainerLowest = Color(background), surfaceContainerLow = Color(card),
+        surfaceContainer = Color(card), surfaceContainerHigh = Color(card), surfaceContainerHighest = Color(outline),
+        error = Color(0xFFFF6B75), onError = Color(0xFF330008),
+        errorContainer = Color(0xFF57151D), onErrorContainer = Color(0xFFFFDDE0)
+    )
+} else {
+    lightColorScheme(
+        primary = Color(primary), onPrimary = Color(onPrimary),
+        primaryContainer = Color(container), onPrimaryContainer = Color(onContainer),
+        secondary = Color(tertiary), onSecondary = Color(text),
+        tertiary = Color(tertiary), background = Color(background), onBackground = Color(text),
+        surface = Color(card), onSurface = Color(text), surfaceVariant = Color(card),
+        onSurfaceVariant = Color(muted), outline = Color(outline), outlineVariant = Color(outline),
+        surfaceContainerLowest = Color(background), surfaceContainerLow = Color(card),
+        surfaceContainer = Color(card), surfaceContainerHigh = Color(container), surfaceContainerHighest = Color(container),
+        error = Color(0xFFB42335), onError = Color(0xFFFFFFFF),
+        errorContainer = Color(0xFFFFE1E4), onErrorContainer = Color(0xFF721321)
+    )
 }
 
-class RexThemeStore(context: Context) {
-    private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val engine = com.rexaps.ui.theme.RexThemeManager(appContext)
-    fun load(): RexThemeOption {
+internal fun RexPaletteSpec.Companion.__splitImpl_of(option: RexThemeOption): RexPaletteSpec {
+            if (option in RexThemeOption.curatedOptions) {
+                val t = com.rexaps.ui.theme.RexThemeRegistry.get(option.labelToThemeId())
+                val container = com.rexaps.ui.theme.blend(t.primary, t.background, .42f)
+                val darkForeground = 0xFF10131AL
+                val lightForeground = 0xFFFFFFFFL
+                val onPrimary = if (com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(darkForeground, t.primary) >=
+                    com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(lightForeground, t.primary)) darkForeground else lightForeground
+                val onContainer = if (com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(darkForeground, container) >=
+                    com.rexaps.ui.theme.RexThemeRegistry.contrastRatio(lightForeground, container)) darkForeground else lightForeground
+                return RexPaletteSpec(
+                    dark = t.category != "Light", primary = t.primary, onPrimary = onPrimary,
+                    container = container, onContainer = onContainer,
+                    tertiary = t.secondary, background = t.background,
+                    card = t.surface, muted = t.textMuted, outline = t.border, text = t.text
+                )
+            }
+            return palettes[option] ?: palettes.getValue(RexThemeOption.DARK_BLUE_MOON)
+        }
+
+internal fun RexThemeOption.__splitImpl_labelToThemeId(): String = when(this) {
+    RexThemeOption.ASTRAL_GALAXY_MOON -> "astral_galaxy_moon"
+    RexThemeOption.NEBULA_VOID_MOON -> "nebula_void_moon"
+    RexThemeOption.ECLIPSE_BLACK_MOON -> "eclipse_black_moon"
+    RexThemeOption.STARLIGHT_SILVER_MOON -> "starlight_silver_moon"
+    RexThemeOption.FROST_ICE_BLUE_MOON -> "frost_ice_blue_moon"
+    RexThemeOption.INFERNO_MAGMA_RED_MOON -> "inferno_magma_red_moon"
+    RexThemeOption.THUNDER_GOLD_MOON -> "thunder_gold_moon"
+    RexThemeOption.ABYSSAL_OCEAN_MOON -> "abyssal_ocean_moon"
+    else -> name.lowercase()
+}
+
+internal fun RexThemeStore.__splitImpl_load(): RexThemeOption {
         val saved = prefs.getString(KEY_THEME, null)
         val option = if (saved == null || saved == "BLOOD_MOON") RexThemeOption.DARK_BLUE_MOON
             else RexThemeOption.values().firstOrNull { it.name == saved } ?: RexThemeOption.DARK_BLUE_MOON
         if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())
         return option
     }
-    fun save(option: RexThemeOption) {
-        prefs.edit().putString(KEY_THEME, option.name).apply()
-        if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())
-    }
-    private companion object { const val PREFS_NAME = "rexaps_settings"; const val KEY_THEME = "theme_option" }
-}

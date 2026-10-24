@@ -6,15 +6,7 @@ package com.rexaps.rexgit
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -33,27 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun Crumb(
-    text: String,
-    active: Boolean,
-    onClick: () -> Unit
-) {
-    val scheme = MaterialTheme.colorScheme
-
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (active) scheme.primary else scheme.onSurfaceVariant,
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = !active, onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 6.dp)
-    )
-}
-
-@Composable
-internal fun SegmentedTabs(
+internal fun __splitImpl_SegmentedTabs(
     labels: List<String>,
     icons: List<ImageVector>,
     selected: Int,

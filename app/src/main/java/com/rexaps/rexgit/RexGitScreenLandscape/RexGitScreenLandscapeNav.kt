@@ -4,99 +4,26 @@
 
 package com.rexaps.rexgit
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 
 @Composable
-internal fun LocalTabLandscape(
-    state: RexGitUiState,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onSelect: (RexGitRepository) -> Unit
-) {
-    val context = LocalContext.current
-
-    val repos = remember(state.repositories, query) {
-        state.repositories.filter {
-            it.name.contains(query.trim(), ignoreCase = true)
-        }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-
-        if (state.repositories.isNotEmpty()) {
-            SearchField(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = "Search repositories",
-                modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp)
-            )
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(300.dp),
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            if (state.storageFallback) {
-                item(key = "storage-notice", span = { GridItemSpan(maxLineSpan) }) {
-                    StorageNotice(
-                        path = state.storagePath,
-                        onGrant = { openAllFilesAccess(context) }
-                    )
-                }
-            }
-
-            if (state.repositories.isEmpty()) {
-                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        icon = Icons.Default.FolderOpen,
-                        title = "No repositories yet",
-                        body = "Connect GitHub and clone a repository into your workspace.",
-                        actionLabel = "Connect GitHub",
-                        onAction = onConnect
-                    )
-                }
-            } else if (repos.isEmpty()) {
-                item(key = "no-match", span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        icon = Icons.Default.Search,
-                        title = "No matches",
-                        body = "No repository matches \"${query.trim()}\"."
-                    )
-                }
-            } else {
-                items(repos, key = { it.path }) { repo ->
-                    RepositoryCard(repo = repo, onClick = { onSelect(repo) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun GithubTabLandscape(
+internal fun __splitImpl_GithubTabLandscape(
     state: RexGitUiState,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -167,6 +94,77 @@ internal fun GithubTabLandscape(
                     onClone = { onClone(repo) },
                     onOpen = { local?.let(onOpen) }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun __splitImpl_LocalTabLandscape(
+    state: RexGitUiState,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onSelect: (RexGitRepository) -> Unit
+) {
+    val context = LocalContext.current
+
+    val repos = remember(state.repositories, query) {
+        state.repositories.filter {
+            it.name.contains(query.trim(), ignoreCase = true)
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+
+        if (state.repositories.isNotEmpty()) {
+            SearchField(
+                value = query,
+                onValueChange = onQueryChange,
+                placeholder = "Search repositories",
+                modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp)
+            )
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(300.dp),
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            if (state.storageFallback) {
+                item(key = "storage-notice", span = { GridItemSpan(maxLineSpan) }) {
+                    StorageNotice(
+                        path = state.storagePath,
+                        onGrant = { openAllFilesAccess(context) }
+                    )
+                }
+            }
+
+            if (state.repositories.isEmpty()) {
+                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyState(
+                        icon = Icons.Default.FolderOpen,
+                        title = "No repositories yet",
+                        body = "Connect GitHub and clone a repository into your workspace.",
+                        actionLabel = "Connect GitHub",
+                        onAction = onConnect
+                    )
+                }
+            } else if (repos.isEmpty()) {
+                item(key = "no-match", span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyState(
+                        icon = Icons.Default.Search,
+                        title = "No matches",
+                        body = "No repository matches \"${query.trim()}\"."
+                    )
+                }
+            } else {
+                items(repos, key = { it.path }) { repo ->
+                    RepositoryCard(repo = repo, onClick = { onSelect(repo) })
+                }
             }
         }
     }

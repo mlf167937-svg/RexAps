@@ -1,111 +1,122 @@
 package com.rexaps.rexnux
 
-import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-internal suspend fun RexNuxInstaller.download(url: String,
-    destination: File,
-    onProgress: suspend (Long, Long) -> Unit) {
-    val connection =
-        URL(url).openConnection() as HttpURLConnection
+internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
+        onProgress: suspend (InstallProgress) -> Unit
+    ) {
+        withContext(Dispatchers.IO) {
 
-    connection.connectTimeout = 15_000
-    connection.readTimeout = 30_000
-    connection.requestMethod = "GET"
+            rootDir.mkdirs()
+            downloadsDir.mkdirs()
 
-    try {
-        connection.connect()
-
-        if (connection.responseCode !in 200..299) {
-            throw IllegalStateException(
-                "Download failed: HTTP ${connection.responseCode}"
+            val archive = File(
+                downloadsDir,
+                "alpine-$ALPINE_VERSION-aarch64.tar.gz"
             )
-        }
 
-        val total = connection.contentLengthLong
+            onProgress(
+                InstallProgress(
+                    0f,
+                    "Downloading Alpine Linux..."
+                )
+            )
 
-        BufferedInputStream(
-            connection.inputStream
-        ).use { input ->
+            download(
+                url = ALPINE_URL,
+                destination = archive
+            ) { downloaded, total ->
 
-            FileOutputStream(destination).use { output ->
-
-                val buffer = ByteArray(64 * 1024)
-
-                var downloaded = 0L
-
-                while (true) {
-                    val read = input.read(buffer)
-
-                    if (read == -1) {
-                        break
+                val progress =
+                    if (total > 0) {
+                        downloaded.toFloat() / total.toFloat()
+                    } else {
+                        0f
                     }
 
-                    output.write(
-                        buffer,
-                        0,
-                        read
+                onProgress(
+                    InstallProgress(
+                        progress * 0.7f,
+                        "Downloading Alpine... ${
+                            (progress * 100).toInt()
+                        }%"
                     )
-
-                    downloaded += read
-
-                    onProgress(
-                        downloaded,
-                        total
-                    )
-                }
-            }
-        }
-    } finally {
-        connection.disconnect()
-    }
-}
-
-internal fun RexNuxInstaller.downloadText(url: String): String {
-    val connection =
-        URL(url).openConnection() as HttpURLConnection
-
-    connection.connectTimeout = 15_000
-    connection.readTimeout = 30_000
-
-    return try {
-        connection.inputStream
-            .bufferedReader()
-            .use { it.readText() }
-    } finally {
-        connection.disconnect()
-    }
-}
-
-internal fun RexNuxInstaller.sha256(file: File): String {
-    val digest =
-        MessageDigest.getInstance("SHA-256")
-
-    file.inputStream().use { input ->
-
-        val buffer = ByteArray(64 * 1024)
-
-        while (true) {
-            val read = input.read(buffer)
-
-            if (read == -1) {
-                break
+                )
             }
 
-            digest.update(
-                buffer,
-                0,
-                read
+            onProgress(
+                InstallProgress(
+                    0.72f,
+                    "Verifying Alpine..."
+                )
+            )
+
+            val expectedSha = downloadText(
+                ALPINE_SHA256_URL
+            ).trim()
+                .split(Regex("\\s+"))
+                .first()
+
+            val actualSha = sha256(archive)
+
+            if (!expectedSha.equals(actualSha, ignoreCase = true)) {
+                archive.delete()
+
+                throw IllegalStateException(
+                    "SHA-256 verification failed."
+                )
+            }
+
+            onProgress(
+                InstallProgress(
+                    0.78f,
+                    "Preparing filesystem..."
+                )
+            )
+
+            if (alpineDir.exists()) {
+                alpineDir.deleteRecursively()
+            }
+
+            alpineDir.mkdirs()
+
+            onProgress(
+                InstallProgress(
+                    0.8f,
+                    "Extracting Alpine..."
+                )
+            )
+
+            extractTarGz(
+                archive,
+                alpineDir
+            ) { extracted, estimated ->
+
+                val progress =
+                    if (estimated > 0) {
+                        extracted.toFloat() /
+                                estimated.toFloat()
+                    } else {
+                        0f
+                    }
+
+                onProgress(
+                    InstallProgress(
+                        0.8f + progress * 0.19f,
+                        "Extracting Alpine..."
+                    )
+                )
+            }
+
+            archive.delete()
+
+            onProgress(
+                InstallProgress(
+                    1f,
+                    "Alpine installation complete."
+                )
             )
         }
     }
-
-    return digest.digest()
-        .joinToString("") {
-            "%02x".format(it)
-        }
-}

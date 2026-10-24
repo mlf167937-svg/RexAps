@@ -15,7 +15,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun BrowserToolbar(
+internal fun __splitImpl_BrowserToolbar(
     b: FileBrowserState,
     searching: Boolean,
     query: String,

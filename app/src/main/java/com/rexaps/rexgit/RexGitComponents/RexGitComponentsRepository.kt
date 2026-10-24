@@ -8,120 +8,32 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CallSplit
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Person
-
-/** Branch / clean / changes pills (same as before). */
-@Composable
-internal fun RepositoryStatusPills(
-    state: RexGitUiState,
-    repo: RexGitRepository,
-    changes: List<RexGitChange>
-) {
-    val scheme = MaterialTheme.colorScheme
-
-    if (repo.isGitRepository) {
-        InfoPill(
-            icon = Icons.Default.CallSplit,
-            text = repo.branch,
-            container = scheme.secondaryContainer,
-            content = scheme.onSecondaryContainer
-        )
-
-        if (changes.isEmpty() && state.gitStatus.error == null) {
-            InfoPill(
-                icon = Icons.Default.CheckCircle,
-                text = "Clean",
-                container = scheme.primaryContainer,
-                content = scheme.onPrimaryContainer
-            )
-        } else if (changes.isNotEmpty()) {
-            InfoPill(
-                icon = Icons.Default.Warning,
-                text = if (changes.size == 1) "1 change" else "${changes.size} changes",
-                container = scheme.tertiaryContainer,
-                content = scheme.onTertiaryContainer
-            )
-        }
-    } else {
-        InfoPill(
-            icon = Icons.Default.Warning,
-            text = "Not a Git repository",
-            container = scheme.errorContainer,
-            content = scheme.onErrorContainer
-        )
-    }
-}
-
-/** GitDev + account pills. Tapping them opens the matching dialog. */
-@Composable
-internal fun RepositoryToolPills(
-    state: RexGitUiState,
-    repo: RexGitRepository,
-    onGitDev: () -> Unit,
-    onAccount: () -> Unit
-) {
-    val scheme = MaterialTheme.colorScheme
-
-    if (!repo.isGitRepository) return
-
-    val ready = state.gitDev.isReady
-
-    TappablePill(onClick = onGitDev) {
-        InfoPill(
-            icon = if (ready) Icons.Default.LockOpen else Icons.Default.Lock,
-            text = if (ready) "GitDev on" else "GitDev off",
-            container = if (ready) scheme.primaryContainer else scheme.surfaceVariant,
-            content = if (ready) scheme.onPrimaryContainer else scheme.onSurfaceVariant
-        )
-    }
-
-    TappablePill(onClick = onAccount) {
-        InfoPill(
-            icon = Icons.Default.Person,
-            text = state.githubUsername?.let { "@$it" } ?: "No account",
-            container = scheme.surfaceVariant,
-            content = scheme.onSurfaceVariant
-        )
-    }
-}
 
 /** Breadcrumb + file list + "New" button + status error. Give it Modifier.weight(1f). */
 @Composable
-internal fun RepositoryFiles(
+internal fun __splitImpl_RepositoryFiles(
     state: RexGitUiState,
     repo: RexGitRepository,
     onOpen: (RexGitFile) -> Unit,

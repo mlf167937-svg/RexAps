@@ -5,68 +5,51 @@
 package com.rexaps.rexgit
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.grid.items
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
-internal fun TappablePill(
-    onClick: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(role = Role.Button, onClick = onClick)
-    ) {
-        content()
-    }
-}
-
-@Composable
-internal fun ChangesPanel(
+internal fun __splitImpl_ChangesPanel(
     changes: List<RexGitChange>,
     expanded: Boolean,
     onToggle: () -> Unit
@@ -145,143 +128,123 @@ internal fun ChangesPanel(
     }
 }
 
-// ============================================================
-// Cards & rows
-// ============================================================
-
 @Composable
-internal fun WorkspaceCard(
-    total: Int,
-    gitCount: Int,
-    path: String
+internal fun __splitImpl_SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null
 ) {
     val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(scheme.primaryContainer, scheme.secondaryContainer)
-                )
-            )
-            .border(1.dp, scheme.primary.copy(alpha = 0.25f), shape)
-            .padding(20.dp)
-    ) {
-        Text(
-            "Workspace",
-            style = MaterialTheme.typography.labelLarge,
-            color = scheme.onPrimaryContainer.copy(alpha = 0.7f)
-        )
-
-        Text(
-            "$total",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold,
-            color = scheme.onPrimaryContainer
-        )
-
-        Text(
-            if (total == 1) "repository" else "repositories",
-            style = MaterialTheme.typography.bodyMedium,
-            color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        InfoPill(
-            icon = Icons.Default.CallSplit,
-            text = "$gitCount Git",
-            container = scheme.surface.copy(alpha = 0.55f),
-            content = scheme.onSurface
-        )
-
-        if (path.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                path,
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = scheme.onPrimaryContainer.copy(alpha = 0.7f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-internal fun FileRow(
-    file: RexGitFile,
-    change: RexGitChangeKind?,
-    hasChangesInside: Boolean,
-    onClick: () -> Unit,
-    onMore: () -> Unit
-) {
-    val scheme = MaterialTheme.colorScheme
-    val style = fileStyle(file, scheme)
+    val shape = RoundedCornerShape(16.dp)
 
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .clickable(
-                onClickLabel = if (file.isDirectory) "Open folder" else "Open file",
-                onClick = onClick
-            )
-            .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+            .heightIn(min = 52.dp)
+            .clip(shape)
+            .background(scheme.surface)
+            .border(1.dp, scheme.outlineVariant, shape)
+            .padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconTile(style.icon, style.color)
+        Icon(
+            Icons.Default.Search,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(10.dp))
 
-        Column(Modifier.weight(1f)) {
-            Text(
-                file.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(
+                    placeholder,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = scheme.onSurfaceVariant
+                )
+            }
 
-            Text(
-                if (file.isDirectory) "Folder" else formatSize(file.size),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant
-            )
-        }
-
-        if (change != null) {
-            Spacer(Modifier.width(8.dp))
-            ChangeBadge(change)
-        } else if (hasChangesInside) {
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(scheme.tertiary)
-                    .semantics { contentDescription = "Contains changes" }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Done),
+                keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
+                modifier = Modifier.fillMaxWidth()
             )
         }
 
-        IconButton(onClick = onMore) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = "Actions for ${file.name}",
-                tint = scheme.onSurfaceVariant
-            )
+        if (value.isNotEmpty()) {
+            IconButton(onClick = { onValueChange("") }) {
+                Icon(Icons.Default.Close, contentDescription = "Clear search")
+            }
+        }
+        if (onSearch != null) {
+            IconButton(onClick = onSearch, enabled = value.isNotBlank()) {
+                Icon(Icons.Default.Search, contentDescription = "Search GitHub")
+            }
+        } else if (value.isEmpty()) {
+            Spacer(Modifier.width(10.dp))
         }
     }
 }
 
 @Composable
-internal fun GuideText(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurface
+internal fun __splitImpl_RexPushLoader(active: Boolean) {
+    val transition = rememberInfiniteTransition(label = "rexPushLoader")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
     )
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    val scheme = MaterialTheme.colorScheme
+
+    Canvas(Modifier.size(104.dp)) {
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * 0.34f
+
+        drawCircle(
+            color = scheme.outlineVariant.copy(alpha = 0.45f),
+            radius = radius,
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.dp.toPx()
+            )
+        )
+
+        repeat(8) { index ->
+            val angle = Math.toRadians(
+                (rotation + index * 45f).toDouble()
+            )
+            val x = center.x + cos(angle).toFloat() * radius
+            val y = center.y + sin(angle).toFloat() * radius
+            val emphasis = if (index == 0) 1f else 0.28f
+            drawCircle(
+                color = scheme.primary.copy(
+                    alpha = if (active) emphasis * pulse else 0.25f
+                ),
+                radius = if (index == 0) 5.dp.toPx() else 3.dp.toPx(),
+                center = androidx.compose.ui.geometry.Offset(x, y)
+            )
+        }
+    }
 }

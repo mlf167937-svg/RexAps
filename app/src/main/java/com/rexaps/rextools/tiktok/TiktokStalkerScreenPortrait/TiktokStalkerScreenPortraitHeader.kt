@@ -19,10 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rexaps.rextools.ui.*
 
-/* ═════════════════════ HEADER PROFIL (dipakai bersama) ═════════════════════ */
-
 @Composable
-internal fun ProfileHeader(
+internal fun __splitImpl_ProfileHeader(
     avatar: Any?, name: String?, username: String?, bio: String?,
     verified: Boolean, region: String?
 ) {

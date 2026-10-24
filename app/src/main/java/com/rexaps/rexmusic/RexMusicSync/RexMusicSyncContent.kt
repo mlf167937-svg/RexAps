@@ -17,7 +17,7 @@ import kotlinx.coroutines.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RexMusicSyncScreenContent(onBack: () -> Unit) {
+internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val state by RexMusicSyncEngine.state.collectAsState()
     val offlineState by RexOfflineManager.state.collectAsState()

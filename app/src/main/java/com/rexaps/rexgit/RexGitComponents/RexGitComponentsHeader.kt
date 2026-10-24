@@ -7,14 +7,7 @@ package com.rexaps.rexgit
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,12 +30,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-// ============================================================
-// Repository pieces shared by portrait and landscape
-// ============================================================
-
 @Composable
-internal fun HomeHeader(
+internal fun __splitImpl_HomeHeader(
     state: RexGitUiState,
     onRefresh: () -> Unit,
     onGithub: () -> Unit,
@@ -111,7 +100,7 @@ internal fun HomeHeader(
 }
 
 @Composable
-internal fun RepositoryHeader(
+internal fun __splitImpl_RepositoryHeader(
     repo: RexGitRepository,
     busy: Boolean,
     onBack: () -> Unit,
@@ -169,22 +158,8 @@ internal fun RepositoryHeader(
     }
 }
 
-// ============================================================
-// GitDev mode: guide + setup
-// ============================================================
-
 @Composable
-internal fun GuideHeading(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 4.dp)
-    )
-}
-
-@Composable
-internal fun HeaderIconButton(
+internal fun __splitImpl_HeaderIconButton(
     icon: ImageVector,
     description: String,
     onClick: () -> Unit,

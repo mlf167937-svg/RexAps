@@ -5,11 +5,12 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,88 +19,95 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
-fun hairline(alpha: Float = 0.7f) =
-    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha))
-
-/* ═════════════════════ THEME (opsional) ═════════════════════ */
-
-@Composable
-fun RexTheme(content: @Composable () -> Unit) {
-    // Explicitly forward all parent tokens: MaterialTheme's default colorScheme is
-    // lightColorScheme(), which previously silently reset the app palette in RexTools.
-    val inheritedColors = MaterialTheme.colorScheme
-    val inheritedShapes = MaterialTheme.shapes
-    val baseTypography = MaterialTheme.typography
-    val rexTypography = baseTypography.copy(
-        displaySmall = baseTypography.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp),
-        headlineSmall = baseTypography.headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
-        titleLarge = baseTypography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
-        labelSmall = baseTypography.labelSmall.copy(letterSpacing = 0.8.sp)
-    )
-    MaterialTheme(
-        colorScheme = inheritedColors,
-        typography = rexTypography,
-        shapes = inheritedShapes,
-        content = content
-    )
-}
-
-/* ═════════════════════ BACKGROUND & SCREEN ═════════════════════ */
-
-/** Latar: dua cahaya aksen yang melayang pelan + grid tipis. Animasi dibaca di fase draw (tanpa recomposition). */
-@Composable
-fun RexBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+internal fun __splitImpl_RexPrimaryButton(
+    text: String,
+    icon: ImageVector?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    loading: Boolean = false,
+    loadingText: String = "Memproses…",
+    enabled: Boolean = true
+) {
     val s = MaterialTheme.colorScheme
-    val p = rememberInfiniteTransition(label = "aurora")
-        .animateFloat(0f, 1f, infiniteRepeatable(tween(16000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "p")
-    val grid = s.onSurface.copy(alpha = 0.03f)
+    val source = remember { MutableInteractionSource() }
+    val haptic = LocalHapticFeedback.current
+    val canClick = enabled && !loading
+    val glow by animateDpAsState(if (enabled) 18.dp else 0.dp, tween(300), label = "glow")
+    val fg by animateColorAsState(if (enabled) s.onPrimary else s.onSurfaceVariant, label = "fg")
+    val sweep = rememberInfiniteTransition(label = "sweep")
+        .animateFloat(-0.6f, 1.6f, infiniteRepeatable(tween(2800, easing = LinearEasing)), label = "x")
+    val brush = Brush.linearGradient(listOf(s.primary, s.tertiary))
+
     Box(
         modifier
-            .fillMaxSize()
-            .background(s.background)
-            .drawBehind {
-                val w = size.width
-                val h = size.height
-                val v = p.value
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(s.primary.copy(alpha = 0.20f), Color.Transparent),
-                        center = Offset(w * (0.95f - 0.35f * v), h * (0.02f + 0.10f * v)),
-                        radius = w * 1.05f
+            .fillMaxWidth()
+            .height(54.dp)
+            .pressScale(source, 0.97f)
+            .shadow(glow, RexMd, ambientColor = s.primary, spotColor = s.primary)
+            .clip(RexMd)
+            .then(if (enabled) Modifier.background(brush) else Modifier.background(s.surfaceContainerHighest))
+            .drawWithContent {
+                drawContent()
+                if (canClick) {
+                    val w = size.width
+                    val x = w * sweep.value
+                    drawRect(
+                        Brush.linearGradient(
+                            listOf(Color.Transparent, Color.White.copy(alpha = 0.22f), Color.Transparent),
+                            start = Offset(x - w * 0.25f, 0f),
+                            end = Offset(x, size.height)
+                        )
                     )
-                )
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(s.tertiary.copy(alpha = 0.15f), Color.Transparent),
-                        center = Offset(w * (0.05f + 0.30f * v), h * (0.82f - 0.12f * v)),
-                        radius = w * 0.95f
-                    )
-                )
-                val step = 36.dp.toPx()
-                var gx = 0f
-                while (gx < w) { drawLine(grid, Offset(gx, 0f), Offset(gx, h), 1f); gx += step }
-                var gy = 0f
-                while (gy < h) { drawLine(grid, Offset(0f, gy), Offset(w, gy), 1f); gy += step }
+                }
+            }
+            .clickable(interactionSource = source, indication = null, enabled = canClick, role = Role.Button) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
             },
-        content = content
-    )
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedContent(
+            targetState = loading,
+            transitionSpec = {
+                (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f)) togetherWith (fadeOut(tween(120)) + scaleOut(targetScale = 0.8f))
+            },
+            label = "btn"
+        ) { isLoading ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isLoading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+                    Spacer(Modifier.width(10.dp))
+                    Text(loadingText, color = fg, fontWeight = FontWeight.SemiBold)
+                } else {
+                    if (icon != null) {
+                        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(text, color = fg, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RexScreen(
+internal fun __splitImpl_RexScreen(
     title: String,
     onBack: () -> Unit,
     subtitle: String? = null,
@@ -160,47 +168,5 @@ fun RexScreen(
             )
         }
         if (toast != null) RexToastHost(toast, Modifier.align(Alignment.BottomCenter))
-    }
-}
-
-/* ═════════════════════ PANEL ═════════════════════ */
-
-@Composable
-fun RexPanel(
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null,
-    shape: Shape = RexLg,
-    padding: Dp = 16.dp,
-    spacing: Dp = 16.dp,
-    glow: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val s = MaterialTheme.colorScheme
-    val border = BorderStroke(
-        1.dp,
-        Brush.linearGradient(
-            listOf(s.outline.copy(alpha = 0.55f), s.outlineVariant.copy(alpha = 0.25f), s.primary.copy(alpha = 0.20f))
-        )
-    )
-    val color = s.surfaceContainerLow.copy(alpha = 0.80f)
-    val glowMod = if (glow) {
-        Modifier.shadow(26.dp, shape, ambientColor = s.primary.copy(alpha = 0.35f), spotColor = s.primary.copy(alpha = 0.35f))
-    } else Modifier
-    val body: @Composable () -> Unit = {
-        Column(Modifier.padding(padding), Arrangement.spacedBy(spacing), content = content)
-    }
-    if (onClick == null) {
-        Surface(
-            modifier = modifier.fillMaxWidth().then(glowMod),
-            shape = shape, color = color, border = border, content = body
-        )
-    } else {
-        val src = remember { MutableInteractionSource() }
-        Surface(
-            onClick = onClick,
-            modifier = modifier.fillMaxWidth().pressScale(src, 0.97f).then(glowMod),
-            shape = shape, color = color, border = border,
-            interactionSource = src, content = body
-        )
     }
 }

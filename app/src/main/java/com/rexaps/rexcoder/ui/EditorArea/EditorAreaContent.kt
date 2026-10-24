@@ -3,66 +3,133 @@ package com.rexaps.rexcoder.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.rexaps.rexcoder.model.EditorGroup
-import com.rexaps.rexcoder.model.RexCoderState
+import com.rexaps.rexcoder.editor.RexCodeSyntaxTransformation
+import com.rexaps.rexcoder.model.DocState
 import com.rexaps.rexcoder.theme.Rex
-
-// ───────────── Shared small widgets ─────────────
-
-@Composable fun HDivider() = Box(Modifier.fillMaxWidth().height(1.dp).background(Rex.Border))
-
-@Composable fun VDivider() = Box(Modifier.fillMaxHeight().width(1.dp).background(Rex.Border))
+import com.rexaps.rexcoder.theme.codeStyle
 
 @Composable
-fun SmallIconButton(
-    icon: ImageVector, desc: String, size: Dp = 32.dp, tint: Color = Rex.TextDim, onClick: () -> Unit
+internal fun __splitImpl_CodeEditor(
+    doc: DocState,
+    focused: Boolean,
+    fontSize: Int,
+    modifier: Modifier = Modifier,
+    onFontChange: (Int) -> Unit = {}
 ) {
-    Box(
-        Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(18.dp)) }
-}
+    val density = LocalDensity.current
+    val style = codeStyle(fontSize)
+    val lh = with(density) { style.lineHeight.toPx() }
+    val padTop = with(density) { 8.dp.toPx() }
+    val vScroll = rememberScrollState()
+    val hScroll = rememberScrollState()
+    val focusRequester = remember { FocusRequester() }
+    val transformation = remember(doc.path) { RexCodeSyntaxTransformation(doc.name) }
 
-/** Tombol ikon "Aa" yang membuka menu ukuran font. */
-@Composable
-fun FontMenuButton(
-    title: String, value: Int, min: Int, max: Int, presets: List<Int>,
-    size: Dp = 32.dp, tint: Color = Rex.TextDim, onChange: (Int) -> Unit
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        SmallIconButton(Icons.Outlined.TextFields, "Ukuran font $title", size, tint) { open = true }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Rex.Overlay)) {
-            FontStepperContent(title, value, min, max, presets, onChange)
+    val text = doc.value.text
+    val cursor = doc.value.selection.start
+    val lineCount = remember(text) { text.count { it == '\n' } + 1 }
+    val curLine = remember(text, cursor) { text.take(cursor).count { it == '\n' } }
+    val numbers = remember(lineCount) { (1..lineCount).joinToString("\n") }
+
+    // Pinch dua jari = zoom font (tiap ±12% jarak = ±1px). Satu jari tetap scroll / pilih teks seperti biasa.
+    val currentFont by rememberUpdatedState(fontSize)
+    val currentChange by rememberUpdatedState(onFontChange)
+    val pinch = Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            var font = currentFont
+            var lastDist = 0f
+            var acc = 1f
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val down = event.changes.filter { it.pressed }
+                if (down.size >= 2) {
+                    val dist = (down[0].position - down[1].position).getDistance()
+                    if (lastDist > 0f && dist > 0f) {
+                        acc *= dist / lastDist
+                        if (acc > 1.12f) { font += 1; currentChange(font); acc = 1f }
+                        else if (acc < 0.89f) { font -= 1; currentChange(font); acc = 1f }
+                    }
+                    lastDist = dist
+                    event.changes.forEach { it.consume() }
+                } else {
+                    lastDist = 0f
+                    acc = 1f
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
+
+    BoxWithConstraints(modifier.background(Rex.EditorBg).then(pinch)) {
+        val minH = maxHeight
+        Row(
+            Modifier
+                .verticalScroll(vScroll)
+                .fillMaxWidth()
+                .heightIn(min = minH)
+                .drawBehind {
+                    if (focused) {
+                        drawRect(Rex.LineHighlight, Offset(0f, padTop + curLine * lh), Size(size.width, lh))
+                        drawRect(Rex.Accent.copy(alpha = 0.55f), Offset(0f, padTop + curLine * lh), Size(2.dp.toPx(), lh))
+                    }
+                }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    focusRequester.requestFocus()
+                }
+        ) {
+            Text(
+                numbers,
+                style = style.copy(color = Rex.TextDim, textAlign = TextAlign.End),
+                modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 12.dp).widthIn(min = 24.dp)
+            )
+            CompositionLocalProvider(
+                LocalTextSelectionColors provides TextSelectionColors(Rex.Accent, Rex.SelectionEditor.copy(alpha = 0.8f))
+            ) {
+                Box(Modifier.weight(1f).horizontalScroll(hScroll).padding(top = 8.dp, bottom = 64.dp, end = 32.dp)) {
+                    BasicTextField(
+                        value = doc.value,
+                        onValueChange = { doc.value = it },
+                        textStyle = style,
+                        cursorBrush = SolidColor(Rex.Accent),
+                        visualTransformation = transformation,
+                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
+                        modifier = Modifier.focusRequester(focusRequester).defaultMinSize(minWidth = 160.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -75,7 +142,7 @@ fun FontMenuButton(
  * Screen-reader users get "grow / shrink" custom actions instead of a drag gesture.
  */
 @Composable
-fun ResizeHandle(
+internal fun __splitImpl_ResizeHandle(
     vertical: Boolean,
     desc: String,
     onDelta: (Float) -> Unit,
@@ -116,53 +183,5 @@ fun ResizeHandle(
             (if (vertical) Modifier.size(3.dp, 28.dp) else Modifier.size(28.dp, 3.dp))
                 .clip(CircleShape).background(gripColor)
         )
-    }
-}
-
-@Composable
-internal fun EditorGroupView(s: RexCoderState, g: EditorGroup, index: Int, modifier: Modifier) {
-    val focused = s.focusedGroupId == g.id
-    Column(
-        modifier
-            .clipToBounds()
-            .background(Rex.EditorBg)
-            .pointerInput(g.id) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val e = awaitPointerEvent(PointerEventPass.Initial)
-                        if (e.type == PointerEventType.Press) s.focusedGroupId = g.id
-                    }
-                }
-            }
-    ) {
-        TabBar(s, g, index, focused)
-        val doc = g.active?.let { s.docs[it] }
-        if (doc == null) Welcome(Modifier.weight(1f).fillMaxWidth())
-        else {
-            Breadcrumbs(doc.path)
-            key(doc.path) {
-                CodeEditor(
-                    doc, focused, g.fontSize, Modifier.weight(1f).fillMaxWidth(),
-                    onFontChange = { s.setFontSize(g, it) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun Welcome(modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Outlined.Code, null, tint = Rex.Accent.copy(alpha = 0.35f), modifier = Modifier.size(56.dp))
-        Spacer(Modifier.height(6.dp))
-        Text("REX//CODER", fontSize = 20.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp, color = Rex.TextDim)
-        Spacer(Modifier.height(12.dp))
-        listOf(
-            "Open a file from the Explorer",
-            "Long-press a file to open it to the side",
-            "Drag a divider to resize · double-tap it to reset",
-            "Pinch with two fingers in the editor to zoom the font",
-            "Tap E1 / E2 / E3 to set that editor's font size (2–22px)"
-        ).forEach { Text(it, fontSize = 12.sp, color = Rex.TextDim, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) }
     }
 }

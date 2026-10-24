@@ -1,116 +1,281 @@
 package com.rexaps.rexpanel
 
-sealed interface ConnState {
-    object Idle : ConnState
-    object Connecting : ConnState
-    data class Connected(val target: SshTarget) : ConnState
-    data class Error(val message: String) : ConnState
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.*
+
+internal fun __splitImpl_buildMetrics(
+    cur: RawSample,
+    prev: RawSample?
+): Metrics {
+
+    var cpu: Float? = null
+    var rxBps: Long? = null
+    var txBps: Long? = null
+
+    if (prev != null) {
+
+        // CPU
+        val ct = cur.cpuTotal
+        val ci = cur.cpuIdle
+
+        val pt = prev.cpuTotal
+        val pi = prev.cpuIdle
+
+        if (
+            ct != null &&
+            ci != null &&
+            pt != null &&
+            pi != null
+        ) {
+            val dT = ct - pt
+            val dI = ci - pi
+
+            if (dT > 0) {
+                cpu =
+                    (
+                        (dT - dI).toFloat() /
+                            dT
+                        )
+                        .coerceIn(0f, 1f)
+            }
+        }
+
+        // Network
+        val secs =
+            (cur.at - prev.at) / 1000.0
+
+        val crx = cur.rx
+        val ctx = cur.tx
+
+        val prx = prev.rx
+        val ptx = prev.tx
+
+        if (
+            secs > 0 &&
+            crx != null &&
+            ctx != null &&
+            prx != null &&
+            ptx != null
+        ) {
+            rxBps =
+                ((crx - prx) / secs)
+                    .toLong()
+                    .coerceAtLeast(0)
+
+            txBps =
+                ((ctx - ptx) / secs)
+                    .toLong()
+                    .coerceAtLeast(0)
+        }
+    }
+
+    if (cpu == null) {
+        cpu = cur.topCpu
+    }
+
+    val total = cur.memTotalKb
+    val avail = cur.memAvailKb
+
+    return Metrics(
+        host = cur.host ?: "server",
+
+        cpu = cpu,
+
+        cpuFreqFrac = cur.freqFrac,
+        cpuFreqMhz = cur.freqMhz,
+
+        cores = cur.cores,
+
+        memUsedKb =
+            if (
+                total != null &&
+                avail != null
+            ) {
+                total - avail
+            } else {
+                null
+            },
+
+        memTotalKb = total,
+
+        load = cur.load,
+
+        uptimeSec = cur.uptimeSec,
+        uptimeText = cur.uptimeText,
+
+        diskPct = cur.diskPct,
+        diskUsedKb = cur.diskUsedKb,
+        diskTotalKb = cur.diskTotalKb,
+        diskMount = cur.diskMount,
+
+        rxBps = rxBps,
+        txBps = txBps,
+
+        batteryPct = cur.batPct,
+        batteryStatus = cur.batStatus,
+        batteryTemp = cur.batTemp
+    )
 }
 
-data class Metrics(
-    val host: String,
-    val cpu: Float?,
-    val cpuFreqFrac: Float?,
-    val cpuFreqMhz: Int?,
-    val cores: Int?,
-    val memUsedKb: Long?,
-    val memTotalKb: Long?,
-    val load: String?,
-    val uptimeSec: Long?,
-    val uptimeText: String?,
-    val diskPct: Int?,
-    val diskUsedKb: Long?,
-    val diskTotalKb: Long?,
-    val diskMount: String?,
-    val rxBps: Long?,
-    val txBps: Long?,
-    val batteryPct: Int?,
-    val batteryStatus: String?,
-    val batteryTemp: Float?
-)
+internal fun RexPanelViewModel.__splitImpl_connect(
+        command: String,
+        password: String,
+        elevate: Boolean,
+        context: Context
+    ) {
+        val target =
+            parseSshCommand(command)
 
-class RawSample(
-    val cpuTotal: Long?,
-    val cpuIdle: Long?,
-    val freqFrac: Float?,
-    val freqMhz: Int?,
-    val cores: Int?,
-    val memTotalKb: Long?,
-    val memAvailKb: Long?,
-    val load: String?,
-    val uptimeSec: Long?,
-    val uptimeText: String?,
-    val diskPct: Int?,
-    val diskUsedKb: Long?,
-    val diskTotalKb: Long?,
-    val diskMount: String?,
-    val rx: Long?,
-    val tx: Long?,
-    val batPct: Int?,
-    val batStatus: String?,
-    val batTemp: Float?,
-    val host: String?,
-    val topCpu: Float?,
-    val at: Long = System.currentTimeMillis()
-)
+        if (target == null) {
+            conn =
+                ConnState.Error(
+                    "Format salah. Tulis user-nya, contoh: ssh -p 8022 u0_a123@192.168.0.101"
+                )
+            return
+        }
 
-// § diganti menjadi $ supaya tidak bentrok dengan string template Kotlin.
-// @@ELEV@@ = 1 jika pengguna mengizinkan sudo/su.
-// Default 0: aman untuk akun biasa (non-root).
-internal val MON_CMD = """
+        if (conn is ConnState.Connecting) {
+            return
+        }
 
-T=""; command -v timeout >/dev/null 2>&1 && T="timeout 3"
-E=@@ELEV@@
-rd() {
-  cat "§1" 2>/dev/null && return 0
-  [ "§(id -u)" = 0 ] && return 1
-  [ "§E" = 1 ] || return 1
-  [ -n "§T" ] || return 1
-  §T sudo -n cat "§1" 2>/dev/null && return 0
-  command -v su >/dev/null 2>&1 && §T su -c "cat §1" 2>/dev/null
-}
-STATLINE="§(rd /proc/stat 2>/dev/null | head -n1)"
-echo "##STAT"; echo "§STATLINE"
-echo "##TOP"
-[ -z "§STATLINE" ] && §T top -bn1 2>/dev/null | head -n5
-echo "##MEM"; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
-echo "##LOAD"; rd /proc/loadavg
-echo "##UPTIME"; cat /proc/uptime 2>/dev/null
-echo "##UPCMD"; uptime 2>/dev/null
-echo "##DF"; df -P / 2>/dev/null | tail -n1
-echo "##DFH"; df -P "§HOME" 2>/dev/null | tail -n1
-echo "##NET"; rd /proc/net/dev
-echo "##SYSNET"
-for d in /sys/class/net/*; do
-  n="§{d##*/}"; [ "§n" = lo ] && continue
-  echo "§n §(cat §d/statistics/rx_bytes 2>/dev/null) §(cat §d/statistics/tx_bytes 2>/dev/null)"
-done
-echo "##FREQ"
-for c in /sys/devices/system/cpu/cpu[0-9]*; do
-  echo "§(cat §c/cpufreq/scaling_cur_freq 2>/dev/null) §(cat §c/cpufreq/cpuinfo_max_freq 2>/dev/null)"
-done
-echo "##CORES"; nproc 2>/dev/null
-echo "##BAT"
-command -v termux-battery-status >/dev/null 2>&1 && §T termux-battery-status 2>/dev/null
-echo "##HOST"; hostname 2>/dev/null
-""".trimIndent().replace("§", "$")
+        conn = ConnState.Connecting
 
-internal val LOAD_RE =
-    Regex("""^\d+\.\d+ \d+\.\d+ \d+\.\d+ \d+/\d+ \d+$""")
+        term.reset()
 
-internal val UPCMD_LOAD_RE =
-    Regex("""load averages?:\s*([\d.]+),?\s+([\d.]+),?\s+([\d.]+)""")
+        viewModelScope.launch {
 
-internal val UPCMD_UP_RE =
-    Regex("""up\s+(.+?),\s+(?:\d+\s+users?|load)""")
+            val session = SshSession()
 
-internal val WS = Regex("\\s+")
+            try {
 
-internal val TOP_TOYBOX =
-    Regex("""(\d+)%cpu.*?(\d+)%idle""", RegexOption.IGNORE_CASE)
+                session.connect(
+                    target = target,
+                    password = password,
+                    cols = cols,
+                    rows = rows,
 
-internal val TOP_LINUX =
-    Regex("""(\d+(?:[.,]\d+)?)\s*id\b""")
+                    onText = {
+                        incoming.trySend(it)
+                    },
 
-internal val TOP_BUSY =
-    Regex("""(\d+)%\s*idle""", RegexOption.IGNORE_CASE)
+                    onClosed = {
+                        viewModelScope.launch {
+                            onClosed(session)
+                        }
+                    }
+                )
+
+                ssh = session
+
+                val client =
+                    SftpClient {
+                        session.openSftp()
+                    }
+
+                val browser =
+                    FileBrowserState(
+                        client,
+                        viewModelScope,
+                        { cmd ->
+                            session.exec(cmd)
+                        },
+                        context.cacheDir,
+                        context
+                    )
+
+                files = browser
+
+                conn =
+                    ConnState.Connected(target)
+
+                browser.start()
+
+                startMonitor(
+                    session,
+                    elevate
+                )
+
+            } catch (e: Exception) {
+
+                session.close()
+
+                files?.close()
+                files = null
+
+                conn =
+                    ConnState.Error(
+                        friendly(e)
+                    )
+            }
+        }
+    }
+
+internal fun RexPanelViewModel.__splitImpl_startMonitor(
+        session: SshSession,
+        elevate: Boolean
+    ) {
+
+        monitorJob?.cancel()
+
+        cpuHistory.clear()
+
+        val cmd =
+            monCmd(elevate)
+
+        monitorJob =
+            viewModelScope.launch {
+
+                var prev: RawSample? = null
+
+                while (isActive) {
+
+                    try {
+
+                        val raw =
+                            withTimeoutOrNull(8_000) {
+                                session.exec(cmd)
+                            }
+
+                        if (raw != null) {
+
+                            val sample =
+                                parseSample(raw)
+
+                            val m =
+                                buildMetrics(
+                                    sample,
+                                    prev
+                                )
+
+                            metrics = m
+
+                            (
+                                m.cpu
+                                    ?: m.cpuFreqFrac
+                                )?.let {
+
+                                    cpuHistory.add(it)
+
+                                    if (cpuHistory.size > 40) {
+                                        cpuHistory.removeAt(0)
+                                    }
+                                }
+
+                            prev = sample
+                        }
+
+                    } catch (e: CancellationException) {
+                        throw e
+
+                    } catch (_: Exception) {
+                        // Monitor harus tetap berjalan
+                        // meskipun satu sample gagal.
+                    }
+
+                    delay(2_000)
+                }
+            }
+    }

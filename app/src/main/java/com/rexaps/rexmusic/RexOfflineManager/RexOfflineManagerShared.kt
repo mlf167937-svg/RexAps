@@ -1,32 +1,54 @@
 package com.rexaps.rexmusic
 
-private val KEY_CLEAN = Regex("[^\\p{L}\\p{N}]+")
+import android.net.Uri
+import java.io.File
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 
-/** Nama folder lagu: "Iqro" + "Raim Laode" -> "Iqro-Raim-Laode". */
-fun offlineKey(track: RexTrack): String {
-    val raw = KEY_CLEAN.replace("${track.title} ${track.artist}", "-").trim('-')
-    return raw.take(100).trim('-').ifBlank { "Lagu" }
-}
+internal fun RexOfflineManager.__splitImpl_scan(): List<OfflineEntry> {
+        val dirs = root.listFiles { f -> f.isDirectory } ?: return emptyList()
+        return dirs.mapNotNull { dir ->
+            val mp3 = File(dir, AUDIO_NAME)
+            if (!mp3.isFile || mp3.length() <= 0L) return@mapNotNull null
+            val thumb = findThumbnail(dir)
+            val meta = readMeta(dir)
+            val track = RexTrack(
+                id = meta?.optString("id").orEmpty().ifBlank { "off-${dir.name}" },
+                title = meta?.optString("title").orEmpty().ifBlank { dir.name.replace('-', ' ') },
+                artist = meta?.optString("artist").orEmpty().ifBlank { "Unknown" },
+                album = meta?.optString("album").orEmpty().ifBlank { "Offline" },
+                cover = thumb?.let { Uri.fromFile(it).toString() }.orEmpty(),
+                spotifyUrl = meta?.optString("spotifyUrl").orEmpty(),
+                durationText = meta?.optString("durationText").orEmpty()
+            )
+            OfflineEntry(
+                key = dir.name,
+                track = track,
+                sizeBytes = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() },
+                savedAt = mp3.lastModified()
+            )
+        }.sortedByDescending { it.savedAt }
+    }
 
-/** Key folder lagu ini kalau sudah diunduh (cocok lewat nama folder, atau lewat id). */
-fun OfflineState.keyFor(track: RexTrack, key: String = offlineKey(track)): String? =
-    if (key in keys) key else entries.firstOrNull { it.track.id == track.id }?.key
-
-fun OfflineState.isDownloaded(track: RexTrack, key: String = offlineKey(track)): Boolean =
-    keyFor(track, key) != null
-
-internal const val DISPLAY_PATH = "Download/RexAps/Music"
-
-internal const val AUDIO_NAME = "music.mp3"
-
-internal const val META_NAME = "meta.json"
-
-internal const val LYRICS_NAME = "lyrics.json"
-
-internal const val PREFS = "rex_music_offline"
-
-internal const val KEY_OFFLINE = "offline_mode"
-
-internal const val USER_AGENT = "Mozilla/5.0 (Linux; Android 13) RexMusic"
-
-internal const val MAX_PARALLEL = 2
+/** Buka koneksi dan ikuti redirect sendiri (termasuk http -> https). */
+    internal fun RexOfflineManager.__splitImpl_openConnection(url: String): HttpURLConnection {
+        var current = url
+        for (i in 0 until 6) {
+            val conn = URL(current).openConnection() as HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 20_000
+            conn.instanceFollowRedirects = false
+            conn.setRequestProperty("User-Agent", USER_AGENT)
+            val code = conn.responseCode
+            if (code in 300..399) {
+                val location = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (location.isNullOrBlank()) throw IOException("redirect tanpa tujuan")
+                current = URL(URL(current), location).toString()
+                continue
+            }
+            return conn
+        }
+        throw IOException("terlalu banyak redirect")
+    }

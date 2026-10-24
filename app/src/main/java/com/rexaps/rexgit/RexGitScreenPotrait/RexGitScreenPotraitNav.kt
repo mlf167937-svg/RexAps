@@ -6,22 +6,12 @@ package com.rexaps.rexgit
 
 import android.provider.Settings
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
@@ -29,100 +19,18 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.grid.items
 
 @Composable
-internal fun LocalTab(
-    state: RexGitUiState,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onSelect: (RexGitRepository) -> Unit
-) {
-    val context = LocalContext.current
-
-    val repos = remember(state.repositories, query) {
-        state.repositories.filter {
-            it.name.contains(query.trim(), ignoreCase = true)
-        }
-    }
-
-    val gitCount = remember(state.repositories) {
-        state.repositories.count { it.isGitRepository }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-
-        if (state.repositories.isNotEmpty()) {
-            SearchField(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = "Search repositories",
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            if (state.storageFallback) {
-                item(key = "storage-notice") {
-                    StorageNotice(
-                        path = state.storagePath,
-                        onGrant = { openAllFilesAccess(context) }
-                    )
-                }
-            }
-
-            if (state.repositories.isNotEmpty()) {
-                item(key = "workspace") {
-                    WorkspaceCard(
-                        total = state.repositories.size,
-                        gitCount = gitCount,
-                        path = state.storagePath
-                    )
-                }
-            }
-
-            if (state.repositories.isEmpty()) {
-                item(key = "empty") {
-                    EmptyState(
-                        icon = Icons.Default.FolderOpen,
-                        title = "No repositories yet",
-                        body = "Connect GitHub and clone a repository into your workspace.",
-                        actionLabel = "Connect GitHub",
-                        onAction = onConnect
-                    )
-                }
-            } else if (repos.isEmpty()) {
-                item(key = "no-match") {
-                    EmptyState(
-                        icon = Icons.Default.Search,
-                        title = "No matches",
-                        body = "No repository matches \"${query.trim()}\"."
-                    )
-                }
-            } else {
-                items(repos, key = { it.path }) { repo ->
-                    RepositoryCard(repo = repo, onClick = { onSelect(repo) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun GithubTab(
+internal fun __splitImpl_GithubTab(
     state: RexGitUiState,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -245,6 +153,89 @@ internal fun GithubTab(
                     onClone = { onClone(repo) },
                     onOpen = { local?.let(onOpen) }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun __splitImpl_LocalTab(
+    state: RexGitUiState,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onSelect: (RexGitRepository) -> Unit
+) {
+    val context = LocalContext.current
+
+    val repos = remember(state.repositories, query) {
+        state.repositories.filter {
+            it.name.contains(query.trim(), ignoreCase = true)
+        }
+    }
+
+    val gitCount = remember(state.repositories) {
+        state.repositories.count { it.isGitRepository }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+
+        if (state.repositories.isNotEmpty()) {
+            SearchField(
+                value = query,
+                onValueChange = onQueryChange,
+                placeholder = "Search repositories",
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            if (state.storageFallback) {
+                item(key = "storage-notice") {
+                    StorageNotice(
+                        path = state.storagePath,
+                        onGrant = { openAllFilesAccess(context) }
+                    )
+                }
+            }
+
+            if (state.repositories.isNotEmpty()) {
+                item(key = "workspace") {
+                    WorkspaceCard(
+                        total = state.repositories.size,
+                        gitCount = gitCount,
+                        path = state.storagePath
+                    )
+                }
+            }
+
+            if (state.repositories.isEmpty()) {
+                item(key = "empty") {
+                    EmptyState(
+                        icon = Icons.Default.FolderOpen,
+                        title = "No repositories yet",
+                        body = "Connect GitHub and clone a repository into your workspace.",
+                        actionLabel = "Connect GitHub",
+                        onAction = onConnect
+                    )
+                }
+            } else if (repos.isEmpty()) {
+                item(key = "no-match") {
+                    EmptyState(
+                        icon = Icons.Default.Search,
+                        title = "No matches",
+                        body = "No repository matches \"${query.trim()}\"."
+                    )
+                }
+            } else {
+                items(repos, key = { it.path }) { repo ->
+                    RepositoryCard(repo = repo, onClick = { onSelect(repo) })
+                }
             }
         }
     }

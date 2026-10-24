@@ -1,146 +1,216 @@
 package com.rexaps.rexmusic
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import java.util.Calendar
-
-//  HOME 
+import androidx.compose.ui.unit.sp
 
 @Composable
-fun HomeTab(
+internal fun __splitImpl_PlaylistTab(
     state: RexMusicUiState,
     actions: RexActions,
     listState: LazyListState,
-    onBack: () -> Unit,
+    selectedPlaylistName: String?,
+    onOpenPlaylist: (String) -> Unit,
+    onBackFromDetail: () -> Unit,
+    onRequestDeletePlaylist: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val offlineMode = state.offline.enabled
-    val glow by animateColorAsState(
-        if (offlineMode) scheme.tertiary else scheme.primary, tween(400), label = "homeGlow"
-    )
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    var showCreate by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
+    var playlistQuery by rememberSaveable { mutableStateOf("") }
+    val detailListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val selectedPlaylist = state.playlists.firstOrNull { it.name == selectedPlaylistName }
 
-    Box(
-        modifier.fillMaxSize().drawBehind {
-            val h = 320.dp.toPx()
-            drawRect(
-                Brush.verticalGradient(
-                    listOf(glow.copy(alpha = 0.30f), Color.Transparent), startY = 0f, endY = h
-                ),
-                size = Size(size.width, h)
-            )
-        }
-    ) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            state = listState,
-            contentPadding = PaddingValues(bottom = 24.dp)
-        ) {
-            item(key = "home-header") {
-                HomeHeader(
-                    greeting = greetingForHour(hour),
-                    offline = offlineMode,
-                    onToggle = { actions.setOffline(!offlineMode) },
-                    onBack = onBack
-                )
-            }
-            if (offlineMode) {
-                offlineSection(state, actions, query = "", full = true)
-            } else {
-                onlineHome(state, actions)
-            }
-        }
+    LaunchedEffect(selectedPlaylistName) {
+        if (selectedPlaylistName != null) detailListState.scrollToItem(0)
     }
-}
-
-//  SEARCH 
-
-@Composable
-fun SearchTab(
-    state: RexMusicUiState,
-    query: String,
-    typing: Boolean,
-    onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
-    actions: RexActions,
-    listState: LazyListState,
-    modifier: Modifier = Modifier
-) {
-    val offlineMode = state.offline.enabled
-    val q = query.trim()
-    LazyColumn(
-        modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        item(key = "search-header") {
-            TabHeader("Cari", offlineMode) { actions.setOffline(!offlineMode) }
-        }
-        item(key = "search-field") {
-            SearchField(
-                query, onQueryChange, onClear,
-                if (offlineMode) "Cari di lagu offline" else "Lagu, artis, atau album",
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-        }
-        when {
-            offlineMode -> offlineSection(state, actions, q, full = false)
-            q.isEmpty() -> exploreSection(state, actions)
-            else -> resultsSection(state, actions, typing)
-        }
+    LaunchedEffect(selectedPlaylistName, state.playlists) {
+        if (selectedPlaylistName != null && selectedPlaylist == null) onBackFromDetail()
     }
-}
 
-//  LIBRARY 
-
-@Composable
-fun LibraryTab(
-    state: RexMusicUiState,
-    libTab: Int,
-    onLibTab: (Int) -> Unit,
-    actions: RexActions,
-    listState: LazyListState,
-    modifier: Modifier = Modifier
-) {
-    val offlineMode = state.offline.enabled
-    LazyColumn(
-        modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        item(key = "lib-header") {
-            TabHeader("Koleksi", offlineMode) { actions.setOffline(!offlineMode) }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val columns = when {
+            maxWidth >= 1120.dp -> 3
+            maxWidth >= 650.dp -> 2
+            else -> 1
         }
-        item(key = "lib-chips") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        val wideDetail = maxWidth >= 720.dp
+
+        if (selectedPlaylist != null) {
+            PlaylistDetailScreen(
+                playlist = selectedPlaylist,
+                state = state,
+                actions = actions,
+                listState = detailListState,
+                wide = wideDetail,
+                onBack = onBackFromDetail,
+                onDelete = { onRequestDeletePlaylist(selectedPlaylist.name) }
+            )
+        } else {
+            val filteredPlaylists = remember(state.playlists, playlistQuery) {
+                val query = playlistQuery.trim()
+                if (query.isBlank()) state.playlists
+                else state.playlists.filter { playlist ->
+                    playlist.name.contains(query, ignoreCase = true) ||
+                        playlist.tracks.any { it.title.contains(query, true) || it.artist.contains(query, true) }
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(bottom = 30.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                LibraryChip("Unduhan", state.offline.entries.size, libTab == 0) { onLibTab(0) }
-                LibraryChip("Antrian", state.userQueue.size, libTab == 1) { onLibTab(1) }
-                LibraryChip("Riwayat", state.history.size, libTab == 2) { onLibTab(2) }
+                item(key = "playlist-page-header") {
+                    Column(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "KOLEKSI MUSIK",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 1.2.sp
+                                )
+                                Text("Playlist", style = MaterialTheme.typography.headlineLarge)
+                            }
+                            FilledTonalButton(
+                                onClick = { showCreate = true },
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(19.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text("Buat playlist")
+                            }
+                        }
+                        Text(
+                            "Susun lagu sesuai suasana, aktivitas, atau momen favoritmu.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "${state.playlists.size} playlist · tersimpan di perangkat",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                item(key = "playlist-search") {
+                    OutlinedTextField(
+                        value = playlistQuery,
+                        onValueChange = { playlistQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (playlistQuery.isNotBlank()) {
+                                IconButton(onClick = { playlistQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Hapus pencarian")
+                                }
+                            }
+                        },
+                        placeholder = { Text("Cari playlist atau lagu di dalamnya") }
+                    )
+                }
+
+                if (state.playlists.isEmpty()) {
+                    item(key = "playlist-empty") {
+                        PlaylistEmptyState(onCreate = { showCreate = true })
+                    }
+                } else if (filteredPlaylists.isEmpty()) {
+                    item(key = "playlist-no-search-results") {
+                        EmptyState(
+                            Icons.Default.Search,
+                            "Playlist tidak ditemukan",
+                            "Coba kata kunci lain atau hapus pencarian."
+                        )
+                    }
+                } else {
+                    item(key = "playlist-list-heading") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Koleksi kamu", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            Text("${filteredPlaylists.size} item", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    items(
+                        items = filteredPlaylists.chunked(columns),
+                        key = { row -> "playlist-row-${row.firstOrNull()?.name.orEmpty()}" }
+                    ) { rowPlaylists ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            rowPlaylists.forEach { playlist ->
+                                PlaylistGridCard(
+                                    playlist = playlist,
+                                    compact = columns == 1,
+                                    onOpen = { onOpenPlaylist(playlist.name) },
+                                    onPlay = { actions.playPlaylist(playlist.name) },
+                                    onDelete = { onRequestDeletePlaylist(playlist.name) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat((columns - rowPlaylists.size).coerceAtLeast(0)) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
             }
         }
-        when (libTab) {
-            0 -> offlineSection(state, actions, query = "", full = true)
-            1 -> queueSection(state, actions, showNow = false)
-            else -> historySection(state, actions)
-        }
+    }
+
+    if (showCreate) {
+        AlertDialog(
+            onDismissRequest = { showCreate = false },
+            icon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
+            title = { Text("Buat playlist") },
+            text = {
+                OutlinedTextField(
+                    value = playlistName,
+                    onValueChange = { playlistName = it },
+                    singleLine = true,
+                    label = { Text("Nama playlist") },
+                    placeholder = { Text("Santai, Workout, Favorit...") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = playlistName.trim().isNotEmpty(),
+                    onClick = {
+                        actions.createPlaylist(playlistName.trim())
+                        playlistName = ""
+                        showCreate = false
+                    }
+                ) { Text("Buat playlist") }
+            },
+            dismissButton = { TextButton(onClick = { showCreate = false }) { Text("Batal") } }
+        )
     }
 }

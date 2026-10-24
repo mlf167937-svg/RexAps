@@ -30,18 +30,16 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
-
-/* ═════════════════════ Crop Dialog ═════════════════════ */
 
 @Composable
-internal fun CropDialog(
+internal fun __splitImpl_CropDialog(
     req: CropReq,
     aspect: Float,
     circle: Boolean,

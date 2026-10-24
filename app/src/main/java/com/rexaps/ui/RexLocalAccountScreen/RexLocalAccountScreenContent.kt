@@ -1,230 +1,207 @@
 package com.rexaps.ui
 
 import android.graphics.Bitmap
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.os.Build
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
-internal fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val c = MaterialTheme.colorScheme
-    Surface(
-        modifier,
-        shape = RoundedCornerShape(22.dp),
-        color = c.surface.copy(alpha = .55f),
-        border = BorderStroke(1.dp, c.outlineVariant.copy(alpha = .5f))
-    ) { Column(content = content) }
-}
-
-@Composable
-internal fun Reveal(visible: Boolean, delayMs: Int, content: @Composable () -> Unit) {
-    AnimatedVisibility(
-        visible,
-        enter = fadeIn(tween(550, delayMs)) + slideInVertically(tween(550, delayMs)) { it / 4 }
-    ) { content() }
-}
-
-@Composable
-internal fun Aurora(modifier: Modifier) {
-    val c = MaterialTheme.colorScheme
-    val inf = rememberInfiniteTransition(label = "aurora")
-    val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "t")
-    Box(modifier.drawBehind {
-        drawRect(
-            Brush.radialGradient(
-                listOf(c.primary.copy(.26f), Color.Transparent),
-                center = Offset(size.width * (.15f + .6f * t), size.height * .30f),
-                radius = size.width * .95f
-            )
+internal fun __splitImpl_PermissionGate(padding: PaddingValues, onAllow: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val inf = rememberInfiniteTransition(label = "gate")
+    val pulse by inf.animateFloat(
+        1f, 1.08f,
+        infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    val steps = if (Build.VERSION.SDK_INT >= 30) {
+        listOf(
+            "Tekan tombol \"Izinkan akses\" di bawah",
+            "Aktifkan \"Izinkan akses ke semua file\"",
+            "Kembali ke RexAps, halaman akan terbuka otomatis"
         )
-        drawRect(
-            Brush.radialGradient(
-                listOf(c.tertiary.copy(.22f), Color.Transparent),
-                center = Offset(size.width * (.9f - .6f * t), size.height * .75f),
-                radius = size.width * .9f
-            )
-        )
-    })
-}
-
-@Composable
-internal fun GlowBadge(text: String) {
-    Surface(shape = CircleShape, color = Color.White.copy(.16f)) {
-        Text(
-            text,
-            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold
+    } else {
+        listOf(
+            "Tekan tombol \"Izinkan akses\" di bawah",
+            "Setujui izin penyimpanan yang muncul"
         )
     }
-}
 
-@Composable
-internal fun rememberRexProfileController(): RexProfileController {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val ctl = remember { RexProfileController(context, scope) }
-
-    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        ctl.handlePick(it, CropTarget.BANNER)
-    }
-    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        ctl.handlePick(it, CropTarget.AVATAR)
-    }
-    val storyVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
-        ctl.addStoryVideo(it)
-    }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        ctl.addVideo(it)
-    }
-
-    ctl.onPickBanner = { bannerPicker.launch(arrayOf("image/*", "video/*")) }
-    ctl.onPickAvatar = { avatarPicker.launch(arrayOf("image/*", "video/*")) }
-    ctl.onPickStoryVideo = { storyVideoPicker.launch("video/*") }
-    ctl.onPickVideo = { videoPicker.launch(arrayOf("video/mp4", "image/png", "image/jpeg")) }
-
-    LaunchedEffect(Unit) { ctl.load() }
-    return ctl
-}
-
-@Composable
-internal fun StatItem(value: Int, label: String, modifier: Modifier) {
-    val v by animateIntAsState(value, tween(900), label = "stat")
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("$v", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-internal fun RexGrid(
-    count: Int,
-    columns: Int,
-    cellAspect: Float,
-    gap: Dp = 8.dp,
-    cell: @Composable (Int, Modifier) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-        for (r in 0 until (count + columns - 1) / columns) {
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                for (c in 0 until columns) {
-                    val i = r * columns + c
-                    if (i < count) cell(i, Modifier.weight(1f).aspectRatio(cellAspect))
-                    else Spacer(Modifier.weight(1f))
+    Box(Modifier.fillMaxSize().padding(padding)) {
+        Aurora(Modifier.fillMaxSize())
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(Modifier.graphicsLayer { scaleX = pulse; scaleY = pulse }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(136.dp).clip(CircleShape).background(colors.primary.copy(alpha = .12f)))
+                Box(
+                    Modifier
+                        .size(104.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Lock, null, tint = colors.onPrimary, modifier = Modifier.size(44.dp))
                 }
             }
-        }
-    }
-}
-
-@Composable
-internal fun AddTile(modifier: Modifier, title: String, sub: String, onClick: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(18.dp)
-    Box(
-        modifier
-            .pressable(onClick)
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(c.primary.copy(.20f), c.tertiary.copy(.14f))))
-            .border(1.dp, c.primary.copy(.35f), shape),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(
-                Modifier.size(42.dp).clip(CircleShape).background(c.primary),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, null, tint = c.onPrimary, modifier = Modifier.size(22.dp))
-            }
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-internal fun AvatarContent(acct: RexLocalAccount, rev: Int, animate: Boolean, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    var sz by remember { mutableStateOf(IntSize.Zero) }
-    val bmp by produceState<Bitmap?>(null, acct.picturePath, rev) {
-        value = if (acct.picturePath.isBlank()) null
-        else withContext(Dispatchers.IO) { decodeFileSampled(acct.picturePath, 768) }
-    }
-    val hasVideo = animate && acct.pictureVideo.isNotBlank() && File(acct.pictureVideo).exists()
-
-    Box(
-        modifier.clip(CircleShape).background(colors.surfaceVariant).onSizeChanged { sz = it },
-        contentAlignment = Alignment.Center
-    ) {
-        val b = bmp
-        if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Icon(Icons.Default.AccountCircle, null, Modifier.fillMaxSize(0.8f), tint = colors.primary)
-
-        if (hasVideo) {
-            RexVideo(
-                acct.pictureVideo,
-                Modifier.fillMaxSize().graphicsLayer {
-                    scaleX = acct.pictureScale; scaleY = acct.pictureScale
-                    translationX = acct.pictureX * sz.width
-                    translationY = acct.pictureY * sz.height
-                },
-                key = rev
+            Spacer(Modifier.height(28.dp))
+            Text(
+                "Izin penyimpanan diperlukan",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
             )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Profil, story, dan video kamu disimpan langsung di Download/RexAps/.config/ — 100% lokal, tanpa server.",
+                color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    steps.forEachIndexed { i, s -> PermissionStep(i + 1, s) }
+                }
+            }
+            Spacer(Modifier.height(26.dp))
+            Button(
+                onClick = onAllow,
+                Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Izinkan akses", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
 
 @Composable
-internal fun ProfileActions(ctl: RexProfileController) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(
-            onClick = { ctl.showEdit = true },
-            Modifier.weight(1f).height(50.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Edit profil")
+internal fun __splitImpl_BannerView(acct: RexLocalAccount, rev: Int, modifier: Modifier, parallax: () -> Float) {
+    val colors = MaterialTheme.colorScheme
+    val bg = colors.background
+    val inf = rememberInfiniteTransition(label = "banner")
+    val kb by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "kb")
+    val shift by inf.animateFloat(0f, 900f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Reverse), label = "shift")
+    var w by remember { mutableFloatStateOf(1f) }
+    var h by remember { mutableFloatStateOf(1f) }
+    val bmp by produceState<Bitmap?>(null, acct.bannerPath, rev) {
+        value = if (acct.bannerPath.isNotBlank()) withContext(Dispatchers.IO) { decodeFileSampled(acct.bannerPath, 2048) } else null
+    }
+    val hasVideo = acct.bannerVideo.isNotBlank() && File(acct.bannerVideo).exists()
+
+    Box(modifier.clipToBounds().onSizeChanged { w = it.width.toFloat(); h = it.height.toFloat() }) {
+        Box(Modifier.fillMaxSize().graphicsLayer { translationY = parallax() }) {
+            val b = bmp
+            if (b != null) {
+                Image(
+                    b.asImageBitmap(), null,
+                    Modifier.fillMaxSize().graphicsLayer {
+                        if (!hasVideo) {
+                            val z = 1.08f + 0.08f * kb
+                            scaleX = z; scaleY = z
+                            translationX = (kb - .5f) * 24f
+                            translationY = (.5f - kb) * 12f
+                        }
+                    },
+                    contentScale = ContentScale.Crop
+                )
+            } else if (!hasVideo) {
+                Box(Modifier.fillMaxSize().drawBehind {
+                    drawRect(
+                        Brush.linearGradient(
+                            listOf(colors.primary, colors.tertiary, colors.secondary),
+                            start = Offset(shift, 0f),
+                            end = Offset(shift + 900f, 900f),
+                            tileMode = TileMode.Mirror
+                        )
+                    )
+                })
+            }
+            if (hasVideo) {
+                RexVideo(
+                    acct.bannerVideo,
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = acct.bannerScale; scaleY = acct.bannerScale
+                        translationX = acct.bannerX * w
+                        translationY = acct.bannerY * h
+                    },
+                    key = rev
+                )
+            }
         }
-        FilledTonalButton(
-            onClick = { ctl.showStoryCompose = true },
-            Modifier.weight(1f).height(50.dp),
-            shape = RoundedCornerShape(16.dp)
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+            colorStops = arrayOf(0f to Color.Black.copy(.25f), .25f to Color.Transparent, .6f to Color.Transparent, 1f to bg)
+        )))
+    }
+}
+
+@Composable
+internal fun __splitImpl_FeedItem(file: File, acct: RexLocalAccount, rev: Int, active: Boolean) {
+    val isVideo = file.extension.lowercase() == "mp4"
+    var userPlaying by remember(active) { mutableStateOf(true) }
+
+    Box(
+        Modifier.fillMaxSize().clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null
+        ) { userPlaying = !userPlaying },
+        contentAlignment = Alignment.Center
+    ) {
+        if (isVideo) {
+            RexVideo(file.path, Modifier.fillMaxSize(), loop = true, muted = false, playing = active && userPlaying, fit = true)
+            if (active && !userPlaying) {
+                Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(.85f), modifier = Modifier.size(88.dp))
+            }
+        } else {
+            val bmp by produceState<Bitmap?>(null, file.path) {
+                value = withContext(Dispatchers.IO) { decodeFileSampled(file.path, 2000) }
+            }
+            bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+        }
+
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.6f)))))
+
+        Row(
+            Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Buat story")
+            AvatarContent(acct, rev, false, Modifier.size(42.dp).border(2.dp, Color.White, CircleShape))
+            Column {
+                Text(acct.username, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(file.name, color = Color.White.copy(.75f), style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

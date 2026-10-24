@@ -18,7 +18,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun PanelTabs(
+internal fun __splitImpl_PanelTabs(
     selected: PanelTab,
     onSelect: (PanelTab) -> Unit
 ) {

@@ -14,26 +14,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SheetAction(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val c = if (danger) colors.error else colors.onSurface
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, null, tint = c)
-        Spacer(Modifier.width(16.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = c)
-    }
-}
-
-@Composable
-internal fun NameDialog(
+internal fun __splitImpl_NameDialog(
     title: String,
     initial: String,
     confirm: String,
@@ -63,4 +44,23 @@ internal fun NameDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
     )
+}
+
+@Composable
+internal fun __splitImpl_SheetAction(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val c = if (danger) colors.error else colors.onSurface
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = c)
+        Spacer(Modifier.width(16.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = c)
+    }
 }

@@ -4,33 +4,24 @@
 
 package com.rexaps.rexgit
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.fillMaxHeight
-
-// ============================================================
-// Repository (landscape)
-// ============================================================
 
 @Composable
-internal fun RepositoryScreenLandscape(
+internal fun __splitImpl_RepositoryScreenLandscape(
     state: RexGitUiState,
     host: RexGitScreenHost,
     onBack: () -> Unit,
@@ -158,6 +149,81 @@ internal fun RepositoryScreenLandscape(
                     )
                     2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, onChooseAccount = { host.githubDialog.value = true }, modifier = Modifier.fillMaxSize())
                     else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun __splitImpl_RexGitScreenLandscape(
+    state: RexGitUiState,
+    host: RexGitScreenHost,
+    editor: RexGitEditorState?,
+    viewModel: RexGitViewModel
+) {
+    val screen = screenIndex(state)
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = {
+            SnackbarHost(
+                hostState = host.snackbar,
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(start = if (screen == 1) LandscapeRepoPaneWidth else 0.dp)
+            )
+        },
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
+    ) { padding ->
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Crossfade(
+                targetState = screen,
+                animationSpec = tween(160)
+            ) { target ->
+                when (target) {
+                    2 -> editor?.let {
+                        EditorScreenLandscape(
+                            state = state,
+                            editor = it,
+                            onBack = {
+                                if (state.editorDirty) host.discardDialog.value = true
+                                else viewModel.closeEditor()
+                            },
+                            onSave = viewModel::saveEditor
+                        )
+                    }
+
+                    1 -> RepositoryScreenLandscape(
+                        state = state,
+                        host = host,
+                        onBack = viewModel::backToRepositories,
+                        onRefresh = viewModel::refreshStatus,
+                        onRefreshHub = viewModel::refreshRepositoryHub,
+                        onDownloadAsset = viewModel::downloadGithubAsset,
+                        onOpen = viewModel::openFile,
+                        onNavigate = { path ->
+                            host.repoTab.value = 1
+                            if (path == null) viewModel.openRoot()
+                            else viewModel.openDirectory(path)
+                        },
+                        onPull = viewModel::pull
+                    )
+
+                    else -> HomeScreenLandscape(
+                        state = state,
+                        host = host,
+                        onRefresh = viewModel::refresh,
+                        onSelect = viewModel::selectRepository,
+                        onClone = viewModel::cloneRepository,
+                        onSwitch = viewModel::switchAccount,
+                        onSearchGithub = viewModel::searchGithubRepositories
+                    )
                 }
             }
         }

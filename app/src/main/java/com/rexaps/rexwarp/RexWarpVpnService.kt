@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.*
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.rexaps.rexwarp.tunnel.*
 import kotlinx.coroutines.*
@@ -14,15 +15,18 @@ import java.net.Socket
 import java.time.LocalDate
 
 class RexWarpVpnService : VpnService() {
+
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     internal lateinit var repo: RexWarpRepository
     internal lateinit var cm: ConnectivityManager
+
     internal var tunnel: RexWarpTunnel? = null
     internal var connectJob: Job? = null
     internal var stateJob: Job? = null
     internal var infoJob: Job? = null
-    internal var monitorJob: Job? = null
+    private var monitorJob: Job? = null
     internal var reconnectJob: Job? = null
+
     internal var userWantsConnection = false
     internal var paused = false
     internal var stopping = false
@@ -30,9 +34,10 @@ class RexWarpVpnService : VpnService() {
     internal var failureInFlight = false
     internal var reconnectAttempts = 0
     @Volatile internal var settings = RexWarpSettings()
+
     internal val physical = LinkedHashMap<Network, NetworkCapabilities>()
-    internal var lastRx = 0L; private var lastTx = 0L; private var lastSampleAt = 0L
-    internal var pendingDl = 0L; private var pendingUl = 0L; private var pendingDate: LocalDate = LocalDate.now()
+    internal var lastRx = 0L; internal var lastTx = 0L; internal var lastSampleAt = 0L
+    internal var pendingDl = 0L; internal var pendingUl = 0L; internal var pendingDate: LocalDate = LocalDate.now()
     internal var lastSpeed = RexWarpSpeed()
     internal val dlHist = ArrayDeque<Long>()   // riwayat kecepatan untuk grafik notifikasi
     internal val ulHist = ArrayDeque<Long>()
@@ -42,7 +47,7 @@ class RexWarpVpnService : VpnService() {
         override fun onLost(network: Network) { physical.remove(network); evaluatePolicy() }
     }
 
-    private inner class Host : RexWarpTunnelHost {
+    internal inner class Host : RexWarpTunnelHost {
         override fun newBuilder(): Builder = this@RexWarpVpnService.Builder().setSession("RexWARP")
         override fun protect(fd: Int) = this@RexWarpVpnService.protect(fd)
         override fun protect(socket: Socket) = this@RexWarpVpnService.protect(socket)
@@ -75,6 +80,112 @@ class RexWarpVpnService : VpnService() {
         return START_NOT_STICKY
     }
 
+    // ---- connect / disconnect ------------------------------------------------------------
+
+    internal fun startConnect() {
+        return this.__splitImpl_startConnect()
+    }
+
+    private fun userDisconnect() {
+        userWantsConnection = false; paused = false; stopping = true
+        reconnectJob?.cancel(); connectJob?.cancel()
+        scope.launch {
+            if (tunnel != null) repo.setDisconnecting()
+            teardownTunnel()
+            stopping = false
+            repo.setDisconnected()
+            finishService()
+        }
+    }
+
+    internal fun handleFailure(error: RexWarpError) {
+        return this.__splitImpl_handleFailure(error)
+    }
+
+    internal fun onTunnelState(s: RexWarpTunnelState) {
+        return this.__splitImpl_onTunnelState(s)
+    }
+
+    internal suspend fun teardownTunnel() {
+        val t = tunnel ?: return
+        tunnel = null; sessionActive = false
+        runCatching { sample(t) }; flushPending()
+        lastSpeed = RexWarpSpeed(); dlHist.clear(); ulHist.clear()
+        monitorJob?.cancel(); stateJob?.cancel(); infoJob?.cancel(); connectJob?.cancel()
+        runCatching { withTimeout(DISCONNECT_TIMEOUT_MS) { t.disconnect() } }
+    }
+
+    internal fun finishService() {
+        // Notifikasi error tetap terlihat setelah service berhenti (jangan dihapus bila ERROR).
+        stopForeground(if (repo.state.value.connection == RexWarpConnectionState.ERROR) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    // ---- statistik & usage ---------------------------------------------------------------
+
+    internal fun startMonitor(t: RexWarpTunnel) {
+        monitorJob?.cancel()
+        val s0 = t.getStats()
+        lastRx = s0.rxBytes; lastTx = s0.txBytes; lastSampleAt = SystemClock.elapsedRealtime()
+        monitorJob = scope.launch {
+            var tick = 0
+            while (isActive) {
+                delay(SAMPLE_MS)
+                tick++
+                sample(t)
+                updateNotification(force = false)         // real-time tiap detik (dilewati saat layar mati)
+                if (tick % 15 == 0) flushPending()        // tulis DB tiap ~15 detik
+            }
+        }
+    }
+
+    internal fun sample(t: RexWarpTunnel) {
+        return this.__splitImpl_sample(t)
+    }
+
+    internal fun flushPending() {
+        if (pendingDl == 0L && pendingUl == 0L) return
+        val d = pendingDate; val dl = pendingDl; val ul = pendingUl
+        pendingDl = 0; pendingUl = 0
+        repo.appScope.launch { repo.usage.addTraffic(d, dl, ul) } // tetap jalan walau service sudah mati
+    }
+
+    // ---- aturan jaringan -----------------------------------------------------------------
+
+    internal fun hasNetwork(): Boolean {
+        val n = cm.activeNetwork ?: return false
+        return cm.getNetworkCapabilities(n)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
+
+    internal fun pauseReason(): String? {
+        return this.__splitImpl_pauseReason()
+    }
+
+    private fun evaluatePolicy() {
+        val reason = pauseReason()
+        if (reason != null && userWantsConnection && !paused && (tunnel != null || connectJob?.isActive == true)) {
+            paused = true; stopping = true; connectJob?.cancel()
+            scope.launch { teardownTunnel(); stopping = false; repo.setDisconnected(reason); updateNotification() }
+        } else if (reason == null && paused && userWantsConnection && physical.isNotEmpty()) {
+            paused = false; startConnect()
+        }
+    }
+
+    // ---- notifikasi / lifecycle ----------------------------------------------------------
+
+    /**
+     * Android 14+: tipe SYSTEM_EXEMPTED bisa ditolak untuk app yang tidak memenuhi syarat.
+     * Coba beberapa tipe berurutan supaya service tidak langsung mati.
+     */
+    internal fun startForegroundSafely(): Boolean {
+        return this.__splitImpl_startForegroundSafely()
+    }
+
+    /** [force] = false: lewati bila layar mati (hemat baterai); notifikasi segar lagi saat layar menyala. */
+    internal fun updateNotification(force: Boolean = true) {
+        return this.__splitImpl_updateNotification(force)
+    }
+
     override fun onRevoke() {
         super.onRevoke()
         handleFailure(RexWarpError.PERMISSION_REVOKED)
@@ -96,14 +207,14 @@ class RexWarpVpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.rexaps.rexwarp.CONNECT"
         const val ACTION_DISCONNECT = "com.rexaps.rexwarp.DISCONNECT"
-        internal const val TAG = "RexWarp"
-        internal const val SAMPLE_MS = 1_000L
-        internal const val HISTORY_SIZE = 40
-        internal const val CONNECT_TIMEOUT_MS = 70_000L   // registrasi + handshake + verifikasi warp=on
-        internal const val DISCONNECT_TIMEOUT_MS = 5_000L
-        internal const val RECONNECT_BASE_DELAY_MS = 3_000L
-        internal const val MAX_RECONNECT = 5
-        internal val RETRYABLE = setOf(
+        private const val TAG = "RexWarp"
+        private const val SAMPLE_MS = 1_000L
+        private const val HISTORY_SIZE = 40
+        private const val CONNECT_TIMEOUT_MS = 70_000L   // registrasi + handshake + verifikasi warp=on
+        private const val DISCONNECT_TIMEOUT_MS = 5_000L
+        private const val RECONNECT_BASE_DELAY_MS = 3_000L
+        private const val MAX_RECONNECT = 5
+        private val RETRYABLE = setOf(
             RexWarpError.UNEXPECTED_DISCONNECT, RexWarpError.NETWORK_UNAVAILABLE,
             RexWarpError.TIMEOUT, RexWarpError.TUNNEL_FAILED
         )

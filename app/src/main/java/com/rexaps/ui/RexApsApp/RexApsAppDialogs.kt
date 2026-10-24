@@ -1,101 +1,214 @@
 package com.rexaps.ui
 
+import android.app.Activity
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.view.WindowCompat
+import com.rexaps.rexcoder.RexCoderScreen
+import com.rexaps.rexfox.RexFoxScreen
+import com.rexaps.rexgit.RexGit
+import com.rexaps.rexmanager.RexManagerScreen
+import com.rexaps.rexmusic.RexMusicScreen
+import com.rexaps.rexnux.RexNuxScreen
+import com.rexaps.rexspacex.RexSpaceXScreen
+import com.rexaps.rextools.navigation.RexNavGraph
 
-/* ═════════════════════ Tema ═════════════════════ */
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ThemeSheet(
-    selected: RexThemeOption,
-    onSelect: (RexThemeOption) -> Unit,
-    onDismiss: () -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.background,
-        contentColor = MaterialTheme.colorScheme.onBackground
-    ) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "Pilih tema",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = "${RexThemeOption.curatedOptions.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-                Text(
-                    text = "30 tema premium dalam enam kategori visual, dengan preview langsung.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            ThemePicker(selected = selected, onSelect = onSelect)
+internal fun __splitImpl_RexApsApp(activity: Activity) {
+
+    var route by remember { mutableStateOf(RexRoute.NONE) }
+    var routeLoading by remember { mutableStateOf(false) }
+
+    val themeStore = remember { RexThemeStore(activity) }
+    var themeOption by remember { mutableStateOf(themeStore.load()) }
+
+    var themeApplying by remember { mutableStateOf(false) }
+    var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
+    var showThemeSheet by rememberSaveable { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableStateOf(RexTab.HOME) }
+
+    // System bars belong to RexAps, not the Android device's light/dark preference.
+    val activePalette = remember(themeOption) { RexPaletteSpec.of(themeOption) }
+    SideEffect {
+        activity.window.statusBarColor = Color(activePalette.background).toArgb()
+        activity.window.navigationBarColor = Color(activePalette.background).toArgb()
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = !activePalette.dark
+            isAppearanceLightNavigationBars = !activePalette.dark
         }
     }
-}
 
-@Composable
-internal fun ThemePicker(
-    selected: RexThemeOption,
-    onSelect: (RexThemeOption) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val categoryGroups = listOf(
-        "Dark" to RexThemeOption.curatedOptions.filter { it.name.startsWith("DARK_") },
-        "Glass" to RexThemeOption.curatedOptions.filter { it.name.startsWith("GLASS_") },
-        "Light" to RexThemeOption.curatedOptions.filter { it.name.startsWith("LIGHT_") },
-        "Neon" to RexThemeOption.curatedOptions.filter { it.name.startsWith("NEON_") },
-        "Cosmic" to RexThemeOption.curatedOptions.filter { it.name.startsWith("ASTRAL_") || it.name.startsWith("NEBULA_") || it.name.startsWith("ECLIPSE_") || it.name.startsWith("STARLIGHT_") },
-        "Elemental" to RexThemeOption.curatedOptions.filter { it.name.startsWith("FROST_") || it.name.startsWith("INFERNO_") || it.name.startsWith("THUNDER_") || it.name.startsWith("ABYSSAL_") }
-    )
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        categoryGroups.forEach { (category, options) ->
-            Text(category, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-            options.chunked(THEME_COLUMNS).forEach { rowItems ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    rowItems.forEach { option ->
-                        ThemeTile(option = option, isSelected = option == selected,
-                            onClick = { onSelect(option) }, modifier = Modifier.weight(1f))
+    // A module without its own nested-back action returns to the RexAps shell instead of closing the app.
+    BackHandler(enabled = route != RexRoute.NONE) {
+        route = RexRoute.NONE
+        routeLoading = false
+    }
+
+    val onThemeChange: (RexThemeOption) -> Unit = { option ->
+        if (option != themeOption) {
+            pendingTheme = option
+            themeApplying = true
+        }
+    }
+
+    /* SUB-APP ROUTES */
+    if (route != RexRoute.NONE) {
+
+        val appName = route.displayName
+
+        RexTheme(option = themeOption) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    // Keep a single theme-aware animated backdrop underneath every sub-module.
+                    ProAmbientBackdrop(Modifier.fillMaxSize())
+                    Crossfade(
+                        targetState = routeLoading,
+                        animationSpec = tween(320),
+                        label = "routeTransition"
+                    ) { isLoading ->
+                        if (isLoading) {
+                            RexAppLoader(
+                                appName = appName,
+                                onFinished = { routeLoading = false }
+                            )
+                        } else {
+                            when (route) {
+                                RexRoute.REXFOX -> RexFoxScreen(activity = activity)
+
+                                RexRoute.REXPANEL ->
+                                    com.rexaps.rexpanel.RexPanelScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXCHAT ->
+                                    com.rexaps.rexchat.SessionListScreen(
+                                        onOpen = { session, method ->
+                                            com.rexaps.rexchat.openRexChatSession(activity, session, method)
+                                        },
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXNUX ->
+                                    RexNuxScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXTOOLS ->
+                                    RexNavGraph(onBack = { route = RexRoute.NONE })
+
+                                RexRoute.REXMUSIC ->
+                                    RexMusicScreen(onBack = { route = RexRoute.NONE })
+
+                                RexRoute.REXMANAGER ->
+                                    RexManagerScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXGIT -> RexGit()
+
+                                RexRoute.REXCODER ->
+                                    RexCoderScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXMONITOR ->
+                                    com.rexaps.rexmonitor.RexMonitorScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXSPACEX ->
+                                    RexSpaceXScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXWARP ->
+                                    com.rexaps.rexwarp.RexWarpScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.NONE -> Unit
+                            }
+                        }
                     }
-                    repeat(THEME_COLUMNS - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        return
+    }
+
+    /* MAIN SHELL — portrait / landscape */
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    val shell = RexShell(
+        selectedTab = selectedTab,
+        themeOption = themeOption,
+        onSelectTab = { selectedTab = it },
+        onAppClick = { app ->
+            if (app.available) {
+                RexRoute.fromModuleId(app.id)?.let {
+                    route = it
+                    routeLoading = true
+                }
+            }
+        },
+        onOpenTheme = { showThemeSheet = true }
+    )
+
+    RexTheme(option = themeOption) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                if (isLandscape) {
+                    RexAppsScreenLandscape(shell)
+                } else {
+                    RexAppsScreenPortrait(shell)
+                }
+
+                if (showThemeSheet) {
+                    ThemeSheet(
+                        selected = themeOption,
+                        onSelect = onThemeChange,
+                        onDismiss = { showThemeSheet = false }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = themeApplying,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150))
+                ) {
+                    pendingTheme?.let { target ->
+                        RexThemeLoadingOverlay(
+                            targetOption = target,
+                            onFinished = {
+                                themeOption = target
+                                themeStore.save(target)
+                                pendingTheme = null
+                                themeApplying = false
+                                showThemeSheet = false
+                            }
+                        )
+                    }
                 }
             }
         }

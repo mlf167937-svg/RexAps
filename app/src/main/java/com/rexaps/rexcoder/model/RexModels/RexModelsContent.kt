@@ -5,4 +5,4 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.*
 
 @Composable
-fun rememberRexCoderState(): RexCoderState = remember { RexCoderState().also { it.expanded.add(it.root.path) } }
+internal fun __splitImpl_rememberRexCoderState(): RexCoderState = remember { RexCoderState().also { it.expanded.add(it.root.path) } }

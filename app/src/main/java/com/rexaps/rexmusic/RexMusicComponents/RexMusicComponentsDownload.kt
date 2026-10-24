@@ -16,22 +16,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun DownloadRing(status: DownloadStatus, size: Dp = 22.dp, modifier: Modifier = Modifier) {
-    val color = MaterialTheme.colorScheme.tertiary
-    if (status.stage == DownloadStage.Downloading && status.percent >= 0) {
-        CircularProgressIndicator(
-            progress = status.percent / 100f,
-            modifier = modifier.size(size), color = color, strokeWidth = 2.dp
-        )
-    } else {
-        CircularProgressIndicator(modifier = modifier.size(size), color = color, strokeWidth = 2.dp)
-    }
-}
-
-//  Downloads & queue rows 
-
-@Composable
-fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
+internal fun __splitImpl_DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val label = when (status.stage) {
         DownloadStage.Queued -> "Menunggu giliran..."
@@ -71,5 +56,18 @@ fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
         } else {
             LinearProgressIndicator(modifier = bar, color = scheme.tertiary)
         }
+    }
+}
+
+@Composable
+internal fun __splitImpl_DownloadRing(status: DownloadStatus, size: Dp = 22.dp, modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.tertiary
+    if (status.stage == DownloadStage.Downloading && status.percent >= 0) {
+        CircularProgressIndicator(
+            progress = status.percent / 100f,
+            modifier = modifier.size(size), color = color, strokeWidth = 2.dp
+        )
+    } else {
+        CircularProgressIndicator(modifier = modifier.size(size), color = color, strokeWidth = 2.dp)
     }
 }

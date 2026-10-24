@@ -32,10 +32,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// ───────────────────────── Navigation dock ─────────────────────────
-
 @Composable
-internal fun NavigationDock(
+internal fun __splitImpl_NavigationDock(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     showLabels: Boolean,

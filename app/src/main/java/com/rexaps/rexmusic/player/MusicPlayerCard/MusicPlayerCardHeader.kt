@@ -3,6 +3,7 @@ package com.rexaps.rexmusic.player
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,10 +14,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.rexmusic.*
-import androidx.compose.material.icons.filled.Subtitles
 
 @Composable
-internal fun PlayerTopBar(
+internal fun __splitImpl_PlayerTopBar(
     state: RexMusicUiState,
     track: RexTrack,
     onClose: () -> Unit,
