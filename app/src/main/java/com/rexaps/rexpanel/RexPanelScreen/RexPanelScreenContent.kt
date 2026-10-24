@@ -1,241 +1,259 @@
 package com.rexaps.rexpanel
 
+import android.app.Activity
+import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 
 @Composable
-internal fun MonitorSection(
-    m: Metrics?,
-    cpuHistory: List<Float>
-) {
-    Column(
-        Modifier.padding(
-            horizontal = 16.dp,
-            vertical = 8.dp
-        ),
-        verticalArrangement =
-            Arrangement.spacedBy(10.dp)
+internal fun RexPanelScreenContent(activity: Activity,
+    onExit: () -> Unit) {
+    val owner =
+        activity as? ViewModelStoreOwner
+            ?: error(
+                "RexPanelScreen requires an Activity that implements ViewModelStoreOwner"
+            )
+
+    val vm =
+        ViewModelProvider(owner)[
+            RexPanelViewModel::class.java
+        ]
+
+    val colors = MaterialTheme.colorScheme
+
+    var fullscreen by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    var fontSize by rememberSaveable {
+        mutableIntStateOf(12)
+    }
+
+    var tabIdx by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+
+    val state = vm.conn
+    val files = vm.files
+
+    val tab =
+        PanelTab.values()[tabIdx]
+
+    val connected =
+        state is ConnState.Connected
+
+    val immersive =
+        fullscreen ||
+            (
+                tab == PanelTab.Files &&
+                    files?.preview != null
+                )
+
+    BackHandler {
+        when {
+            // Jika sedang memilih file, tombol Back cukup
+            // membatalkan selection terlebih dahulu.
+            connected &&
+                tab == PanelTab.Files &&
+                files?.selecting == true -> {
+                files.clearSelection()
+            }
+
+            fullscreen -> {
+                fullscreen = false
+            }
+
+            connected &&
+                tab == PanelTab.Files &&
+                files?.preview != null -> {
+                files.preview = null
+            }
+
+            connected &&
+                tab == PanelTab.Files &&
+                files?.canGoUp == true -> {
+                files.up()
+            }
+
+            connected &&
+                tab != PanelTab.Dashboard -> {
+                tabIdx = 0
+            }
+
+            else -> {
+                onExit()
+            }
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background.copy(alpha = 0.93f))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
 
-        if (m == null) {
+        if (state is ConnState.Connected) {
 
-            LinearProgressIndicator(
-                Modifier.fillMaxWidth()
-            )
-
-            Text(
-                "Mengambil data server…",
-                style =
-                    MaterialTheme.typography
-                        .bodySmall,
-                color =
-                    MaterialTheme.colorScheme
-                        .onSurfaceVariant
-            )
-        }
-
-        val total =
-            m?.memTotalKb
-
-        val used =
-            m?.memUsedKb
-
-        val memFrac =
-            if (
-                total != null &&
-                used != null &&
-                total > 0
-            ) {
-                used.toFloat() /
-                    total
-            } else {
-                null
-            }
-
-        val cpuFrac =
-            m?.cpu ?: m?.cpuFreqFrac
-
-        val cpuValue =
-            when {
-                m?.cpu != null ->
-                    "${(m.cpu * 100).toInt()}%"
-
-                m?.cpuFreqMhz != null ->
-                    fmtMhz(m.cpuFreqMhz)
-
-                else ->
-                    "–"
-            }
-
-        val coreText =
-            m?.cores?.let {
-                " · $it core"
-            } ?: ""
-
-        val cpuSub =
-            when {
-                m?.cpu != null ->
-                    "Penggunaan$coreText"
-
-                m?.cpuFreqMhz != null ->
-                    "Frekuensi$coreText"
-
-                else ->
-                    "Tidak tersedia"
-            }
-
-        Row(
-            horizontalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            GaugeCard(
-                title = "CPU",
-                fraction = cpuFrac,
-                value = cpuValue,
-                sub = cpuSub,
-                history = cpuHistory,
-                modifier =
-                    Modifier.weight(1f)
-            )
-
-            GaugeCard(
-                title = "RAM",
-                fraction = memFrac,
-                value =
-                    memFrac?.let {
-                        "${(it * 100).toInt()}%"
-                    } ?: "–",
-                sub =
-                    if (
-                        used != null &&
-                        total != null
-                    ) {
-                        "${fmtKb(used)} / ${fmtKb(total)}"
-                    } else {
-                        "Tidak tersedia"
-                    },
-                history = null,
-                modifier =
-                    Modifier.weight(1f)
-            )
-        }
-
-        Row(
-            horizontalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            StatTile(
-                "Disk ${m?.diskMount ?: ""}".trim(),
-                m?.diskPct?.let {
-                    "$it%"
-                } ?: "–",
-                if (
-                    m?.diskUsedKb != null &&
-                    m.diskTotalKb != null
-                ) {
-                    "${fmtKb(m.diskUsedKb)} / ${fmtKb(m.diskTotalKb)}"
-                } else {
-                    ""
-                },
-                Modifier.weight(1f)
-            )
-
-            StatTile(
-                "Uptime",
-                m?.uptimeSec?.let {
-                    fmtUptime(it)
-                } ?: m?.uptimeText ?: "–",
-                "",
-                Modifier.weight(1f)
-            )
-        }
-
-        Row(
-            horizontalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            StatTile(
-                "Load",
-                m?.load
-                    ?.substringBefore(' ')
-                    ?: "–",
-                m?.load ?: "",
-                Modifier.weight(1f)
-            )
-
-            StatTile(
-                "Jaringan",
-                "↓ " +
-                    (
-                        m?.rxBps?.let {
-                            fmtRate(it)
-                        } ?: "–"
-                        ),
-                "↑ " +
-                    (
-                        m?.txBps?.let {
-                            fmtRate(it)
-                        } ?: "–"
-                        ),
-                Modifier.weight(1f)
-            )
-        }
-
-        if (m?.batteryPct != null) {
-
-            Row(
-                horizontalArrangement =
-                    Arrangement.spacedBy(10.dp)
+            Column(
+                Modifier.fillMaxSize()
             ) {
 
-                StatTile(
-                    "Baterai",
-                    "${m.batteryPct}%",
-                    m.batteryStatus
-                        ?.lowercase()
-                        ?.replaceFirstChar {
-                            it.uppercase()
-                        } ?: "",
-                    Modifier.weight(1f)
-                )
+                if (!immersive) {
 
-                StatTile(
-                    "Suhu",
-                    m.batteryTemp?.let {
-                        String.format(
-                            "%.1f°C",
-                            it
+                    PanelHeader(
+                        target = state.target,
+                        host = vm.metrics?.host,
+                        onMinimize = onExit,
+                        onDisconnect = {
+                            vm.disconnect()
+                        }
+                    )
+
+                    PanelTabs(tab) {
+                        tabIdx = it.ordinal
+                    }
+                }
+
+                when (tab) {
+
+                    PanelTab.Dashboard -> {
+
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(
+                                    rememberScrollState()
+                                ),
+                            contentAlignment =
+                                Alignment.TopCenter
+                        ) {
+                            Column(
+                                Modifier.widthIn(
+                                    max = 720.dp
+                                )
+                            ) {
+                                MonitorSection(
+                                    vm.metrics,
+                                    vm.cpuHistory
+                                )
+                            }
+                        }
+                    }
+
+                    PanelTab.Terminal -> {
+
+                        TerminalPane(
+                            vm = vm,
+                            fontSize = fontSize,
+                            fullscreen = fullscreen,
+                            onToggleFull = {
+                                fullscreen = !fullscreen
+                            },
+                            onFontSize = {
+                                fontSize = it
+                            },
+                            modifier =
+                                Modifier.weight(1f)
                         )
-                    } ?: "–",
-                    "Baterai",
-                    Modifier.weight(1f)
-                )
+
+                        KeyBar(vm)
+                    }
+
+                    PanelTab.Files -> {
+
+                        if (files != null) {
+                            FilesScreen(
+                                files,
+                                Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
             }
-        }
 
-        if (
-            m != null &&
-            m.cpu == null &&
-            m.rxBps == null
-        ) {
+        } else {
 
-            Text(
-                "Sebagian data tidak tersedia karena akun ini bukan root. Itu normal; terminal dan file tetap berfungsi.",
-                style =
-                    MaterialTheme.typography
-                        .labelSmall,
-                color =
-                    MaterialTheme.colorScheme
-                        .onSurfaceVariant
+            val ctx = LocalContext.current
+
+            ConnectForm(
+                state = state,
+
+                // Penting:
+                // ViewModel sekarang menerima Context,
+                // bukan File/cacheDir.
+                onConnect = {
+                        cmd,
+                        pw,
+                        elevate ->
+                    vm.connect(
+                        cmd,
+                        pw,
+                        elevate,
+                        ctx.applicationContext
+                    )
+                },
+
+                onExit = onExit
             )
         }
+    }
+}
+
+@Composable
+internal fun PresetChip(
+    label: String,
+    onClick: () -> Unit
+) {
+    val colors =
+        MaterialTheme.colorScheme
+
+    val shape =
+        RoundedCornerShape(12.dp)
+
+    Box(
+        Modifier
+            .heightIn(min = 40.dp)
+            .clip(shape)
+            .border(
+                1.dp,
+                colors.outlineVariant,
+                shape
+            )
+            .clickable(
+                role = Role.Button,
+                onClick = onClick
+            )
+            .padding(
+                horizontal = 14.dp
+            ),
+        contentAlignment =
+            Alignment.Center
+    ) {
+        Text(
+            label,
+            style =
+                MaterialTheme.typography
+                    .labelLarge
+        )
     }
 }

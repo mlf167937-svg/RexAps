@@ -2,9 +2,15 @@ package com.rexaps.rexmanager
 
 import android.os.Build
 import android.os.Environment
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import com.rexaps.librex.rexcode.RexCode
+import org.apache.commons.compress.archivers.sevenz.SevenZFile
+import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 internal fun hasAccess(): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else true
@@ -16,15 +22,59 @@ internal fun formatSize(b: Long): String = when {
     else -> "%.2f GB".format(b / 1073741824.0)
 }
 
-@Composable
-internal fun drawerItemColors() = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-    selectedContainerColor = Rex.primary.copy(alpha = 0.18f),
-    selectedIconColor = Color(0xFF83A5FF),
-    selectedTextColor = Rex.onSurface,
-    unselectedContainerColor = Color.Transparent,
-    unselectedIconColor = Rex.muted,
-    unselectedTextColor = Rex.onSurface
-)
+internal fun walkTree(f: File, rel: String, cb: (File, String) -> Unit) {
+    if (f.isDirectory) {
+        cb(f, "$rel/")
+        f.listFiles()?.forEach { walkTree(it, "$rel/${it.name}", cb) }
+    } else {
+        cb(f, rel)
+    }
+}
+
+internal fun compress(sources: List<File>, out: File, format: ArcFormat) {
+    require(!out.exists()) { "${out.name} sudah ada" }
+    when (format) {
+        ArcFormat.ZIP -> ZipOutputStream(out.outputStream().buffered()).use { zos ->
+            sources.forEach { s ->
+                walkTree(s, s.name) { f, rel ->
+                    if (f.absolutePath == out.absolutePath) return@walkTree
+                    zos.putNextEntry(ZipEntry(rel))
+                    if (f.isFile) f.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+        }
+        ArcFormat.SEVENZ -> SevenZOutputFile(out).use { sz ->
+            sources.forEach { s ->
+                walkTree(s, s.name) { f, rel ->
+                    if (f.absolutePath == out.absolutePath) return@walkTree
+                    sz.putArchiveEntry(sz.createArchiveEntry(f, rel))
+                    if (f.isFile) {
+                        f.inputStream().use { ins ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = ins.read(buf)
+                                if (n < 0) break
+                                sz.write(buf, 0, n)
+                            }
+                        }
+                    }
+                    sz.closeArchiveEntry()
+                }
+            }
+            sz.finish()
+        }
+    }
+}
+
+internal fun listArchive(f: File): List<ArcItem> = when (f.extension.lowercase()) {
+    "zip" -> ZipFile(f).use { z ->
+        z.entries().asSequence().map { ArcItem(it.name, it.size, it.isDirectory) }.toList()
+    }
+    else -> SevenZFile(f).use { sz ->
+        generateSequence { sz.nextEntry }.map { ArcItem(it.name, it.size, it.isDirectory) }.toList()
+    }
+}
 
 // ───────────────────────── Editor (semua file, syntax RexCode) ─────────────────────────
 internal fun tokenColor(type: String): Color {

@@ -3,17 +3,12 @@ package com.rexaps.rexpanel
 import android.graphics.Bitmap
 import java.io.InputStream
 import java.io.OutputStream
-import android.graphics.Matrix
-import android.media.ExifInterface
 import android.util.LruCache
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.SftpException
-import com.jcraft.jsch.SftpProgressMonitor
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -21,13 +16,30 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Vector
 
+/* ------------------------------- model ---------------------------------- */
+
+enum class FileKind { Image, Video, Audio, Text, Archive, Other }
+
 enum class SortBy(val label: String) { Name("Nama"), Size("Ukuran"), Date("Terbaru") }
+
+data class RemoteFile(
+    val name: String,
+    val path: String,
+    val isDir: Boolean,
+    val isLink: Boolean,
+    val size: Long,
+    val mtimeSec: Long,
+    val perms: String,
+    val kind: FileKind
+)
 
 internal val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
 
 internal val VIDEO_EXT = setOf("mp4", "mkv", "webm", "3gp", "mov", "m4v", "avi", "ts")
 
 internal val AUDIO_EXT = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "opus")
+
+internal val ARCHIVE_EXT = setOf("zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar")
 
 internal val TEXT_EXT = setOf(
     "txt", "md", "log", "conf", "cfg", "ini", "json", "xml", "yml", "yaml", "sh", "py", "kt",
@@ -36,34 +48,6 @@ internal val TEXT_EXT = setOf(
 )
 
 internal val TEXT_NAMES = setOf("makefile", "dockerfile", "readme", "license", "authorized_keys")
-
-fun kindOf(name: String, isDir: Boolean): FileKind {
-    if (isDir) return FileKind.Other
-    val lower = name.lowercase()
-    val ext = lower.substringAfterLast('.', "")
-    return when {
-        ext in IMAGE_EXT -> FileKind.Image
-        ext in VIDEO_EXT -> FileKind.Video
-        ext in AUDIO_EXT -> FileKind.Audio
-        ext in ARCHIVE_EXT -> FileKind.Archive
-        ext in TEXT_EXT || lower in TEXT_NAMES || (lower.startsWith(".") && '.' !in lower.drop(1)) -> FileKind.Text
-        else -> FileKind.Other
-    }
-}
-
-fun shq(s: String): String = "'" + s.replace("'", "'\\''") + "'"
-
-fun sftpMessage(e: Exception): String {
-    if (e is SftpException) {
-        return when (e.id) {
-            ChannelSftp.SSH_FX_NO_SUCH_FILE -> "Berkas atau folder tidak ditemukan."
-            ChannelSftp.SSH_FX_PERMISSION_DENIED -> "Akses ditolak. Akun ini tidak punya izin untuk lokasi tersebut."
-            else -> e.message?.takeIf { it.isNotBlank() }
-                ?: "Operasi gagal. Jika menghapus folder, pastikan folder kosong."
-        }
-    }
-    return e.message?.takeIf { it.isNotBlank() } ?: "Terjadi kesalahan."
-}
 
 /* ------------------------------- bitmap --------------------------------- */
 
@@ -79,26 +63,10 @@ object ThumbCache {
     fun clear() = cache.evictAll()
 }
 
-internal fun sampleFor(w: Int, h: Int, maxSide: Int): Int {
-    var s = 1
-    while (maxOf(w, h) / (s * 2) >= maxSide) s *= 2
-    return s
-}
-
-internal fun orient(bmp: Bitmap, o: Int): Bitmap {
-    val m = Matrix()
-    when (o) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
-        ExifInterface.ORIENTATION_ROTATE_180 -> m.postRotate(180f)
-        ExifInterface.ORIENTATION_ROTATE_270 -> m.postRotate(270f)
-        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.postScale(-1f, 1f)
-        else -> return bmp
-    }
-    return runCatching { Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true) }.getOrDefault(bmp)
-}
+/* -------------------------------- SFTP ---------------------------------- */
 
 /** Satu channel SFTP + mutex. ChannelSftp tidak aman dipakai paralel, jadi dibuat beberapa "lane". */
-internal class Lane(private val opener: () -> ChannelSftp) {
+private class Lane(private val opener: () -> ChannelSftp) {
     private val lock = Mutex()
     private var ch: ChannelSftp? = null
 
@@ -124,13 +92,6 @@ internal class Lane(private val opener: () -> ChannelSftp) {
     }
 
     fun close() { runCatching { ch?.disconnect() }; ch = null }
-}
-
-internal fun monitor(alive: () -> Boolean, onCount: (Long) -> Unit = {}) = object : SftpProgressMonitor {
-    private var total = 0L
-    override fun init(op: Int, src: String?, dest: String?, max: Long) {}
-    override fun count(count: Long): Boolean { total += count; onCount(total); return alive() }
-    override fun end() {}
 }
 
 class SftpClient(opener: () -> ChannelSftp) {
@@ -208,42 +169,3 @@ class SftpClient(opener: () -> ChannelSftp) {
         browse.close(); thumbs.close(); xfer.close(); dlLane.close(); upLane.close()
     }
 }
-
-/* --------------------------- state file browser -------------------------- */
-
-fun FileBrowserState.__split_start_1() {
-        scope.launch {
-            loading = true
-            try {
-                home = sftp.home()
-                go(home)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = sftpMessage(e)
-                loading = false
-            }
-        }
-    }
-
-fun FileBrowserState.__split_go_2(target: String) {
-        job?.cancel()
-        val id = ++req
-        job = scope.launch {
-            loading = true
-            if (path.isEmpty()) error = null
-            try {
-                val list = sftp.list(target)
-                if (id == req) { entries = list; path = target; error = null; selected = emptySet() }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (id == req) {
-                    if (entries.isEmpty()) { error = sftpMessage(e); path = target }
-                    else notice = sftpMessage(e)
-                }
-            } finally {
-                if (id == req) loading = false
-            }
-        }
-    }

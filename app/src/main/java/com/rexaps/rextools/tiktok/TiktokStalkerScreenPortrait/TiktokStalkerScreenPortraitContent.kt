@@ -1,9 +1,13 @@
-// TiktokStalkerScreen.kt
 package com.rexaps.rextools.tiktok
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
@@ -14,20 +18,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rexaps.rextools.ui.*
 import kotlinx.coroutines.delay
 
-@Composable internal
-fun __TiktokStalkerScreenPortraitContent(
-    onBack: () -> Unit = {},
-    vm: TiktokStalkerViewModel = viewModel()
-) {
+@Composable
+internal fun TiktokStalkerScreenPortraitContent(onBack: () -> Unit = {},
+    vm: TiktokStalkerViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
     val focus = LocalFocusManager.current
@@ -176,5 +180,51 @@ fun __TiktokStalkerScreenPortraitContent(
                 }
             )
         }
+    }
+}
+
+/* ═════════════════════ WEBVIEW TERSEMBUNYI ═════════════════════ */
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+internal fun HiddenScraper(url: String, onResult: (String) -> Unit, onError: (String) -> Unit) {
+    val resultCb by rememberUpdatedState(onResult)
+    val errorCb by rememberUpdatedState(onError)
+
+    Box(Modifier.size(1.dp).alpha(0.01f)) {
+        AndroidView(
+            factory = { c ->
+                val main = Handler(Looper.getMainLooper())
+                WebView(c).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.userAgentString =
+                        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                    webViewClient = object : WebViewClient() {
+                        private var injected = false
+                        override fun onPageFinished(view: WebView?, u: String?) {
+                            super.onPageFinished(view, u)
+                            if (injected) return
+                            injected = true
+                            view?.postDelayed({ view.evaluateJavascript(SCRAPE_JS, null) }, 4000)
+                        }
+                    }
+                    // Callback jembatan JS datang dari thread lain -> pindahkan ke main thread
+                    addJavascriptInterface(object : Any() {
+                        @JavascriptInterface
+                        fun onResult(json: String) { main.post { resultCb(json) } }
+
+                        @JavascriptInterface
+                        fun onError(msg: String) { main.post { errorCb(msg) } }
+                    }, "RexBridge")
+                    loadUrl(url)
+                }
+            },
+            onRelease = {
+                it.stopLoading()
+                it.removeJavascriptInterface("RexBridge")
+                it.destroy()
+            }
+        )
     }
 }

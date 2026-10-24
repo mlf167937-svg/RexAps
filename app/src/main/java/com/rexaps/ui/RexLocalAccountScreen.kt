@@ -1,4 +1,5 @@
 // RexLocalAccountScreen.kt
+
 package com.rexaps.ui
 
 import android.Manifest
@@ -20,6 +21,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
+
+/* ═════════════════════ Entry Point & Permission ═════════════════════ */
 
 @Composable
 fun RexLocalAccountScreen(padding: PaddingValues) {

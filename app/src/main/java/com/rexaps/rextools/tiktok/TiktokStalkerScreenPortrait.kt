@@ -1,4 +1,5 @@
 // TiktokStalkerScreen.kt
+
 package com.rexaps.rextools.tiktok
 
 import androidx.compose.animation.core.*
@@ -13,6 +14,6 @@ import com.rexaps.rextools.ui.*
 fun TiktokStalkerScreenPortrait(
     onBack: () -> Unit = {},
     vm: TiktokStalkerViewModel = viewModel()
-) { __TiktokStalkerScreenPortraitContent(onBack, vm) }
-
-/* ═════════════════════ WEBVIEW TERSEMBUNYI ═════════════════════ */
+) {
+    TiktokStalkerScreenPortraitContent(onBack = onBack, vm = vm)
+}

@@ -87,8 +87,6 @@ internal fun fmtUptime(
     }
 }
 
-/* -------------------------------- TERMINAL -------------------------------- */
-
 internal fun handleKey(
     e: KeyEvent,
     vm: RexPanelViewModel

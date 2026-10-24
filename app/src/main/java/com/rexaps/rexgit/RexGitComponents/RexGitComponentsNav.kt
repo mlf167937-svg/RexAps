@@ -1,11 +1,12 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +31,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
+
+@Composable
+internal fun Crumb(
+    text: String,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (active) scheme.primary else scheme.onSurfaceVariant,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = !active, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp)
+    )
+}
 
 @Composable
 internal fun SegmentedTabs(

@@ -1,7 +1,7 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
 import androidx.compose.foundation.BorderStroke
@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -20,6 +21,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,26 +38,106 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.only
 
-internal val EditorKeys = listOf(
-    "Tab" to "    ",
-    "{" to "{", "}" to "}",
-    "(" to "(", ")" to ")",
-    "[" to "[", "]" to "]",
-    "<" to "<", ">" to ">",
-    ";" to ";", ":" to ":",
-    "\"" to "\"", "'" to "'",
-    "=" to "=", "/" to "/", "#" to "#"
-)
+/**
+ * px controls. They only change the draft; the text is re-laid out once,
+ * after the controls have been idle (see rememberRexGitEditorState).
+ *
+ * [stacked] puts the slider on its own line (narrow side panel in landscape).
+ */
+@Composable
+internal fun EditorFontControls(
+    editor: RexGitEditorState,
+    modifier: Modifier = Modifier,
+    stacked: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+    val draft = editor.draftPx
+    val pending = editor.fontPending
 
-internal const val EDITOR_MIN_FONT = 2
+    @Composable
+    fun StepButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+        Surface(
+            onClick = onClick,
+            enabled = enabled,
+            shape = RoundedCornerShape(10.dp),
+            color = scheme.surfaceVariant
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .heightIn(min = 40.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+        }
+    }
 
-internal const val EDITOR_MAX_FONT = 38
+    @Composable
+    fun PxSlider(sliderModifier: Modifier) {
+        Slider(
+            value = draft.toFloat(),
+            onValueChange = {
+                editor.setSliding(true)
+                editor.setDraftPx(it.toInt())
+            },
+            onValueChangeFinished = { editor.setSliding(false) },
+            valueRange = EDITOR_MIN_FONT.toFloat()..EDITOR_MAX_FONT.toFloat(),
+            modifier = sliderModifier
+        )
+    }
 
-internal const val EDITOR_DEFAULT_FONT = 14
+    Column(modifier) {
+        if (stacked) {
+            PxSlider(Modifier.fillMaxWidth())
 
-/** How long the px picker waits (after you stop) before the text is re-laid out. */
-internal const val FONT_APPLY_DELAY_MS = 350L
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StepButton("A−", draft > EDITOR_MIN_FONT) { editor.setDraftPx(draft - 1) }
+
+                Text(
+                    "${draft}px",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (pending) scheme.primary else scheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+
+                StepButton("A+", draft < EDITOR_MAX_FONT) { editor.setDraftPx(draft + 1) }
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StepButton("A−", draft > EDITOR_MIN_FONT) { editor.setDraftPx(draft - 1) }
+
+                PxSlider(
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp)
+                )
+
+                StepButton("A+", draft < EDITOR_MAX_FONT) { editor.setDraftPx(draft + 1) }
+
+                Spacer(Modifier.width(8.dp))
+
+                Text(
+                    "${draft}px",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (pending) scheme.primary else scheme.onSurfaceVariant,
+                    modifier = Modifier.width(46.dp)
+                )
+            }
+        }
+
+        // Thin bar while the new px is waiting to be applied.
+        ProgressSlot(pending)
+    }
+}
 
 @Composable
 internal fun EditorTextArea(

@@ -14,4 +14,14 @@ fun RexFoxHome(
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
     onSettings: () -> Unit
-) { __RexFoxHomeContent(state, onNavigate, onTabs, onBookmarks, onHistory, onDownloads, onSettings) }
+) {
+    RexFoxHomeContent(
+        state = state,
+        onNavigate = onNavigate,
+        onTabs = onTabs,
+        onBookmarks = onBookmarks,
+        onHistory = onHistory,
+        onDownloads = onDownloads,
+        onSettings = onSettings
+    )
+}

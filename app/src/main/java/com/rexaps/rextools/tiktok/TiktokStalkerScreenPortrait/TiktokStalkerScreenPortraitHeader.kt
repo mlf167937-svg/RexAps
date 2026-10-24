@@ -1,4 +1,3 @@
-// TiktokStalkerScreen.kt
 package com.rexaps.rextools.tiktok
 
 import androidx.compose.animation.core.*
@@ -19,6 +18,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rexaps.rextools.ui.*
+
+/* ═════════════════════ HEADER PROFIL (dipakai bersama) ═════════════════════ */
 
 @Composable
 internal fun ProfileHeader(
@@ -84,5 +85,3 @@ internal fun ProfileHeader(
         }
     }
 }
-
-/* ═════════════════════ KARTU BASIC ═════════════════════ */

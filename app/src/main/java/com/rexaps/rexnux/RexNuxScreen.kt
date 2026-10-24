@@ -2,6 +2,7 @@ package com.rexaps.rexnux
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
@@ -52,9 +53,3 @@ fun RexNuxScreen(
         }
     }
 }
-
-/*
- * ------------------------------------------------------------
- * HOME
- * ------------------------------------------------------------
- */

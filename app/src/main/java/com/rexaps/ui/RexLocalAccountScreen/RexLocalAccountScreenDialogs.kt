@@ -1,4 +1,3 @@
-// RexLocalAccountScreen.kt
 package com.rexaps.ui
 
 import android.graphics.Bitmap
@@ -38,6 +37,8 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/* ═════════════════════ Crop Dialog ═════════════════════ */
 
 @Composable
 internal fun CropDialog(
@@ -199,4 +200,3 @@ internal fun CropDialog(
         }
     }
 }
-

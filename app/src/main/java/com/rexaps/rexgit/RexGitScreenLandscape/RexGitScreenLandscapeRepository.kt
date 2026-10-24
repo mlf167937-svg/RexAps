@@ -1,104 +1,165 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-
-@Composable
-internal fun GithubTabLandscape(
-    state: RexGitUiState,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onClone: (RexGitGithubRepository) -> Unit,
-    onOpen: (RexGitRepository) -> Unit,
-    onSearch: (String) -> Unit
-) {
-    if (!state.isGithubConnected) {
-        EmptyState(
-            icon = Icons.Default.Cloud,
-            title = "Connect your GitHub account",
-            body = "Log in with your username and token to browse and clone your repositories.",
-            modifier = Modifier.fillMaxSize(),
-            actionLabel = "Connect GitHub",
-            onAction = onConnect
-        )
-        return
-    }
-
-    val activeSearch = query.isNotBlank() && state.githubSearchMode && state.githubSearchQuery.equals(query.trim(), ignoreCase = true)
-    val repoSource = if (activeSearch) state.githubSearchResults else state.githubRepositories
-    val repos = remember(repoSource, query, activeSearch) {
-        if (activeSearch) repoSource else repoSource.filter { it.fullName.contains(query.trim(), ignoreCase = true) }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-
-        SearchField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = "Search repositories (tap icon for global search)",
-            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp),
-            onSearch = { onSearch(query) }
-        )
-
-        ProgressSlot(state.isGithubLoading)
-
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(300.dp),
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (repos.isEmpty() && !state.isGithubLoading) {
-                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        icon = Icons.Default.Search,
-                        title = if (query.isBlank()) "No repositories found" else "No matches",
-                        body = if (query.isBlank()) "Your account has no repositories yet."
-                        else "Nothing matches \"${query.trim()}\"."
-                    )
-                }
-            }
-
-            items(repos, key = { it.fullName }) { repo ->
-                val owner = repo.fullName.substringBefore('/')
-                val local = state.repositories.firstOrNull {
-                    it.name.equals(repo.name, true) && if (it.globalClone) it.globalOwner.equals(owner, true) else it.accountNickname.equals(owner, true)
-                }
-
-                GithubRepositoryCard(
-                    repo = repo,
-                    cloned = local != null,
-                    cloning = state.cloningName == repo.name,
-                    anyCloning = state.isCloning,
-                    onClone = { onClone(repo) },
-                    onOpen = { local?.let(onOpen) }
-                )
-            }
-        }
-    }
-}
+import androidx.compose.foundation.layout.fillMaxHeight
 
 // ============================================================
 // Repository (landscape)
 // ============================================================
+
+@Composable
+internal fun RepositoryScreenLandscape(
+    state: RexGitUiState,
+    host: RexGitScreenHost,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onRefreshHub: () -> Unit,
+    onDownloadAsset: (String, String) -> Unit,
+    onOpen: (RexGitFile) -> Unit,
+    onNavigate: (String?) -> Unit,
+    onPull: () -> Unit
+) {
+    val repo = state.selectedRepository ?: return
+
+    var showChanges by host.showChanges
+
+    val changes = state.gitStatus.changes
+    val busy = state.isPushing || state.isPulling || state.isRepoLoading
+
+    Row(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .landscapeSideInsets()
+    ) {
+
+        // ----- left pane: info + Pull / Push -----
+        Column(
+            Modifier
+                .width(LandscapeRepoPaneWidth)
+                .fillMaxHeight()
+        ) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                RepositoryHeader(
+                    repo = repo,
+                    busy = busy,
+                    onBack = onBack,
+                    onRefresh = onRefresh,
+                    compact = true
+                )
+
+                ProgressSlot(busy)
+
+                Column(
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RepositoryStatusPills(state = state, repo = repo, changes = changes)
+                    }
+
+                    if (repo.isGitRepository) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            RepositoryToolPills(
+                                state = state,
+                                repo = repo,
+                                onGitDev = { host.gitDevDialog.value = true },
+                                onAccount = { host.githubDialog.value = true }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (repo.isGitRepository && changes.isNotEmpty()) {
+                ChangesPanel(
+                    changes = changes,
+                    expanded = showChanges,
+                    onToggle = { showChanges = !showChanges }
+                )
+            }
+
+            ActionBar(
+                isGit = repo.isGitRepository,
+                busy = busy,
+                pulling = state.isPulling,
+                pushing = state.isPushing,
+                changeCount = changes.size,
+                gitDevReady = state.gitDev.isReady,
+                onPull = onPull,
+                onPush = { host.requestPush(state) },
+                onUnlockPush = { host.gitDevDialog.value = true }
+            )
+        }
+
+        // ----- right pane: README / Code / Actions / Release -----
+        Column(
+            Modifier.weight(1f).fillMaxHeight().padding(top = 8.dp)
+        ) {
+            RepositoryTabBar(
+                selected = host.repoTab.value,
+                onSelect = { host.repoTab.value = it }
+            )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (host.repoTab.value) {
+                    0 -> RexGitReadmePreview(
+                        repo = repo,
+                        content = state.readmeContent,
+                        metadata = state.repositoryMetadata,
+                        tags = state.repositoryTags,
+                        onFileLink = { link -> openReadmeFileLink(repo, link, onOpen) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    1 -> RepositoryFiles(
+                        state = state,
+                        repo = repo,
+                        onOpen = onOpen,
+                        onMore = { host.actionTarget.value = it },
+                        onNavigate = onNavigate,
+                        onNew = { host.createMenu.value = true },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, onChooseAccount = { host.githubDialog.value = true }, modifier = Modifier.fillMaxSize())
+                    else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+}

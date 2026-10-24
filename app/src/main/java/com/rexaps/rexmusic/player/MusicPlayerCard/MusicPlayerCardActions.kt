@@ -21,31 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.rexaps.rexmusic.*
-
-@Stable
-class PlayerActions(
-    val onClose: () -> Unit,
-    val onLyrics: () -> Unit,
-    val onMore: () -> Unit,
-    val onPlayPause: () -> Unit,
-    val onNext: () -> Unit,
-    val onPrev: () -> Unit,
-    val onOpenPrevious: () -> Unit,
-    val onSeek: (Float) -> Unit,
-    val onToggleLike: () -> Unit,
-    val onRepeat: () -> Unit,
-    val onAutoplay: () -> Unit,
-    val onQueue: () -> Unit,
-    val onDownload: () -> Unit,
-    val onCancelDownload: () -> Unit,
-    val onDelete: () -> Unit
-)
-
-//  Full-screen player 
 
 @Composable
 internal fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
@@ -64,33 +41,6 @@ internal fun LikeButton(isLiked: Boolean, onToggle: () -> Unit) {
         tint = if (isLiked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
         modifier = Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value }
     )
-}
-
-//  Seek 
-
-@Composable
-internal fun PlayerControls(state: RexMusicUiState, busy: Boolean, actions: PlayerActions) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ToggleControl(
-            icon = Icons.Default.AutoAwesome,
-            description = if (state.autoplay) "Autoplay pintar aktif" else "Autoplay pintar mati",
-            active = state.autoplay, onClick = actions.onAutoplay
-        )
-        RexIconButton(
-            Icons.Default.SkipPrevious, "Lagu sebelumnya", actions.onPrev,
-            size = 52.dp, iconSize = 36.dp, tint = MaterialTheme.colorScheme.onBackground
-        )
-        PlayPauseButton(state.isPlaying, busy, actions.onPlayPause)
-        RexIconButton(
-            Icons.Default.SkipNext, "Lagu berikutnya", actions.onNext,
-            size = 52.dp, iconSize = 36.dp, tint = MaterialTheme.colorScheme.onBackground
-        )
-        RepeatControl(state.repeatTotal, state.repeatLeft, actions.onRepeat)
-    }
 }
 
 @Composable
@@ -135,61 +85,6 @@ internal fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, onClick: () -> U
 }
 
 @Composable
-internal fun ToggleControl(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    active: Boolean,
-    onClick: () -> Unit
-) {
-    val accent = MaterialTheme.colorScheme.tertiary
-    Box(
-        Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon, contentDescription = description,
-            tint = if (active) accent else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            modifier = Modifier.size(26.dp)
-        )
-        if (active) {
-            Box(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
-                    .size(4.dp).background(accent, CircleShape)
-            )
-        }
-    }
-}
-
-@Composable
-internal fun RepeatControl(total: Int, left: Int, onClick: () -> Unit) {
-    val accent = MaterialTheme.colorScheme.tertiary
-    val on = total > 0
-    Box(
-        Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            if (on) Icons.Default.RepeatOne else Icons.Default.Repeat,
-            contentDescription = if (on) "Ulangi lagu, sisa $left dari $total kali" else "Atur ulangi lagu",
-            tint = if (on) accent else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            modifier = Modifier.size(26.dp)
-        )
-        if (on) {
-            Text(
-                "$left", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiary,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp)
-                    .background(accent, CircleShape)
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            )
-            Box(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
-                    .size(4.dp).background(accent, CircleShape)
-            )
-        }
-    }
-}
-
-@Composable
 internal fun BottomActions(
     state: RexMusicUiState,
     downloaded: Boolean,
@@ -219,27 +114,3 @@ internal fun BottomActions(
         )
     }
 }
-
-@Composable
-internal fun ActionPill(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    active: Boolean,
-    onClick: () -> Unit
-) {
-    val accent = MaterialTheme.colorScheme.tertiary
-    val fg = if (active) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onBackground
-    Row(
-        Modifier.height(40.dp).clip(CircleShape)
-            .background(if (active) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
-        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-    }
-}
-
-//  Error & neighbors 

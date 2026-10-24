@@ -1,4 +1,3 @@
-// RexUi.kt
 package com.rexaps.rextools.ui
 
 import androidx.compose.animation.core.*
@@ -60,5 +59,3 @@ fun RexEmptyState(icon: ImageVector, title: String, message: String, modifier: M
         Text(message, style = MaterialTheme.typography.bodySmall, color = s.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
-
-/* ── Toast ── */

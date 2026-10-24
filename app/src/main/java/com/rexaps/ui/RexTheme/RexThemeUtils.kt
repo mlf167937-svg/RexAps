@@ -5,6 +5,18 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
+internal fun RexThemeOption.labelToThemeId(): String = when(this) {
+    RexThemeOption.ASTRAL_GALAXY_MOON -> "astral_galaxy_moon"
+    RexThemeOption.NEBULA_VOID_MOON -> "nebula_void_moon"
+    RexThemeOption.ECLIPSE_BLACK_MOON -> "eclipse_black_moon"
+    RexThemeOption.STARLIGHT_SILVER_MOON -> "starlight_silver_moon"
+    RexThemeOption.FROST_ICE_BLUE_MOON -> "frost_ice_blue_moon"
+    RexThemeOption.INFERNO_MAGMA_RED_MOON -> "inferno_magma_red_moon"
+    RexThemeOption.THUNDER_GOLD_MOON -> "thunder_gold_moon"
+    RexThemeOption.ABYSSAL_OCEAN_MOON -> "abyssal_ocean_moon"
+    else -> name.lowercase()
+}
+
 internal fun RexPaletteSpec.toColorScheme(): ColorScheme = if (dark) {
     darkColorScheme(
         primary = Color(primary), onPrimary = Color(onPrimary),

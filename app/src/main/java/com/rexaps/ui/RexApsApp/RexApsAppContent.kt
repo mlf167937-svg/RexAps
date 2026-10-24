@@ -1,248 +1,257 @@
-// RexApsApp.kt
 package com.rexaps.ui
 
+import android.app.Activity
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import com.rexaps.rexcoder.RexCoderScreen
+import com.rexaps.rexfox.RexFoxScreen
+import com.rexaps.rexgit.RexGit
+import com.rexaps.rexmanager.RexManagerScreen
+import com.rexaps.rexmusic.RexMusicScreen
+import com.rexaps.rexnux.RexNuxScreen
+import com.rexaps.rexspacex.RexSpaceXScreen
+import com.rexaps.rextools.navigation.RexNavGraph
+import kotlinx.coroutines.delay
+
+/* ═════════════════════ ROOT ═════════════════════ */
 
 @Composable
-internal fun FeaturedCard(
-    app: RexModule,
-    isActive: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(28.dp)
-    val primary = colors.primary
-    val outline = colors.outlineVariant
+internal fun RexApsAppContent(activity: Activity) {
 
-    val transition = rememberInfiniteTransition(label = "featured")
-    val glow by transition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = if (isActive) 0.9f else 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
+    var route by remember { mutableStateOf(RexRoute.NONE) }
+    var routeLoading by remember { mutableStateOf(false) }
+
+    val themeStore = remember { RexThemeStore(activity) }
+    var themeOption by remember { mutableStateOf(themeStore.load()) }
+
+    var themeApplying by remember { mutableStateOf(false) }
+    var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
+    var showThemeSheet by rememberSaveable { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableStateOf(RexTab.HOME) }
+
+    // System bars belong to RexAps, not the Android device's light/dark preference.
+    val activePalette = remember(themeOption) { RexPaletteSpec.of(themeOption) }
+    SideEffect {
+        activity.window.statusBarColor = Color(activePalette.background).toArgb()
+        activity.window.navigationBarColor = Color(activePalette.background).toArgb()
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = !activePalette.dark
+            isAppearanceLightNavigationBars = !activePalette.dark
+        }
+    }
+
+    // A module without its own nested-back action returns to the RexAps shell instead of closing the app.
+    BackHandler(enabled = route != RexRoute.NONE) {
+        route = RexRoute.NONE
+        routeLoading = false
+    }
+
+    val onThemeChange: (RexThemeOption) -> Unit = { option ->
+        if (option != themeOption) {
+            pendingTheme = option
+            themeApplying = true
+        }
+    }
+
+    /* SUB-APP ROUTES */
+    if (route != RexRoute.NONE) {
+
+        val appName = route.displayName
+
+        RexTheme(option = themeOption) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    // Keep a single theme-aware animated backdrop underneath every sub-module.
+                    ProAmbientBackdrop(Modifier.fillMaxSize())
+                    Crossfade(
+                        targetState = routeLoading,
+                        animationSpec = tween(320),
+                        label = "routeTransition"
+                    ) { isLoading ->
+                        if (isLoading) {
+                            RexAppLoader(
+                                appName = appName,
+                                onFinished = { routeLoading = false }
+                            )
+                        } else {
+                            when (route) {
+                                RexRoute.REXFOX -> RexFoxScreen(activity = activity)
+
+                                RexRoute.REXPANEL ->
+                                    com.rexaps.rexpanel.RexPanelScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXCHAT ->
+                                    com.rexaps.rexchat.SessionListScreen(
+                                        onOpen = { session, method ->
+                                            com.rexaps.rexchat.openRexChatSession(activity, session, method)
+                                        },
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXNUX ->
+                                    RexNuxScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXTOOLS ->
+                                    RexNavGraph(onBack = { route = RexRoute.NONE })
+
+                                RexRoute.REXMUSIC ->
+                                    RexMusicScreen(onBack = { route = RexRoute.NONE })
+
+                                RexRoute.REXMANAGER ->
+                                    RexManagerScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXGIT -> RexGit()
+
+                                RexRoute.REXCODER ->
+                                    RexCoderScreen(
+                                        activity = activity,
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXMONITOR ->
+                                    com.rexaps.rexmonitor.RexMonitorScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.REXSPACEX ->
+                                    RexSpaceXScreen(onExit = { route = RexRoute.NONE })
+
+                                RexRoute.REXWARP ->
+                                    com.rexaps.rexwarp.RexWarpScreen(
+                                        onExit = { route = RexRoute.NONE }
+                                    )
+
+                                RexRoute.NONE -> Unit
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    /* MAIN SHELL — portrait / landscape */
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    val shell = RexShell(
+        selectedTab = selectedTab,
+        themeOption = themeOption,
+        onSelectTab = { selectedTab = it },
+        onAppClick = { app ->
+            if (app.available) {
+                RexRoute.fromModuleId(app.id)?.let {
+                    route = it
+                    routeLoading = true
+                }
+            }
+        },
+        onOpenTheme = { showThemeSheet = true }
     )
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .pressable(enabled = app.available, onClick = onClick)
-            .alpha(if (app.available) 1f else 0.6f)
-            .shadow(
-                elevation = 16.dp,
-                shape = shape,
-                ambientColor = primary.copy(alpha = 0.3f),
-                spotColor = primary.copy(alpha = 0.3f)
-            )
-            .clip(shape)
-            .background(colors.surfaceVariant)
-            .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(primary.copy(alpha = 0.28f * glow), Color.Transparent),
-                        center = Offset(size.width * 0.9f, 0f),
-                        radius = size.width * 0.75f
-                    ),
-                    radius = size.width * 0.75f,
-                    center = Offset(size.width * 0.9f, 0f)
-                )
-            }
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    listOf(primary.copy(alpha = 0.3f + 0.6f * glow), outline)
-                ),
-                shape = shape
-            )
-            .padding(24.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 64.dp)
-                StatusPill(available = app.available)
-            }
+    RexTheme(option = themeOption) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                if (isLandscape) {
+                    RexAppsScreenLandscape(shell)
+                } else {
+                    RexAppsScreenPortrait(shell)
+                }
 
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.primary.copy(alpha = 0.12f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "Aplikasi utama",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.primary
+                if (showThemeSheet) {
+                    ThemeSheet(
+                        selected = themeOption,
+                        onSelect = onThemeChange,
+                        onDismiss = { showThemeSheet = false }
                     )
                 }
-                Text(
-                    text = app.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = app.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
 
-            if (app.available) {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(accentBrush())
-                        .padding(horizontal = 20.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                AnimatedVisibility(
+                    visible = themeApplying,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150))
                 ) {
-                    Text(
-                        text = "Buka",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.onPrimary
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        tint = colors.onPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    pendingTheme?.let { target ->
+                        RexThemeLoadingOverlay(
+                            targetOption = target,
+                            onFinished = {
+                                themeOption = target
+                                themeStore.save(target)
+                                pendingTheme = null
+                                themeApplying = false
+                                showThemeSheet = false
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+/* ═════════════════════ Animasi & util ═════════════════════ */
+
 @Composable
-internal fun AppCard(
-    app: RexModule,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
-    val borderColor =
-        if (app.available) colors.primary.copy(alpha = 0.35f) else colors.outlineVariant
+internal fun Modifier.entrance(index: Int): Modifier {
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(166.dp)
-            .pressable(enabled = app.available, onClick = onClick)
-            .alpha(if (app.available) 1f else 0.55f)
-            .shadow(
-                elevation = if (app.available) 4.dp else 0.dp,
-                shape = shape,
-                ambientColor = colors.primary.copy(alpha = 0.2f),
-                spotColor = colors.primary.copy(alpha = 0.2f)
-            )
-            .clip(shape)
-            .background(colors.surfaceVariant)
-            .border(1.dp, borderColor, shape)
-            .padding(18.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 48.dp)
+    var shown by rememberSaveable { mutableStateOf(false) }
 
-                if (app.available) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .background(colors.primaryContainer, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowForward,
-                            contentDescription = null,
-                            tint = colors.onPrimaryContainer,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(colors.outlineVariant.copy(alpha = 0.5f))
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = "Segera",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+    LaunchedEffect(Unit) {
+        if (!shown) delay(index.coerceAtMost(8) * 60L)
+        shown = true
+    }
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = app.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = app.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+    val progress by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(550, easing = FastOutSlowInEasing),
+        label = "entrance"
+    )
+
+    return this.graphicsLayer {
+        alpha = progress
+        translationY = (1f - progress) * 48.dp.toPx()
+        val s = 0.94f + 0.06f * progress
+        scaleX = s
+        scaleY = s
     }
 }

@@ -1,30 +1,35 @@
-// RexApsApp.kt
 package com.rexaps.ui
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.vector.ImageVector
+
+/* ═════════════════════ Model & shell ═════════════════════ */
+
+internal data class BottomTab(val label: String, val icon: ImageVector)
+
+internal val bottomTabs = listOf(
+    BottomTab("Home", Icons.Default.Home),
+    BottomTab("Profile", Icons.Default.Person),
+    BottomTab("Theme", Icons.Default.ColorLens),
+    BottomTab("Settings", Icons.Default.Settings),
+    BottomTab("Account", Icons.Default.AccountCircle)
+)
+
+internal object RexTab {
+    const val HOME = 0
+    const val PROFILE = 1
+    const val THEME = 2
+    const val SETTINGS = 3
+    const val ACCOUNT = 4
+}
+
+internal const val THEME_COLUMNS = 3
 
 /** State & aksi yang dibagikan ke shell portrait maupun landscape. */
 internal class RexShell(
@@ -35,70 +40,7 @@ internal class RexShell(
     val onOpenTheme: () -> Unit
 )
 
-/* ═════════════════════ ROOT ═════════════════════ */
-
-@Composable
-internal fun Modifier.entrance(index: Int): Modifier {
-
-    var shown by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        if (!shown) delay(index.coerceAtMost(8) * 60L)
-        shown = true
-    }
-
-    val progress by animateFloatAsState(
-        targetValue = if (shown) 1f else 0f,
-        animationSpec = tween(550, easing = FastOutSlowInEasing),
-        label = "entrance"
-    )
-
-    return this.graphicsLayer {
-        alpha = progress
-        translationY = (1f - progress) * 48.dp.toPx()
-        val s = 0.94f + 0.06f * progress
-        scaleX = s
-        scaleY = s
-    }
-}
-
-@Composable
-internal fun accentBrush(): Brush =
-    Brush.linearGradient(
-        listOf(
-            MaterialTheme.colorScheme.primary,
-            MaterialTheme.colorScheme.tertiary
-        )
-    )
-
-/* ═════════════════════ Komponen bersama app ═════════════════════ */
-
-@Composable
-internal fun AppIcon(letter: String, size: Dp, modifier: Modifier = Modifier) {
-
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(size * 0.32f)
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .shadow(
-                elevation = 14.dp,
-                shape = shape,
-                ambientColor = colors.primary.copy(alpha = 0.5f),
-                spotColor = colors.primary.copy(alpha = 0.5f)
-            )
-            .clip(shape)
-            .background(accentBrush()),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = letter,
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.onPrimary
-        )
-    }
-}
+/* ═════════════════════ Profil app: sosial & avatar ═════════════════════ */
 
 internal data class SocialLink(
     val title: String,

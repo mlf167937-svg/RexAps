@@ -1,4 +1,3 @@
-// TiktokStalkerScreen.kt
 package com.rexaps.rextools.tiktok
 
 import androidx.compose.animation.AnimatedContent
@@ -28,6 +27,8 @@ import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rexaps.rextools.ui.*
+
+/* ═════════════════════ STATUS LOADING ═════════════════════ */
 
 @Composable
 internal fun StatusPanel(scraping: Boolean, text: String) {
@@ -86,5 +87,3 @@ internal fun StatusPanel(scraping: Boolean, text: String) {
         }
     }
 }
-
-/* ═════════════════════ HEADER PROFIL (dipakai bersama) ═════════════════════ */

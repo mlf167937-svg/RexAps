@@ -13,15 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.QueueMusic
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,18 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-
-internal val PortraitNavigationShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
-
-internal data class PortraitNavItem(val tab: Int, val icon: ImageVector, val label: String)
-
-internal val PortraitNavItems = listOf(
-    PortraitNavItem(TAB_HOME, Icons.Default.Home, "Beranda"),
-    PortraitNavItem(TAB_SEARCH, Icons.Default.Search, "Cari"),
-    PortraitNavItem(TAB_PLAYLIST, Icons.Default.QueueMusic, "Playlist"),
-    PortraitNavItem(TAB_LIBRARY, Icons.Default.LibraryMusic, "Koleksi"),
-    PortraitNavItem(TAB_SYNC, Icons.Default.Groups, "Sync")
-)
 
 @Composable
 internal fun PortraitNavigationIcon(

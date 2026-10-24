@@ -24,8 +24,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +36,7 @@ import com.rexaps.librex.rexsmartmanager.DownloadProgress
 import com.rexaps.librex.rexsmartmanager.DownloadRequest
 import com.rexaps.librex.rexsmartmanager.DownloadStatus
 import com.rexaps.librex.rexsmartmanager.OkHttpRexSmartManager
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var manager: OkHttpRexSmartManager

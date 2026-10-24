@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -30,6 +29,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+/*
+ * ------------------------------------------------------------
+ * HOME
+ * ------------------------------------------------------------
+ */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -184,113 +189,66 @@ internal fun RexNuxNoDistroContent(
 
 /*
  * ------------------------------------------------------------
- * INSTALLED DISTRO
+ * DISTRO CARD
  * ------------------------------------------------------------
  */
 
 @Composable
-internal fun RexNuxInstalledContent(
-    modifier: Modifier = Modifier,
+internal fun RexNuxDistroCard(
     distro: RexNuxDistro,
-    error: String?,
-    onOpen: () -> Unit
+    selected: Boolean,
+    onClick: () -> Unit
 ) {
-    LazyColumn(
-        modifier = modifier
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-
-        item {
-            Text(
-                text = "Linux Environment",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor =
-                        MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = distro.title,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(6.dp)
-                            )
-
-                            Text(
-                                text = distro.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme
-                                    .onSurfaceVariant
-                            )
-                        }
-
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        text = "Installed",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(20.dp)
-                    )
-
-                    Button(
-                        onClick = onOpen,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Open RexNux")
-                    }
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
                 }
-            }
-        }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
 
-        if (!error.isNullOrBlank()) {
-            item {
-                RexNuxErrorMessage(
-                    message = error
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = distro.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(
+                    modifier = Modifier.height(4.dp)
+                )
+
+                Text(
+                    text = distro.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (selected) {
+                Spacer(
+                    modifier = Modifier.size(12.dp)
+                )
+
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
     }
 }
-
-/*
- * ------------------------------------------------------------
- * DOWNLOAD DISTRO
- * ------------------------------------------------------------
- */

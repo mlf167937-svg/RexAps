@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RexMusicSyncScreen(onBack: () -> Unit) { __RexMusicSyncScreenContent(onBack) }
+fun RexMusicSyncScreen(onBack: () -> Unit) {
+    RexMusicSyncScreenContent(onBack = onBack)
+}

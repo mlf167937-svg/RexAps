@@ -1,57 +1,52 @@
 package com.rexaps.rexmusic
 
-import androidx.compose.animation.core.Animatable
+import android.provider.Settings
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
-internal fun PortraitContentStage(
-    selectedTab: Int,
-    reduceMotion: Boolean,
-    modifier: Modifier,
-    content: @Composable (Modifier) -> Unit
-) {
-    val progress = remember { Animatable(1f) }
-    var settledTab by remember { mutableStateOf(selectedTab) }
-    var direction by remember { mutableStateOf(1f) }
-    val shiftPx = with(LocalDensity.current) { 24.dp.toPx() }
-
-    LaunchedEffect(selectedTab) {
-        if (selectedTab != settledTab) {
-            direction = if (selectedTab >= settledTab) 1f else -1f
-            if (reduceMotion) {
-                progress.snapTo(1f)
-                settledTab = selectedTab
-            } else {
-                progress.snapTo(0f)
-                settledTab = selectedTab
-                progress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 330, easing = PortraitEase)
-                )
-            }
-        }
+internal fun portraitReduceMotion(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f
+            ) == 0f
+        }.getOrDefault(false)
     }
+}
 
-    Box(
-        modifier = modifier.graphicsLayer {
-            val p = if (reduceMotion) 1f else progress.value
-            alpha = p
-            translationX = (1f - p) * shiftPx * direction
-            val scale = 0.992f + p * 0.008f
-            scaleX = scale
-            scaleY = scale
-        }
-    ) {
-        content(Modifier.fillMaxSize())
+@Composable
+internal fun rememberPortraitMotionClock(reduceMotion: Boolean): PortraitMotionClock {
+    if (reduceMotion) {
+        return remember { PortraitMotionClock(mutableStateOf(0.18f), mutableStateOf(0.5f)) }
     }
+    val transition = rememberInfiniteTransition(label = "rexPortraitAmbientClock")
+    val drift = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(31_000, easing = LinearEasing)),
+        label = "rexPortraitAmbientDrift"
+    )
+    val pulse = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(5_800, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "rexPortraitAmbientPulse"
+    )
+    return remember(drift, pulse) { PortraitMotionClock(drift, pulse) }
 }

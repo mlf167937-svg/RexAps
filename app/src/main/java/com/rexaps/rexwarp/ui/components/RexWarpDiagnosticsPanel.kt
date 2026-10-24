@@ -10,4 +10,6 @@ fun RexWarpDiagnosticsPanel(
     state: RexWarpState,
     onConnectClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
-) { __RexWarpDiagnosticsPanelContent(state, onConnectClick, modifier) }
+) {
+    RexWarpDiagnosticsPanelContent(state = state, onConnectClick = onConnectClick, modifier = modifier)
+}

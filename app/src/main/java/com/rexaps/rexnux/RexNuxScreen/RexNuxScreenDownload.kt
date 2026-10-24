@@ -26,6 +26,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/*
+ * ------------------------------------------------------------
+ * DOWNLOAD DISTRO
+ * ------------------------------------------------------------
+ */
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RexNuxDownloadScreen(
@@ -137,9 +143,3 @@ internal fun RexNuxDownloadScreen(
         }
     }
 }
-
-/*
- * ------------------------------------------------------------
- * DISTRO CARD
- * ------------------------------------------------------------
- */

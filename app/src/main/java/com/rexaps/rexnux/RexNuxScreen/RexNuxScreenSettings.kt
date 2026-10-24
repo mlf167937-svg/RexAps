@@ -31,6 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/*
+ * ------------------------------------------------------------
+ * SETTINGS
+ * ------------------------------------------------------------
+ */
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RexNuxSettingsScreen(
@@ -178,9 +184,3 @@ internal fun RexNuxSettingsScreen(
         }
     }
 }
-
-/*
- * ------------------------------------------------------------
- * ERROR
- * ------------------------------------------------------------
- */

@@ -1,4 +1,3 @@
-// RexLocalAccountScreen.kt
 package com.rexaps.ui
 
 import android.graphics.Bitmap
@@ -17,11 +16,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-
-internal const val BANNER_ASPECT = 16f / 9f
 
 @Composable
 internal fun BannerView(acct: RexLocalAccount, rev: Int, modifier: Modifier, parallax: () -> Float) {
@@ -82,14 +78,3 @@ internal fun BannerView(acct: RexLocalAccount, rev: Int, modifier: Modifier, par
         )))
     }
 }
-
-fun RexProfileController.__split_clearBanner_6() {
-        val a = acct.copy(bannerPath = "", bannerVideo = "")
-        acct = a
-        rev++
-        scope.launch(Dispatchers.IO) {
-            File(RexPaths.account, "banner.png").delete()
-            File(RexPaths.account, "banner.mp4").delete()
-            writeAccount(a)
-        }
-    }

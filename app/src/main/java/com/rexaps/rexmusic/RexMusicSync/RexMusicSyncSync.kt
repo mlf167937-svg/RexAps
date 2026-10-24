@@ -1,118 +1,232 @@
 package com.rexaps.rexmusic
 
-import android.content.Context
-import android.os.SystemClock
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import com.google.gson.Gson
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.BufferedWriter
-import java.net.ServerSocket
-import java.net.Socket
-import java.util.concurrent.CopyOnWriteArrayList
 
-internal const val SYNC_PORT = 38741
+@Composable
+internal fun SyncOverviewCard(
+    state: SyncUiState,
+    active: Boolean,
+    connecting: Boolean
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = scheme.primaryContainer
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = scheme.onPrimaryContainer,
+                        modifier = Modifier.padding(12.dp).size(28.dp)
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Music, in sync.",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Text(
+                        "Putar bareng di jaringan Wi-Fi yang sama",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                val statusColor = when {
+                    state.error != null -> scheme.errorContainer
+                    active -> scheme.tertiaryContainer
+                    else -> scheme.surface
+                }
+                val statusTextColor = when {
+                    state.error != null -> scheme.onErrorContainer
+                    active -> scheme.onTertiaryContainer
+                    else -> scheme.onSurfaceVariant
+                }
+                Surface(shape = RoundedCornerShape(50), color = statusColor) {
+                    Text(
+                        when {
+                            state.error != null -> "ERROR"
+                            state.hosting -> "HOST"
+                            state.connected -> "CONNECTED"
+                            connecting -> "CONNECTING"
+                            else -> "OFFLINE"
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusTextColor
+                    )
+                }
+            }
 
-internal data class SyncMember(val id: String, val name: String, val connectedAt: Long = SystemClock.elapsedRealtime(), val ip: String = "", val volume: Float = 1f, val deviceVolume: Float = -1f)
-
-/** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
-internal object RexMusicSyncEngine {
-    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
-        _state.value = _state.value.copy(error = "RexMusicSync: ${error.message ?: "terjadi kesalahan"}")
-    })
-    private val gson = Gson()
-    internal val _state = MutableStateFlow(SyncUiState())
-    val state = _state.asStateFlow()
-    internal var server: ServerSocket? = null
-    internal var transferServer: ServerSocket? = null
-    internal var transferJob: Job? = null
-    internal val sharedQueue = mutableListOf<RexTrack>()
-    internal var roomJob: Job? = null
-    internal val peers = CopyOnWriteArrayList<Peer>()
-    internal var client: Socket? = null
-    internal var clientWriter: BufferedWriter? = null
-    internal var heartbeat: Job? = null
-    internal var playbackJob: Job? = null
-    internal var roomPassword = "rexsync"
-    internal var roomName = "RexSyncRoom1"
-    internal var hostTrack: RexTrack? = null
-    internal var playAnchorWallMs = 0L // host monotonic elapsedRealtime timestamp
-    internal var roomStartedElapsedMs = 0L
-    @Volatile internal var clockOffsetMs = 0L // host elapsedRealtime - client elapsedRealtime
-    @Volatile internal var lastClockRttMs = -1L
-    internal var playAnchorPositionMs = 0L
-    internal var hostPlaying = false
-    internal var hostPreparing = false
-    internal var resumeWhenMemberReturns = false
-
-    internal data class Peer(val socket: Socket, val reader: BufferedReader, val writer: BufferedWriter,
-                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = SystemClock.elapsedRealtime(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f, @Volatile var deviceVolume: Float = -1f, @Volatile var clockSynced: Boolean = false)
-
-    fun detectIp(context: Context): String = this.__split_detectIp_1(context)
-
-    fun createRoom(room: String, password: String, ip: String) = this.__split_createRoom_2(room, password, ip)
-
-    internal suspend fun acceptPeer(socket: Socket) = this.__split_acceptPeer_3(socket)
-
-    internal suspend fun monitorPeers() = this.__split_monitorPeers_4()
-
-    fun joinRoom(room: String, name: String, ip: String, password: String) = this.__split_joinRoom_5(room, name, ip, password)
-
-    internal fun handleClientMessage(m: JSONObject) = this.__split_handleClientMessage_6(m)
-
-    internal suspend fun syncLocalTrack(id: String, pos: Long, playing: Boolean, startAt: Long) = this.__split_syncLocalTrack_7(id, pos, playing, startAt)
-
-    internal suspend fun reconcileLocalTrack(id: String, targetPosition: Long, shouldPlay: Boolean) = this.__split_reconcileLocalTrack_8(id, targetPosition, shouldPlay)
-
-    internal var appContextRef: Context? = null
-    fun bindContext(context: Context) = this.__split_bindContext_9(context)
-
-    fun playTrack(track: RexTrack) = this.__split_playTrack_10(track)
-
-    private fun resumeRoomAtCurrentPosition() = this.__split_resumeRoomAtCurrentPosition_11()
-
-    fun togglePlayback() = this.__split_togglePlayback_12()
-
-    fun stopAll(reason: String = "Host menghentikan pemutaran") = this.__split_stopAll_13(reason)
-
-    internal fun sendState(p: Peer) = this.__split_sendState_14(p)
-    internal fun broadcastState() { peers.filter { it.clockSynced }.forEach { sendState(it) } }
-    internal fun broadcastTick() = this.__split_broadcastTick_15()
-    internal fun broadcastMembers() = this.__split_broadcastMembers_16()
-    fun addToQueue(track: RexTrack) = this.__split_addToQueue_17(track)
-
-    fun playQueued(track: RexTrack) = this.__split_playQueued_18(track)
-
-    fun setHostVolume(value: Float) = this.__split_setHostVolume_19(value)
-
-    fun setMemberVolume(id: String, value: Float) = this.__split_setMemberVolume_20(id, value)
-
-    internal fun trackJson(t: RexTrack) = this.__split_trackJson_21(t)
-    internal fun trackFromJson(o: JSONObject?): RexTrack? = this.__split_trackFromJson_22(o)
-    internal fun sendQueue(p: Peer) { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; send(p.writer, JSONObject().put("type", "queue").put("items", arr)) }
-    internal fun publishQueue() = this.__split_publishQueue_23()
-
-    internal suspend fun distributeLocalTrack(track: RexTrack) = this.__split_distributeLocalTrack_24(track)
-
-    internal suspend fun sendBundle(host: String, track: RexTrack): Boolean = this.__split_sendBundle_25(host, track)
-
-    internal fun receiveBundle(socket: Socket) = this.__split_receiveBundle_26(socket)
-
-    internal fun send(w: BufferedWriter, m: JSONObject) = this.__split_send_27(w, m)
-    internal suspend fun withContextMain(block: () -> Unit) { withContext(Dispatchers.Main) { block() } }
-
-    fun disconnect() { closeAll(); _state.value = _state.value.copy(hosting = false, connected = false, playing = false, members = emptyList(), status = "Terputus", error = null) }
-    internal fun closeAll() = this.__split_closeAll_28()
-    internal fun stopLocalPlayback() { appContextRef?.let { c -> scope.launch(Dispatchers.Main) { runCatching { RexPlayerController.init(c); RexPlayerController.pause() } } } }
+            Text(
+                state.status,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (state.error != null) scheme.error else scheme.onSurface
+            )
+            if (connecting) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Mencoba menghubungkan…", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                }
+            }
+            if (active) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ROOM", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text(state.room, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("MEMBERS", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text(
+                            "${state.members.distinctBy { it.id }.size}",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = scheme.primary
+                        )
+                    }
+                    if (state.roomElapsedMs > 0L) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("ROOM TIME", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                            Text(formatRoomTime(state.roomElapsedMs), style = MaterialTheme.typography.titleSmall)
+                        }
+                    }
+                }
+            }
+            if (state.cacheStatus.isNotBlank()) {
+                Text(state.cacheStatus, style = MaterialTheme.typography.bodySmall, color = scheme.tertiary)
+            }
+            state.error?.let { errorText ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = scheme.errorContainer
+                ) {
+                    Text(
+                        errorText,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        color = scheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
 }
 
-internal fun formatRoomTime(ms: Long): String {
-    val total = (ms.coerceAtLeast(0L) / 1000L)
-    return String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", total / 3600L, (total / 60L) % 60L, total % 60L)
+@Composable
+internal fun SyncConnectionCard(
+    room: String,
+    onRoomChange: (String) -> Unit,
+    ip: String,
+    onIpChange: (String) -> Unit,
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    name: String,
+    onNameChange: (String) -> Unit,
+    active: Boolean,
+    onAutoIp: () -> Unit,
+    onCreateRoom: () -> Unit,
+    onJoinRoom: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SyncSectionHeading(title = "Connection", subtitle = "Host a room or join a device on your local Wi-Fi")
+            OutlinedTextField(
+                value = room,
+                onValueChange = onRoomChange,
+                label = { Text("Nama room") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            OutlinedTextField(
+                value = ip,
+                onValueChange = onIpChange,
+                label = { Text("IP Wi-Fi host") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active,
+                trailingIcon = {
+                    TextButton(onClick = onAutoIp, enabled = !active) { Text("AUTO") }
+                }
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                label = { Text("Password room") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            Button(
+                onClick = onCreateRoom,
+                enabled = !active && ip.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Buat room sebagai host")
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text("Join an existing room", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = name,
+                onValueChange = onNameChange,
+                label = { Text("Nama kamu") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !active
+            )
+            Button(
+                onClick = onJoinRoom,
+                enabled = !active && ip.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Gabung room")
+            }
+            Text(
+                "Gunakan Wi-Fi yang sama atau hotspot host. Matikan VPN/WARP jika perangkat tidak bisa saling terhubung.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (active) {
+                Text(
+                    "Koneksi aktif. Putuskan room terlebih dahulu untuk mengganti detail koneksi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+        }
+    }
 }

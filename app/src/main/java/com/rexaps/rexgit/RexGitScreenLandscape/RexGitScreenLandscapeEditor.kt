@@ -1,7 +1,7 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
 import androidx.compose.foundation.layout.Arrangement
@@ -25,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxHeight
 
-internal val LandscapeEditorPanelWidth = 280.dp
+// ============================================================
+// Editor (landscape): text on the left, tools on the right
+// ============================================================
 
 @Composable
 internal fun EditorScreenLandscape(

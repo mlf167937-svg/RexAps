@@ -7,4 +7,6 @@ import androidx.compose.ui.Modifier
 import com.rexaps.ui.theme.*
 
 @Composable
-fun RexThemeSettings(manager: RexThemeManager, modifier: Modifier = Modifier) { __RexThemeSettingsContent(manager, modifier) }
+fun RexThemeSettings(manager: RexThemeManager, modifier: Modifier = Modifier) {
+    RexThemeSettingsContent(manager = manager, modifier = modifier)
+}

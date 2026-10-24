@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,20 +12,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
-
-internal enum class PanelTab(
-    val label: String,
-    val icon: ImageVector
-) {
-    Dashboard("Dasbor", Icons.Default.Dashboard),
-    Terminal("Terminal", Icons.Default.Terminal),
-    Files("File", Icons.Default.Folder)
-}
 
 @Composable
 internal fun PanelTabs(
@@ -123,5 +112,3 @@ internal fun PanelTabs(
         }
     }
 }
-
-/* -------------------------------- MONITOR -------------------------------- */

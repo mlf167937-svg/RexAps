@@ -1,7 +1,7 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
 import androidx.compose.foundation.BorderStroke
@@ -26,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +36,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+// ============================================================
+// Repository pieces shared by portrait and landscape
+// ============================================================
 
 @Composable
 internal fun HomeHeader(
@@ -161,6 +167,20 @@ internal fun RepositoryHeader(
             enabled = !busy
         )
     }
+}
+
+// ============================================================
+// GitDev mode: guide + setup
+// ============================================================
+
+@Composable
+internal fun GuideHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 4.dp)
+    )
 }
 
 @Composable

@@ -1,4 +1,5 @@
 //EditorArea.kt
+
 package com.rexaps.rexcoder.ui
 
 import androidx.compose.foundation.*
@@ -9,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import com.rexaps.rexcoder.model.RexCoderState
+
+// ───────────── Editor groups (multi-editor, resizable) ─────────────
 
 /** Horizontal = groups berdampingan (landscape/tablet), else bertumpuk (portrait). Dividers are draggable. */
 @Composable

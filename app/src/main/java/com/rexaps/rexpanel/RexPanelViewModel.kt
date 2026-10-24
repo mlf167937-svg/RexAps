@@ -1,7 +1,9 @@
 package com.rexaps.rexpanel
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -14,13 +16,13 @@ class RexPanelViewModel : ViewModel() {
     var conn by mutableStateOf<ConnState>(
         ConnState.Idle
     )
-        private set
+        internal set
 
     var metrics by mutableStateOf<Metrics?>(null)
-        private set
+        internal set
 
     var files by mutableStateOf<FileBrowserState?>(null)
-        private set
+        internal set
 
     val cpuHistory =
         mutableStateListOf<Float>()
@@ -29,18 +31,16 @@ class RexPanelViewModel : ViewModel() {
         TermBuffer(80, 24)
 
     var ctrl by mutableStateOf(false)
-        private set
+        internal set
 
     var alt by mutableStateOf(false)
-        private set
+        internal set
 
     var shift by mutableStateOf(false)
-        private set
+        internal set
 
     internal var ssh: SshSession? = null
-
     internal var monitorJob: Job? = null
-
     internal var cols = 80
     internal var rows = 24
 
@@ -72,31 +72,28 @@ class RexPanelViewModel : ViewModel() {
         password: String,
         elevate: Boolean,
         context: Context
-    ) = this.__split_connect_1(command, password, elevate, context)
+    ) = connectImpl(command, password, elevate, context)
 
-    internal fun onClosed(
-        session: SshSession
-    ) = this.__split_onClosed_2(session)
+    fun disconnect() {
 
-    internal fun startMonitor(
-        session: SshSession,
-        elevate: Boolean
-    ) = this.__split_startMonitor_3(session, elevate)
+        monitorJob?.cancel()
 
-    fun disconnect() = this.__split_disconnect_4()
+        files?.close()
+        files = null
+
+        ssh?.close()
+        ssh = null
+
+        metrics = null
+
+        conn =
+            ConnState.Idle
+    }
 
     fun resize(
         newCols: Int,
         newRows: Int
-    ) = this.__split_resize_5(newCols, newRows)
-
-    /* ------------------------------- input ------------------------------ */
-
-    private fun clearMods() {
-        ctrl = false
-        alt = false
-        shift = false
-    }
+    ) = resizeImpl(newCols, newRows)
 
     fun sendRaw(s: String) {
         clearMods()
@@ -108,20 +105,8 @@ class RexPanelViewModel : ViewModel() {
         )
     }
 
-    fun sendText(text: String) = this.__split_sendText_6(text)
-
-    /**
-     * Panah, Home, End.
-     *
-     * final:
-     * A = atas
-     * B = bawah
-     * C = kanan
-     * D = kiri
-     * H = home
-     * F = end
-     */
-    fun sendCursor(final: Char) = this.__split_sendCursor_7(final)
+    fun sendText(text: String) = sendTextImpl(text)
+    fun sendCursor(final: Char) = sendCursorImpl(final)
 
     /**
      * PgUp = 5

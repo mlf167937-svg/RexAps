@@ -1,7 +1,7 @@
-
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
+
 package com.rexaps.rexgit
 
 import androidx.compose.animation.core.RepeatMode
@@ -22,6 +22,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -29,6 +31,61 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
+
+@Composable
+internal fun RexPushLoader(active: Boolean) {
+    val transition = rememberInfiniteTransition(label = "rexPushLoader")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    val scheme = MaterialTheme.colorScheme
+
+    Canvas(Modifier.size(104.dp)) {
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * 0.34f
+
+        drawCircle(
+            color = scheme.outlineVariant.copy(alpha = 0.45f),
+            radius = radius,
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.dp.toPx()
+            )
+        )
+
+        repeat(8) { index ->
+            val angle = Math.toRadians(
+                (rotation + index * 45f).toDouble()
+            )
+            val x = center.x + cos(angle).toFloat() * radius
+            val y = center.y + sin(angle).toFloat() * radius
+            val emphasis = if (index == 0) 1f else 0.28f
+            drawCircle(
+                color = scheme.primary.copy(
+                    alpha = if (active) emphasis * pulse else 0.25f
+                ),
+                radius = if (index == 0) 5.dp.toPx() else 3.dp.toPx(),
+                center = androidx.compose.ui.geometry.Offset(x, y)
+            )
+        }
+    }
+}
 
 @Composable
 internal fun RexPushSuccessAnimation() {

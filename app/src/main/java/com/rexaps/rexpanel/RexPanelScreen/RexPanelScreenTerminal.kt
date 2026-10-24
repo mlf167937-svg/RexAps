@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/* -------------------------------- TERMINAL -------------------------------- */
+
 @Composable
 internal fun TerminalPane(
     vm: RexPanelViewModel,

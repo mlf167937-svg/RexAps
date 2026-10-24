@@ -14,18 +14,15 @@ import java.net.Socket
 import java.time.LocalDate
 
 class RexWarpVpnService : VpnService() {
-
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     internal lateinit var repo: RexWarpRepository
     internal lateinit var cm: ConnectivityManager
-
     internal var tunnel: RexWarpTunnel? = null
     internal var connectJob: Job? = null
     internal var stateJob: Job? = null
     internal var infoJob: Job? = null
     internal var monitorJob: Job? = null
     internal var reconnectJob: Job? = null
-
     internal var userWantsConnection = false
     internal var paused = false
     internal var stopping = false
@@ -33,10 +30,9 @@ class RexWarpVpnService : VpnService() {
     internal var failureInFlight = false
     internal var reconnectAttempts = 0
     @Volatile internal var settings = RexWarpSettings()
-
     internal val physical = LinkedHashMap<Network, NetworkCapabilities>()
-    internal var lastRx = 0L; internal var lastTx = 0L; internal var lastSampleAt = 0L
-    internal var pendingDl = 0L; internal var pendingUl = 0L; internal var pendingDate: LocalDate = LocalDate.now()
+    internal var lastRx = 0L; private var lastTx = 0L; private var lastSampleAt = 0L
+    internal var pendingDl = 0L; private var pendingUl = 0L; private var pendingDate: LocalDate = LocalDate.now()
     internal var lastSpeed = RexWarpSpeed()
     internal val dlHist = ArrayDeque<Long>()   // riwayat kecepatan untuk grafik notifikasi
     internal val ulHist = ArrayDeque<Long>()
@@ -46,7 +42,7 @@ class RexWarpVpnService : VpnService() {
         override fun onLost(network: Network) { physical.remove(network); evaluatePolicy() }
     }
 
-    internal inner class Host : RexWarpTunnelHost {
+    private inner class Host : RexWarpTunnelHost {
         override fun newBuilder(): Builder = this@RexWarpVpnService.Builder().setSession("RexWARP")
         override fun protect(fd: Int) = this@RexWarpVpnService.protect(fd)
         override fun protect(socket: Socket) = this@RexWarpVpnService.protect(socket)
@@ -67,48 +63,17 @@ class RexWarpVpnService : VpnService() {
         scope.launch { repo.preferences.settings.collect { settings = it; evaluatePolicy() } }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = this.__split_onStartCommand_1(intent, flags, startId)
-
-    // ---- connect / disconnect ------------------------------------------------------------
-
-    internal fun startConnect() = this.__split_startConnect_2()
-
-    internal fun userDisconnect() = this.__split_userDisconnect_3()
-
-    internal fun handleFailure(error: RexWarpError) = this.__split_handleFailure_4(error)
-
-    internal fun onTunnelState(s: RexWarpTunnelState) = this.__split_onTunnelState_5(s)
-
-    internal suspend fun teardownTunnel() = this.__split_teardownTunnel_6()
-
-    internal fun finishService() = this.__split_finishService_7()
-
-    // ---- statistik & usage ---------------------------------------------------------------
-
-    internal fun startMonitor(t: RexWarpTunnel) = this.__split_startMonitor_8(t)
-
-    internal fun sample(t: RexWarpTunnel) = this.__split_sample_9(t)
-
-    internal fun flushPending() = this.__split_flushPending_10()
-
-    // ---- aturan jaringan -----------------------------------------------------------------
-
-    internal fun hasNetwork(): Boolean = this.__splitExtra_hasNetwork_1()
-
-    internal fun pauseReason(): String? = this.__split_pauseReason_11()
-
-    private fun evaluatePolicy() = this.__split_evaluatePolicy_12()
-
-    // ---- notifikasi / lifecycle ----------------------------------------------------------
-
-    /**
-     * Android 14+: tipe SYSTEM_EXEMPTED bisa ditolak untuk app yang tidak memenuhi syarat.
-     * Coba beberapa tipe berurutan supaya service tidak langsung mati.
-     */
-    internal fun startForegroundSafely(): Boolean = this.__split_startForegroundSafely_13()
-
-    /** [force] = false: lewati bila layar mati (hemat baterai); notifikasi segar lagi saat layar menyala. */
-    internal fun updateNotification(force: Boolean = true) = this.__split_updateNotification_14(force)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_CONNECT -> {
+                if (!startForegroundSafely()) return START_NOT_STICKY
+                startConnect()
+            }
+            ACTION_DISCONNECT -> userDisconnect()
+            else -> if (tunnel == null && !paused) stopSelf()
+        }
+        return START_NOT_STICKY
+    }
 
     override fun onRevoke() {
         super.onRevoke()

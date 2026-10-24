@@ -1,4 +1,3 @@
-// RexLocalAccountScreen.kt
 package com.rexaps.ui
 
 import androidx.compose.animation.*

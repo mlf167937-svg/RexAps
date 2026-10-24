@@ -5,4 +5,6 @@ import androidx.compose.ui.Modifier
 import com.rexaps.rexwarp.RexWarpSpeedTestViewModel
 
 @Composable
-fun RexWarpSpeedTestHistorySection(viewModel: RexWarpSpeedTestViewModel, modifier: Modifier = Modifier) { __RexWarpSpeedTestHistorySectionContent(viewModel, modifier) }
+fun RexWarpSpeedTestHistorySection(viewModel: RexWarpSpeedTestViewModel, modifier: Modifier = Modifier) {
+    RexWarpSpeedTestHistorySectionContent(viewModel = viewModel, modifier = modifier)
+}

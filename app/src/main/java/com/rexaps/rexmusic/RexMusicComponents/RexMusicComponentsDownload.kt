@@ -28,6 +28,8 @@ fun DownloadRing(status: DownloadStatus, size: Dp = 22.dp, modifier: Modifier = 
     }
 }
 
+//  Downloads & queue rows 
+
 @Composable
 fun DownloadRow(status: DownloadStatus, onCancel: () -> Unit) {
     val scheme = MaterialTheme.colorScheme

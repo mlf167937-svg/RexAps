@@ -11,6 +11,6 @@ import androidx.compose.runtime.*
 fun RexPanelScreen(
     activity: Activity,
     onExit: () -> Unit
-) { __RexPanelScreenContent(activity, onExit) }
-
-/* -------------------------------- CONNECT -------------------------------- */
+) {
+    RexPanelScreenContent(activity = activity, onExit = onExit)
+}

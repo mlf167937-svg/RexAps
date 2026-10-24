@@ -102,5 +102,3 @@ internal fun PlayerTopBar(
         )
     }
 }
-
-//  Background 

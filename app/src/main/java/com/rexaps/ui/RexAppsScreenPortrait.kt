@@ -1,4 +1,5 @@
 // RexAppsScreenPortrait.kt
+
 package com.rexaps.ui
 
 import androidx.compose.animation.*
@@ -9,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+
+/* ═════════════════════ Shell portrait ═════════════════════ */
 
 @Composable
 internal fun RexAppsScreenPortrait(shell: RexShell) {
@@ -56,5 +59,3 @@ internal fun RexAppsScreenPortrait(shell: RexShell) {
         )
     }
 }
-
-/* ═════════════════════ Navigasi bawah (pill kaca) ═════════════════════ */

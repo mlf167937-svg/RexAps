@@ -1,82 +1,32 @@
 package com.rexaps.rexmusic
 
-import android.content.Context
-import android.net.Uri
-import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+private val KEY_CLEAN = Regex("[^\\p{L}\\p{N}]+")
 
-internal val KEY_CLEAN = Regex("[^\\p{L}\\p{N}]+")
+/** Nama folder lagu: "Iqro" + "Raim Laode" -> "Iqro-Raim-Laode". */
+fun offlineKey(track: RexTrack): String {
+    val raw = KEY_CLEAN.replace("${track.title} ${track.artist}", "-").trim('-')
+    return raw.take(100).trim('-').ifBlank { "Lagu" }
+}
 
 /** Key folder lagu ini kalau sudah diunduh (cocok lewat nama folder, atau lewat id). */
 fun OfflineState.keyFor(track: RexTrack, key: String = offlineKey(track)): String? =
     if (key in keys) key else entries.firstOrNull { it.track.id == track.id }?.key
 
-@Synchronized internal
-    fun RexOfflineManager.__split_init_1(context: Context) {
-        if (initialized) return
-        initialized = true
-        appContext = context.applicationContext
-        prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        RexDownloadNotification.init(appContext)
-        _state.update {
-            it.copy(
-                enabled = prefs.getBoolean(KEY_OFFLINE, false),
-                hasAccess = hasAccess(appContext)
-            )
-        }
-        refresh()
-    }
+fun OfflineState.isDownloaded(track: RexTrack, key: String = offlineKey(track)): Boolean =
+    keyFor(track, key) != null
 
-fun RexOfflineManager.__split_delete_7(track: RexTrack) {
-        val key = _state.value.keyFor(track) ?: return
-        jobs[key]?.cancel()
-        scope.launch {
-            withContext(Dispatchers.IO) { File(root, key).deleteRecursively() }
-            refreshNow()
-            _messages.tryEmit("Dihapus dari offline: ${track.title}")
-        }
-    }
+internal const val DISPLAY_PATH = "Download/RexAps/Music"
 
-fun RexOfflineManager.__split_deleteAll_8() {
-        val keys = _state.value.entries.map { it.key }
-        scope.launch {
-            withContext(Dispatchers.IO) { keys.forEach { File(root, it).deleteRecursively() } }
-            refreshNow()
-            _messages.tryEmit("Semua lagu offline dihapus")
-        }
-    }
+internal const val AUDIO_NAME = "music.mp3"
 
-internal fun RexOfflineManager.__split_cleanup_15(key: String) {
-        val dir = File(root, key)
-        File(dir, "$AUDIO_NAME.part").delete()
-        File(dir, "thumbnail.tmp").delete()
-        if (!File(dir, AUDIO_NAME).exists()) dir.deleteRecursively()
-    }
+internal const val META_NAME = "meta.json"
 
-internal fun RexOfflineManager.__split_scan_16(): List<OfflineEntry> {
-        val dirs = root.listFiles { f -> f.isDirectory } ?: return emptyList()
-        return dirs.mapNotNull { dir ->
-            val mp3 = File(dir, AUDIO_NAME)
-            if (!mp3.isFile || mp3.length() <= 0L) return@mapNotNull null
-            val thumb = findThumbnail(dir)
-            val meta = readMeta(dir)
-            val track = RexTrack(
-                id = meta?.optString("id").orEmpty().ifBlank { "off-${dir.name}" },
-                title = meta?.optString("title").orEmpty().ifBlank { dir.name.replace('-', ' ') },
-                artist = meta?.optString("artist").orEmpty().ifBlank { "Unknown" },
-                album = meta?.optString("album").orEmpty().ifBlank { "Offline" },
-                cover = thumb?.let { Uri.fromFile(it).toString() }.orEmpty(),
-                spotifyUrl = meta?.optString("spotifyUrl").orEmpty(),
-                durationText = meta?.optString("durationText").orEmpty()
-            )
-            OfflineEntry(
-                key = dir.name,
-                track = track,
-                sizeBytes = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() },
-                savedAt = mp3.lastModified()
-            )
-        }.sortedByDescending { it.savedAt }
-    }
+internal const val LYRICS_NAME = "lyrics.json"
+
+internal const val PREFS = "rex_music_offline"
+
+internal const val KEY_OFFLINE = "offline_mode"
+
+internal const val USER_AGENT = "Mozilla/5.0 (Linux; Android 13) RexMusic"
+
+internal const val MAX_PARALLEL = 2

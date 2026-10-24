@@ -1,4 +1,3 @@
-// RexUi.kt
 package com.rexaps.rextools.ui
 
 import androidx.compose.animation.AnimatedContent
@@ -13,9 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -24,7 +21,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -41,17 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-
-/** Skala menyusut halus saat ditekan (pegas). */
-fun Modifier.pressScale(source: InteractionSource, pressedScale: Float = 0.96f): Modifier = composed {
-    val pressed by source.collectIsPressedAsState()
-    val sc by animateFloatAsState(
-        if (pressed) pressedScale else 1f,
-        spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-        label = "press"
-    )
-    graphicsLayer { scaleX = sc; scaleY = sc }
-}
 
 @Composable
 fun RexBackButton(onClick: () -> Unit) {
@@ -71,7 +56,7 @@ fun RexBackButton(onClick: () -> Unit) {
     }
 }
 
-/* ═════════════════════ PANEL ═════════════════════ */
+/* ═════════════════════ BUTTONS ═════════════════════ */
 
 @Composable
 fun RexPrimaryButton(
@@ -146,7 +131,7 @@ fun RexPrimaryButton(
 }
 
 @Composable
-internal fun RexButtonBase(
+private fun RexButtonBase(
     text: String,
     icon: ImageVector?,
     onClick: () -> Unit,

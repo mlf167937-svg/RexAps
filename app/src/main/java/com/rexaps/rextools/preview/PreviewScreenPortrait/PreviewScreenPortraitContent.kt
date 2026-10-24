@@ -1,158 +1,208 @@
-// PriviewScreen.kt
 package com.rexaps.rextools.preview
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.rexaps.rextools.downloader.MediaDownloader
 import com.rexaps.rextools.ui.*
+import kotlinx.coroutines.launch
 
 @Composable
-internal fun InputView(
-    input: String,
-    error: String?,
-    onInput: (String) -> Unit,
-    onExtract: () -> Unit,
-    onClear: () -> Unit
-) {
-    val s = MaterialTheme.colorScheme
-    val clipboard = LocalClipboardManager.current
-    var focused by remember { mutableStateOf(false) }
-    val borderColor by animateColorAsState(if (focused) s.primary.copy(alpha = 0.8f) else s.outlineVariant, tween(300), label = "bd")
-    val links = remember(input) { Regex("""https?://[^\s"'<>\\]+""").findAll(input).count() }
+internal fun PreviewScreenPortraitContent(onBack: () -> Unit = {},
+    vm: PreviewViewModel = viewModel()) {
+    val state by vm.state.collectAsState()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val toast = rememberRexToast()
+    var saving by remember { mutableStateOf(false) }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp)
-            .padding(top = 8.dp, bottom = 16.dp)
-            .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        RexHero(
-            icon = Icons.Default.Link,
-            title = "Ekstrak media dari mana saja",
-            description = "URL tunggal, JSON, atau teks apa pun yang berisi link.",
-            modifier = Modifier.entrance(0)
-        )
+    val goBack: () -> Unit = {
+        when (state.mode) {
+            PreviewMode.INPUT -> onBack()
+            PreviewMode.GRID -> vm.backToInput()
+            PreviewMode.SINGLE -> vm.backToGrid()
+        }
+    }
+    BackHandler(enabled = state.mode != PreviewMode.INPUT) { goBack() }
 
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .entrance(1)
-                .clip(RexLg)
-                .background(s.surfaceContainerLow.copy(alpha = 0.85f))
-                .border(1.dp, borderColor, RexLg)
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RexOverline("Input")
-                Spacer(Modifier.width(10.dp))
-                AnimatedVisibility(
-                    visible = links > 0,
-                    enter = fadeIn() + scaleIn(initialScale = 0.8f),
-                    exit = fadeOut() + scaleOut(targetScale = 0.8f)
-                ) { RexPill("$links link terdeteksi", icon = Icons.Default.Link) }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = {
-                    clipboard.getText()?.text?.takeIf { it.isNotBlank() }?.let(onInput)
-                }) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Tempel")
+    val title = when (state.mode) {
+        PreviewMode.INPUT -> "Media Preview"
+        PreviewMode.GRID -> "Hasil Ekstraksi"
+        PreviewMode.SINGLE -> "Pratinjau"
+    }
+    val subtitle = when (state.mode) {
+        PreviewMode.INPUT -> "Tempel link, lihat medianya"
+        PreviewMode.GRID -> "${state.items.size} item ditemukan"
+        PreviewMode.SINGLE -> "Media ${state.currentIndex + 1} dari ${state.items.size}"
+    }
+
+    RexScreen(title = title, subtitle = subtitle, onBack = goBack, scroll = false, padded = false, toast = toast) {
+        AnimatedContent(
+            targetState = state.mode,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                if (targetState == PreviewMode.SINGLE || initialState == PreviewMode.SINGLE) {
+                    (fadeIn(tween(320, delayMillis = 60)) +
+                        scaleIn(tween(420, easing = RexEase), initialScale = if (forward) 0.92f else 1.06f)) togetherWith
+                        (fadeOut(tween(180)) + scaleOut(tween(280), targetScale = if (forward) 1.06f else 0.92f))
+                } else {
+                    (fadeIn(tween(320, delayMillis = 60)) +
+                        slideInHorizontally(tween(420, easing = RexEase)) { if (forward) it / 5 else -it / 5 }) togetherWith
+                        (fadeOut(tween(180)) +
+                            slideOutHorizontally(tween(300)) { if (forward) -it / 6 else it / 6 })
+                }
+            },
+            label = "preview-mode"
+        ) { mode ->
+            when (mode) {
+                PreviewMode.INPUT -> InputView(
+                    input = state.rawInput,
+                    error = state.error,
+                    onInput = vm::onInputChange,
+                    onExtract = vm::extract,
+                    onClear = vm::clear
+                )
+
+                PreviewMode.GRID -> GridView(items = state.items, onOpen = { vm.openSingle(it) })
+
+                PreviewMode.SINGLE -> {
+                    val item = state.currentItem
+                    if (item != null) {
+                        SingleView(
+                            item = item,
+                            index = state.currentIndex,
+                            total = state.items.size,
+                            saving = saving,
+                            onPrev = vm::prev,
+                            onNext = vm::next,
+                            onCopied = { toast.show("Link disalin") },
+                            onOpenFail = { toast.show("Tidak bisa membuka link", true) },
+                            onDownload = { url, type ->
+                                if (!saving) {
+                                    saving = true
+                                    scope.launch {
+                                        val res = if (type == MediaType.VIDEO) MediaDownloader.downloadVideo(ctx, url)
+                                        else MediaDownloader.downloadImage(ctx, url)
+                                        res.onSuccess { toast.show("Tersimpan ke perangkat") }
+                                            .onFailure { toast.show("Gagal menyimpan: ${it.message}", true) }
+                                        saving = false
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
             }
-
-            TextField(
-                value = input,
-                onValueChange = onInput,
-                placeholder = {
-                    Text(
-                        "https://...  atau  {\"result\":[...]}",
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                modifier = Modifier.fillMaxSize().onFocusChanged { focused = it.isFocused },
-                minLines = 6,
-                keyboardOptions = KeyboardOptions.Default,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                )
-            )
-        }
-
-        RexErrorSlot(error, "Tidak bisa mengekstrak")
-
-        Row(Modifier.fillMaxWidth().entrance(2), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RexOutlinedButton("Bersihkan", null, onClear, Modifier.weight(1f), enabled = input.isNotBlank())
-            RexPrimaryButton(
-                text = "Extract & Preview",
-                icon = Icons.Default.Bolt,
-                onClick = onExtract,
-                enabled = input.isNotBlank(),
-                modifier = Modifier.weight(2f)
-            )
         }
     }
 }
 
-/* ═════════════════════ GRID ═════════════════════ */
+/** Pinch untuk zoom, geser saat diperbesar, ketuk dua kali untuk zoom cepat / reset. */
+@Composable
+internal fun ZoomableImage(url: String, description: String) {
+    val scope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    val offX = remember { Animatable(0f) }
+    val offY = remember { Animatable(0f) }
+
+    RexImage(
+        model = url,
+        contentDescription = description,
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val ns = (scale.value * zoom).coerceIn(1f, 5f)
+                    val maxX = size.width * (ns - 1f) / 2f
+                    val maxY = size.height * (ns - 1f) / 2f
+                    scope.launch {
+                        scale.snapTo(ns)
+                        if (ns > 1f) {
+                            offX.snapTo((offX.value + pan.x).coerceIn(-maxX, maxX))
+                            offY.snapTo((offY.value + pan.y).coerceIn(-maxY, maxY))
+                        } else {
+                            offX.snapTo(0f)
+                            offY.snapTo(0f)
+                        }
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    scope.launch {
+                        if (scale.value > 1f) {
+                            launch { scale.animateTo(1f, spring(0.8f)) }
+                            launch { offX.animateTo(0f, spring(0.8f)) }
+                            launch { offY.animateTo(0f, spring(0.8f)) }
+                        } else {
+                            scale.animateTo(2.5f, spring(0.8f))
+                        }
+                    }
+                })
+            }
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                translationX = offX.value
+                translationY = offY.value
+            },
+        contentScale = ContentScale.Fit
+    )
+}
+
+/* ═════════════════════ EXOPLAYER ═════════════════════ */
 
 @Composable
-internal fun GridView(items: List<PreviewItem>, onOpen: (Int) -> Unit) {
-    val images = remember(items) { items.count { it.type == MediaType.IMAGE } }
-    val videos = remember(items) { items.count { it.type == MediaType.VIDEO } }
-    val others = items.size - images - videos
-
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 150.dp),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.padding(bottom = 4.dp).entrance(0), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (images > 0) RexPill("$images foto", icon = Icons.Default.Image)
-                if (videos > 0) RexPill("$videos video", icon = Icons.Default.Videocam)
-                if (others > 0) RexPill("$others link", icon = Icons.Default.Link)
-            }
-        }
-        itemsIndexed(items, key = { _, it -> it.id }) { idx, item ->
-            GridTile(item, number = idx + 1, index = idx, onClick = { onOpen(idx) })
+internal fun ExoVideoPlayer(url: String) {
+    val ctx = LocalContext.current
+    val exoPlayer = remember(url) {
+        ExoPlayer.Builder(ctx).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+            playWhenReady = true
         }
     }
+
+    DisposableEffect(url) { onDispose { exoPlayer.release() } }
+
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { c ->
+            PlayerView(c).apply {
+                player = exoPlayer
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                useController = true
+            }
+        }
+    )
 }

@@ -1,4 +1,3 @@
-//Panels.kt
 package com.rexaps.rexcoder.ui
 
 import androidx.compose.foundation.*
