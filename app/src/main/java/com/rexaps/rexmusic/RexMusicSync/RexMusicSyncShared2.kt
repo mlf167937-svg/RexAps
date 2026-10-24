@@ -15,7 +15,7 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 
 internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
-        val p = runCatching { Peer(socket, BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8)),
+        val p = runCatching { RexMusicSyncEngine.Peer(socket, BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8)),
             BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))) }.getOrNull() ?: return
         try {
             val first = withContext(Dispatchers.IO) { p.reader.readLine() } ?: return

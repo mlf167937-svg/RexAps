@@ -40,7 +40,7 @@ internal val PortraitEase = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 internal val PortraitTwoPi = (2.0 * PI).toFloat()
 
 internal data class PortraitMotionClock(val drift: State<Float>, val pulse: State<Float>)
-private data class PortraitDust(
+internal data class PortraitDust(
     val x: Float,
     val y: Float,
     val radius: Float,
@@ -138,7 +138,7 @@ internal fun PortraitBottomChrome(
         return __splitImpl_PortraitBottomChrome(selectedTab, onTabSelected, miniPlayer, clock)
     }
 
-private data class PortraitNavItem(val tab: Int, val icon: ImageVector, val label: String)
+internal data class PortraitNavItem(val tab: Int, val icon: ImageVector, val label: String)
 internal val PortraitNavItems = listOf(
     PortraitNavItem(TAB_HOME, Icons.Default.Home, "Beranda"),
     PortraitNavItem(TAB_SEARCH, Icons.Default.Search, "Cari"),

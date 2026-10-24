@@ -77,4 +77,4 @@ internal fun __splitImpl_SyncEmptyQueueCard() {
 
 internal fun RexMusicSyncEngine.__splitImpl_publishQueue() { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; val msg = JSONObject().put("type", "queue").put("items", arr); peers.forEach { send(it.writer, msg) }; _state.value = _state.value.copy(queue = sharedQueue.toList()) }
 
-internal fun RexMusicSyncEngine.__splitImpl_sendQueue(p: Peer) { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; send(p.writer, JSONObject().put("type", "queue").put("items", arr)) }
+internal fun RexMusicSyncEngine.__splitImpl_sendQueue(p: RexMusicSyncEngine.Peer) { val arr = org.json.JSONArray(); sharedQueue.forEach { arr.put(trackJson(it)) }; send(p.writer, JSONObject().put("type", "queue").put("items", arr)) }

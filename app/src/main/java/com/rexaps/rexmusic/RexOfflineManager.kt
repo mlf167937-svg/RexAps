@@ -60,6 +60,8 @@ object RexOfflineManager {
     private const val MAX_PARALLEL = 2
 
     internal lateinit var appContext: Context
+    internal val appContextInitialized: Boolean
+        get() = this::appContext.isInitialized
     private lateinit var prefs: SharedPreferences
     private var initialized = false
 

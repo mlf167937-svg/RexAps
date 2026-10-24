@@ -17,7 +17,7 @@ internal fun RexWarpVpnService.__splitImpl_startConnect() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return handleFailure(RexWarpError.UNSUPPORTED_ANDROID)
         val provider = RexWarpTunnelRegistry.provider
         if (provider.unavailableReason != null) return handleFailure(RexWarpError.ENGINE_UNAVAILABLE)
-        if (prepare(this) != null) return handleFailure(RexWarpError.PERMISSION_REVOKED)
+        if (android.net.VpnService.prepare(this) != null) return handleFailure(RexWarpError.PERMISSION_REVOKED)
         pauseReason()?.let { paused = true; repo.setDisconnected(it); updateNotification(); return }
         if (!hasNetwork()) return handleFailure(RexWarpError.NETWORK_UNAVAILABLE)
 
@@ -32,14 +32,14 @@ internal fun RexWarpVpnService.__splitImpl_startConnect() {
                 infoJob = scope.launch {
                     t.connectionInfo.collect { if (repo.state.value.connection == RexWarpConnectionState.CONNECTED) repo.updateInfo(it) }
                 }
-                withTimeout(CONNECT_TIMEOUT_MS) { t.connect(config) }
+                withTimeout(RexWarpVpnService.CONNECT_TIMEOUT_MS) { t.connect(config) }
                 if (!t.isConnected()) handleFailure(RexWarpError.TUNNEL_FAILED)
             } catch (e: TimeoutCancellationException) {
                 handleFailure(RexWarpError.TIMEOUT)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "connect failed: ${e.javaClass.simpleName}")
+                Log.w(RexWarpVpnService.TAG, "connect failed: ${e.javaClass.simpleName}")
                 // Ambil penyebab spesifik dari tunnel (mis. WARP_NOT_ACTIVE, REGISTRATION_FAILED).
                 val specific = (tunnel?.state?.value as? RexWarpTunnelState.Failed)?.error
                 handleFailure(specific ?: RexWarpError.TUNNEL_FAILED)
@@ -58,8 +58,8 @@ internal fun RexWarpVpnService.__splitImpl_sample(t: RexWarpTunnel) {
         pendingDl += dRx; pendingUl += dTx
         lastSpeed = RexWarpSpeed(dRx * 1000 / dt, dTx * 1000 / dt)
         dlHist.addLast(lastSpeed.downBytesPerSec); ulHist.addLast(lastSpeed.upBytesPerSec)
-        while (dlHist.size > HISTORY_SIZE) dlHist.removeFirst()
-        while (ulHist.size > HISTORY_SIZE) ulHist.removeFirst()
+        while (dlHist.size > RexWarpVpnService.HISTORY_SIZE) dlHist.removeFirst()
+        while (ulHist.size > RexWarpVpnService.HISTORY_SIZE) ulHist.removeFirst()
         repo.updateLive(lastSpeed, s)
     }
 
@@ -78,7 +78,7 @@ internal fun RexWarpVpnService.__splitImpl_sample(t: RexWarpTunnel) {
                 else startForeground(RexWarpNotification.ID, n)
                 return true
             } catch (e: Exception) {
-                Log.w(TAG, "startForeground(type=$type) failed", e)
+                Log.w(RexWarpVpnService.TAG, "startForeground(type=$type) failed", e)
             }
         }
         repo.setError(RexWarpError.SERVICE_STOPPED); stopSelf()

@@ -101,7 +101,7 @@ internal fun RexGitViewModel.__splitImpl_openFile(file: RexGitFile) {
         launchIO {
             val target = File(file.path)
 
-            if (target.length() > MAX_EDITOR_BYTES) {
+            if (target.length() > RexGitViewModel.MAX_EDITOR_BYTES) {
                 fail(
                     "This file is too large to edit on a phone " +
                         "(limit 400 KB)."

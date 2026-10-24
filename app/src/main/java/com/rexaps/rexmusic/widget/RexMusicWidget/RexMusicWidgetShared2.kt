@@ -26,7 +26,7 @@ internal fun RexMusicWidget.Companion.__splitImpl_isWide(context: Context, manag
             return options.getInt(key, 0) >= WIDE_MIN_DP
         }
 
-internal fun RexMusicWidget.Companion.__splitImpl_signature(state: RexMusicUiState, art: WidgetArt.Art?, lyr: Lyr): String {
+internal fun RexMusicWidget.Companion.__splitImpl_signature(state: RexMusicUiState, art: WidgetArt.Art?, lyr: RexMusicWidget.Lyr): String {
             val t = state.nowPlaying
             return listOf(
                 t?.id.orEmpty(), t?.title.orEmpty(), t?.artist.orEmpty(),

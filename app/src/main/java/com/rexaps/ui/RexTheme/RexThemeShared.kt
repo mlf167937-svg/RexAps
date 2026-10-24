@@ -66,7 +66,7 @@ internal fun RexThemeOption.__splitImpl_labelToThemeId(): String = when(this) {
 }
 
 internal fun RexThemeStore.__splitImpl_load(): RexThemeOption {
-        val saved = prefs.getString(KEY_THEME, null)
+        val saved = prefs.getString(RexThemeStore.KEY_THEME, null)
         val option = if (saved == null || saved == "BLOOD_MOON") RexThemeOption.DARK_BLUE_MOON
             else RexThemeOption.values().firstOrNull { it.name == saved } ?: RexThemeOption.DARK_BLUE_MOON
         if (option in RexThemeOption.curatedOptions) engine.setTheme(option.labelToThemeId())

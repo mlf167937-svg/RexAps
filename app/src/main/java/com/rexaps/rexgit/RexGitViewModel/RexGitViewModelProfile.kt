@@ -58,7 +58,7 @@ import kotlinx.coroutines.flow.update
 
                 authStore.saveAccounts(merged)
 
-                accountPrefs.edit().putString(ACTIVE_KEY, login).apply()
+                accountPrefs.edit().putString(RexGitViewModel.ACTIVE_KEY, login).apply()
 
                 val auth = externalGithubAuth(reload = true)
                     ?: throw missingAuthError()
@@ -102,7 +102,7 @@ import kotlinx.coroutines.flow.update
                 activeIndex = 0
 
                 accounts.firstOrNull()?.let {
-                    accountPrefs.edit().putString(ACTIVE_KEY, it.username).apply()
+                    accountPrefs.edit().putString(RexGitViewModel.ACTIVE_KEY, it.username).apply()
                 }
 
                 publishAccounts()
@@ -157,7 +157,7 @@ import kotlinx.coroutines.flow.update
 
         accounts = resolved
 
-        val saved = accountPrefs.getString(ACTIVE_KEY, null)
+        val saved = accountPrefs.getString(RexGitViewModel.ACTIVE_KEY, null)
         activeIndex = resolved
             .indexOfFirst { it.username.equals(saved, ignoreCase = true) }
             .takeIf { it >= 0 }
@@ -175,9 +175,9 @@ import kotlinx.coroutines.flow.update
         if (index !in list.indices || index == activeIndex) return
 
         activeIndex = index
-        accountPrefs.edit().putString(ACTIVE_KEY, list[index].username).apply()
+        accountPrefs.edit().putString(RexGitViewModel.ACTIVE_KEY, list[index].username).apply()
         _state.value.selectedRepository?.let { repo ->
-            accountPrefs.edit().putString(REPO_ACCOUNT_PREFIX + repo.path, list[index].username).apply()
+            accountPrefs.edit().putString(RexGitViewModel.REPO_ACCOUNT_PREFIX + repo.path, list[index].username).apply()
         }
 
         _state.update {

@@ -18,13 +18,13 @@ class RexNuxInstaller(
     )
 
     companion object {
-        private const val ALPINE_VERSION = "3.24.2"
+        internal const val ALPINE_VERSION = "3.24.2"
 
-        private const val ALPINE_URL =
+        internal const val ALPINE_URL =
             "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/" +
                     "alpine-minirootfs-$ALPINE_VERSION-aarch64.tar.gz"
 
-        private const val ALPINE_SHA256_URL =
+        internal const val ALPINE_SHA256_URL =
             "$ALPINE_URL.sha256"
     }
 

@@ -31,7 +31,7 @@ internal val TwoPi = (2.0 * PI).toFloat()
 internal val DegToRad = (PI / 180.0).toFloat()
 
 /** Seeded, stable particle coordinates prevent shimmer caused by regenerating randomness per frame. */
-private data class AmbientParticle(
+internal data class AmbientParticle(
     val x: Float,
     val y: Float,
     val radius: Float,

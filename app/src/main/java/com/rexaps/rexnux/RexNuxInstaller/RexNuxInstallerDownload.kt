@@ -5,7 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
-        onProgress: suspend (InstallProgress) -> Unit
+        onProgress: suspend (RexNuxInstaller.InstallProgress) -> Unit
     ) {
         withContext(Dispatchers.IO) {
 
@@ -14,18 +14,18 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
 
             val archive = File(
                 downloadsDir,
-                "alpine-$ALPINE_VERSION-aarch64.tar.gz"
+                "alpine-${RexNuxInstaller.ALPINE_VERSION}-aarch64.tar.gz"
             )
 
             onProgress(
-                InstallProgress(
+                RexNuxInstaller.InstallProgress(
                     0f,
                     "Downloading Alpine Linux..."
                 )
             )
 
             download(
-                url = ALPINE_URL,
+                url = RexNuxInstaller.ALPINE_URL,
                 destination = archive
             ) { downloaded, total ->
 
@@ -37,7 +37,7 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
                     }
 
                 onProgress(
-                    InstallProgress(
+                    RexNuxInstaller.InstallProgress(
                         progress * 0.7f,
                         "Downloading Alpine... ${
                             (progress * 100).toInt()
@@ -47,14 +47,14 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
             }
 
             onProgress(
-                InstallProgress(
+                RexNuxInstaller.InstallProgress(
                     0.72f,
                     "Verifying Alpine..."
                 )
             )
 
             val expectedSha = downloadText(
-                ALPINE_SHA256_URL
+                RexNuxInstaller.ALPINE_SHA256_URL
             ).trim()
                 .split(Regex("\\s+"))
                 .first()
@@ -70,7 +70,7 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
             }
 
             onProgress(
-                InstallProgress(
+                RexNuxInstaller.InstallProgress(
                     0.78f,
                     "Preparing filesystem..."
                 )
@@ -83,7 +83,7 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
             alpineDir.mkdirs()
 
             onProgress(
-                InstallProgress(
+                RexNuxInstaller.InstallProgress(
                     0.8f,
                     "Extracting Alpine..."
                 )
@@ -103,7 +103,7 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
                     }
 
                 onProgress(
-                    InstallProgress(
+                    RexNuxInstaller.InstallProgress(
                         0.8f + progress * 0.19f,
                         "Extracting Alpine..."
                     )
@@ -113,7 +113,7 @@ internal suspend fun RexNuxInstaller.__splitImpl_installAlpine(
             archive.delete()
 
             onProgress(
-                InstallProgress(
+                RexNuxInstaller.InstallProgress(
                     1f,
                     "Alpine installation complete."
                 )

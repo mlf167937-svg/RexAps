@@ -4,7 +4,7 @@ import java.io.File
 
 /** Import lagu yang diterima lewat RexMusicSync ke library RexMusic, tanpa menghapus cache sync. */
     internal fun RexOfflineManager.__splitImpl_importSyncTrack(track: RexTrack, sourceDir: File): Boolean {
-        if (!::appContext.isInitialized || !hasAccess(appContext)) return false
+        if (!appContextInitialized || !hasAccess(appContext)) return false
         return runCatching {
             val audio = File(sourceDir, "music.mp3")
             require(audio.isFile && audio.length() > 0L) { "File audio tidak lengkap" }

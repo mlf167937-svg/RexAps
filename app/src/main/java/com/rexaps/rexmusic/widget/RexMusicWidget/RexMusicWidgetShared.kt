@@ -15,7 +15,7 @@ import kotlin.math.min
 
 internal fun RexMusicWidget.Companion.__splitImpl_render(
             context: Context, state: RexMusicUiState, art: WidgetArt.Art?,
-            lyr: Lyr, wide: Boolean
+            lyr: RexMusicWidget.Lyr, wide: Boolean
         ): RemoteViews {
             val views = RemoteViews(
                 context.packageName,
@@ -179,7 +179,7 @@ internal fun RexMusicWidget.Companion.__splitImpl_sourceLabel(state: RexMusicUiS
 
 internal fun RexMusicWidget.Companion.__splitImpl_shouldRender(
             context: Context, state: RexMusicUiState, art: WidgetArt.Art?,
-            lyr: Lyr, force: Boolean
+            lyr: RexMusicWidget.Lyr, force: Boolean
         ): Boolean {
             val sig = signature(state, art, lyr)
             val pos = state.positionMs

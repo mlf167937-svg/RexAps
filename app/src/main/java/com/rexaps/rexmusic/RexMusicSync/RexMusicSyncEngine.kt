@@ -8,7 +8,7 @@ import kotlin.math.max
 import kotlinx.coroutines.*
 import org.json.JSONObject
 
-internal fun RexMusicSyncEngine.__splitImpl_sendState(p: Peer) {
+internal fun RexMusicSyncEngine.__splitImpl_sendState(p: RexMusicSyncEngine.Peer) {
         val track = hostTrack
         val now = SystemClock.elapsedRealtime()
         val startAt = if (hostPlaying) max(now + START_LEAD_MS, playAnchorWallMs) else 0L

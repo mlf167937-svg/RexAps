@@ -19,17 +19,17 @@ internal fun RexGitViewModel.__splitImpl_selectRepository(repository: RexGitRepo
             }
 
             try {
-                val savedAccount = accountPrefs.getString(REPO_ACCOUNT_PREFIX + repository.path, null)
+                val savedAccount = accountPrefs.getString(RexGitViewModel.REPO_ACCOUNT_PREFIX + repository.path, null)
                 val desiredAccount = savedAccount ?: repository.accountNickname
                 val desiredIndex = accounts.indexOfFirst { it.username.equals(desiredAccount, ignoreCase = true) }
                 if (desiredIndex >= 0 && desiredIndex != activeIndex) {
                     activeIndex = desiredIndex
-                    accountPrefs.edit().putString(ACTIVE_KEY, accounts[desiredIndex].username).apply()
+                    accountPrefs.edit().putString(RexGitViewModel.ACTIVE_KEY, accounts[desiredIndex].username).apply()
                     publishAccounts()
                 }
                 val selectedAccountName = accounts.getOrNull(activeIndex)?.username
                 if (selectedAccountName != null) {
-                    accountPrefs.edit().putString(REPO_ACCOUNT_PREFIX + repository.path, selectedAccountName).apply()
+                    accountPrefs.edit().putString(RexGitViewModel.REPO_ACCOUNT_PREFIX + repository.path, selectedAccountName).apply()
                 }
 
                 val isGit = File(repository.path, ".git").exists()

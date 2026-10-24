@@ -39,10 +39,10 @@ class RexGitViewModel(
     internal var editorBuffer: String = ""
 
     companion object {
-        private const val MAX_EDITOR_BYTES = 400_000L
+        internal const val MAX_EDITOR_BYTES = 400_000L
 
-        private const val ACTIVE_KEY = "active_username"
-        private const val REPO_ACCOUNT_PREFIX = "repo_account:"
+        internal const val ACTIVE_KEY = "active_username"
+        internal const val REPO_ACCOUNT_PREFIX = "repo_account:"
     }
 
     init {

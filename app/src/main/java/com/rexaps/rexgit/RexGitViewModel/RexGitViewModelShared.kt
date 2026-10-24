@@ -212,7 +212,7 @@ internal fun RexGitViewModel.__splitImpl_readReadme(repositoryPath: String): Str
             val root = File(repositoryPath)
             val readme = root.listFiles()?.firstOrNull { it.isFile && it.name.equals("README.md", true) }
                 ?: return ""
-            if (readme.length() > MAX_EDITOR_BYTES) return "README is too large to preview in RexGit. Open the file from Code to inspect it."
+            if (readme.length() > RexGitViewModel.MAX_EDITOR_BYTES) return "README is too large to preview in RexGit. Open the file from Code to inspect it."
             readme.readText(Charsets.UTF_8)
         } catch (_: Throwable) { "" }
     }

@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.withPermit
 internal suspend fun RexOfflineManager.__splitImpl_downloadFile(
         url: String,
         dest: File,
-        onProgress: (DownloadProgress) -> Unit
+        onProgress: (RexOfflineManager.DownloadProgress) -> Unit
     ) {
         val conn = openConnection(url)
         try {
@@ -19,7 +19,7 @@ internal suspend fun RexOfflineManager.__splitImpl_downloadFile(
                 throw IOException("server tidak mengirim file audio")
             }
             val total = conn.contentLengthLong.coerceAtLeast(0L)
-            onProgress(DownloadProgress(
+            onProgress(RexOfflineManager.DownloadProgress(
                 percent = if (total > 0L) 0 else -1,
                 downloadedBytes = 0L,
                 totalBytes = total,
@@ -55,14 +55,14 @@ internal suspend fun RexOfflineManager.__splitImpl_downloadFile(
                             } else {
                                 -1
                             }
-                            onProgress(DownloadProgress(pct, done, total, speed))
+                            onProgress(RexOfflineManager.DownloadProgress(pct, done, total, speed))
                         }
                     }
                     if (total > 0L && done < total) throw IOException("unduhan terputus")
                     if (done > 0L) {
                         val elapsed = (System.currentTimeMillis() - startAt).coerceAtLeast(1L)
                         val finalSpeed = if (speed > 0L) speed else (done * 1000L / elapsed)
-                        onProgress(DownloadProgress(
+                        onProgress(RexOfflineManager.DownloadProgress(
                             percent = if (total > 0L) 100 else -1,
                             downloadedBytes = done,
                             totalBytes = total,

@@ -61,7 +61,7 @@ class RexThemeStore(context: Context) {
     fun save(option: RexThemeOption) {
         return this.__splitImpl_save(option)
     }
-    private companion object { const val PREFS_NAME = "rexaps_settings"; const val KEY_THEME = "theme_option" }
+    internal companion object { const val PREFS_NAME = "rexaps_settings"; const val KEY_THEME = "theme_option" }
 }
 
 data class RexPaletteSpec(

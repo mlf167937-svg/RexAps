@@ -207,14 +207,14 @@ class RexWarpVpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.rexaps.rexwarp.CONNECT"
         const val ACTION_DISCONNECT = "com.rexaps.rexwarp.DISCONNECT"
-        private const val TAG = "RexWarp"
+        internal const val TAG = "RexWarp"
         private const val SAMPLE_MS = 1_000L
-        private const val HISTORY_SIZE = 40
-        private const val CONNECT_TIMEOUT_MS = 70_000L   // registrasi + handshake + verifikasi warp=on
+        internal const val HISTORY_SIZE = 40
+        internal const val CONNECT_TIMEOUT_MS = 70_000L   // registrasi + handshake + verifikasi warp=on
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
-        private const val RECONNECT_BASE_DELAY_MS = 3_000L
-        private const val MAX_RECONNECT = 5
-        private val RETRYABLE = setOf(
+        internal const val RECONNECT_BASE_DELAY_MS = 3_000L
+        internal const val MAX_RECONNECT = 5
+        internal val RETRYABLE = setOf(
             RexWarpError.UNEXPECTED_DISCONNECT, RexWarpError.NETWORK_UNAVAILABLE,
             RexWarpError.TIMEOUT, RexWarpError.TUNNEL_FAILED
         )
