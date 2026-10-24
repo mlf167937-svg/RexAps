@@ -70,6 +70,7 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
     var showStorageDialog by remember { mutableStateOf(false) }
     var showDeleteAll by rememberSaveable { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<RexTrack?>(null) }
+    var pendingNotificationDownload by remember { mutableStateOf<RexTrack?>(null) }
     var deleteTarget by remember { mutableStateOf<RexTrack?>(null) }
     var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
     var playlistTarget by remember { mutableStateOf<RexTrack?>(null) }
@@ -113,22 +114,6 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
         }
     }
 
-    val notifLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
-
-    val requestNotifications: () -> Unit = {
-        if (
-            Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(
-                context,
-                NOTIF_PERMISSION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notifLauncher.launch(NOTIF_PERMISSION)
-        }
-    }
-
     val settingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -162,6 +147,37 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
         }
     }
 
+    val startDownload: (RexTrack) -> Unit = { track ->
+        if (RexOfflineManager.hasAccess(context)) {
+            vm.download(track)
+        } else {
+            pendingDownload = track
+            showStorageDialog = true
+        }
+    }
+
+    // On Android 13+, ask for notification permission before creating the first
+    // progress notification. The download still proceeds if the user denies it.
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        val track = pendingNotificationDownload
+        pendingNotificationDownload = null
+        if (track != null) startDownload(track)
+    }
+
+    val requestNotifications: () -> Unit = {
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                NOTIF_PERMISSION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifLauncher.launch(NOTIF_PERMISSION)
+        }
+    }
+
     LaunchedEffect(state.offline.hasAccess) {
         val pending = pendingDownload
 
@@ -173,12 +189,17 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
     }
 
     val downloadTrack: (RexTrack) -> Unit = { track ->
-        requestNotifications()
-        if (RexOfflineManager.hasAccess(context)) {
-            vm.download(track)
+        val needsNotificationPermission = Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                NOTIF_PERMISSION
+            ) != PackageManager.PERMISSION_GRANTED
+
+        if (needsNotificationPermission) {
+            pendingNotificationDownload = track
+            notifLauncher.launch(NOTIF_PERMISSION)
         } else {
-            pendingDownload = track
-            showStorageDialog = true
+            startDownload(track)
         }
     }
 

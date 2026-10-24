@@ -3,6 +3,7 @@
     android:id="@+id/download_notification_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/rexmusic_download_surface_bg"
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:paddingStart="14dp"
@@ -99,10 +100,15 @@
                 android:textSize="10sp"
                 android:textStyle="bold" />
 
-            <Space
+            <!-- RemoteViews does not reliably support android.widget.Space on API 27.
+                 Empty TextView is supported on Android 8.1 through current Android. -->
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:layout_weight="1"
+                android:includeFontPadding="false"
+                android:importantForAccessibility="no"
+                android:text="" />
 
             <TextView
                 android:id="@+id/download_notification_percent"

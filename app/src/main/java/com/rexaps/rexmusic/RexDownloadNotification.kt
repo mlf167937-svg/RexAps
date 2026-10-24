@@ -1,39 +1,48 @@
 package com.rexaps.rexmusic
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.rexaps.R
 import java.util.Locale
 
 /**
  * Notifikasi unduhan terpisah dari media notification.
- *
- * Satu lagu = satu notification ID. Notification ini sengaja memakai RemoteViews
- * sendiri supaya progress, ukuran file, dan speed punya hierarchy visual yang jelas.
+ * Layout RemoteViews hanya menggunakan widget yang didukung Android 8.1-15.
  */
 object RexDownloadNotification {
+    private const val TAG = "RexDownloadNotif"
     private const val CHANNEL_ID = "rexmusic_downloads"
     private const val CHANNEL_NAME = "Unduhan RexMusic"
     private const val BASE_ID = 18_000
 
     fun init(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Progress unduhan lagu dan lirik RexMusic"
-                setShowBadge(true)
-            }
-        )
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Progres, ukuran, dan kecepatan unduhan lagu RexMusic"
+                    setShowBadge(true)
+                }
+            )
+        }
     }
 
     fun showProgress(context: Context, key: String, status: DownloadStatus) {
@@ -41,7 +50,12 @@ object RexDownloadNotification {
     }
 
     fun showCompleted(context: Context, key: String, status: DownloadStatus) {
-        post(context, key, status.copy(stage = DownloadStage.Finalizing, percent = 100), terminal = true)
+        post(
+            context,
+            key,
+            status.copy(stage = DownloadStage.Finalizing, percent = 100),
+            terminal = true
+        )
     }
 
     fun showFailed(context: Context, key: String, track: RexTrack, message: String) {
@@ -50,7 +64,13 @@ object RexDownloadNotification {
             stage = DownloadStage.Finalizing,
             percent = -1
         )
-        postTerminal(context, key, status, "Gagal: ${message.take(90)}", android.R.drawable.ic_dialog_alert)
+        postTerminal(
+            context,
+            key,
+            status,
+            "Unduhan gagal: ${message.take(90)}",
+            android.R.drawable.ic_dialog_alert
+        )
     }
 
     fun showCancelled(context: Context, key: String, track: RexTrack) {
@@ -59,32 +79,59 @@ object RexDownloadNotification {
             stage = DownloadStage.Finalizing,
             percent = -1
         )
-        postTerminal(context, key, status, "Unduhan dibatalkan", android.R.drawable.ic_menu_close_clear_cancel)
+        postTerminal(
+            context,
+            key,
+            status,
+            "Unduhan dibatalkan",
+            android.R.drawable.ic_menu_close_clear_cancel
+        )
     }
 
     private fun post(context: Context, key: String, status: DownloadStatus, terminal: Boolean) {
         val progress = if (status.percent >= 0) status.percent.coerceIn(0, 100) else 0
-        val indeterminate = status.percent < 0 || status.stage == DownloadStage.Resolving || status.stage == DownloadStage.Queued
-        val stage = stageLabel(status.stage)
+        val indeterminate = !terminal && (
+            status.percent < 0 ||
+                status.stage == DownloadStage.Resolving ||
+                status.stage == DownloadStage.Queued
+            )
+        val stage = if (terminal) "Tersimpan offline" else stageLabel(status.stage)
         val stats = sizeLabel(status)
         val speed = speedLabel(status.speedBytesPerSecond)
         val percentLabel = if (status.percent >= 0) "$progress%" else "…"
 
         val compact = RemoteViews(
             context.packageName,
-            resId(context, "layout", "rexmusic_download_notification_compact")
+            R.layout.rexmusic_download_notification_compact
         ).apply {
-            bindCommon(this, context, status, stage, stats, speed, percentLabel, progress, indeterminate)
+            bindCommon(
+                this, status, stage, stats, speed, percentLabel,
+                progress, indeterminate
+            )
         }
 
         val expanded = RemoteViews(
             context.packageName,
-            resId(context, "layout", "rexmusic_download_notification")
+            R.layout.rexmusic_download_notification
         ).apply {
-            bindCommon(this, context, status, stage, stats, speed, percentLabel, progress, indeterminate)
+            bindCommon(
+                this, status, stage, stats, speed, percentLabel,
+                progress, indeterminate
+            )
         }
 
-        notify(context, key, compact, expanded, ongoing = !terminal)
+        notify(
+            context = context,
+            key = key,
+            compact = compact,
+            expanded = expanded,
+            ongoing = !terminal,
+            title = status.track.title,
+            contentText = "$stage · $percentLabel",
+            detailText = "$stats · $speed",
+            progress = progress,
+            indeterminate = indeterminate
+        )
     }
 
     private fun postTerminal(
@@ -94,58 +141,46 @@ object RexDownloadNotification {
         message: String,
         icon: Int
     ) {
-        val downloaded = status.downloadedBytes
-        val total = status.totalBytes
         val progress = if (status.percent >= 0) status.percent.coerceIn(0, 100) else 0
-        val stats = when {
-            downloaded > 0L && total > 0L -> "${formatMb(downloaded)} MB / ${formatMb(total)} MB"
-            downloaded > 0L -> "${formatMb(downloaded)} MB / ? MB"
-            else -> "Ukuran belum diketahui"
-        }
+        val stats = sizeLabel(status)
         val speed = speedLabel(status.speedBytesPerSecond)
-
         val compact = RemoteViews(
             context.packageName,
-            resId(context, "layout", "rexmusic_download_notification_compact")
+            R.layout.rexmusic_download_notification_compact
         ).apply {
             bindCommon(
-                this,
-                context,
-                status,
-                message,
-                stats,
-                speed,
-                if (progress > 0) "$progress%" else "!",
-                progress,
-                false,
-                iconOverride = icon
+                this, status, message, stats, speed,
+                if (status.percent >= 0) "$progress%" else "!",
+                progress, false, iconOverride = icon
             )
         }
-
         val expanded = RemoteViews(
             context.packageName,
-            resId(context, "layout", "rexmusic_download_notification")
+            R.layout.rexmusic_download_notification
         ).apply {
             bindCommon(
-                this,
-                context,
-                status,
-                message,
-                stats,
-                speed,
-                if (progress > 0) "$progress%" else "!",
-                progress,
-                false,
-                iconOverride = icon
+                this, status, message, stats, speed,
+                if (status.percent >= 0) "$progress%" else "!",
+                progress, false, iconOverride = icon
             )
         }
 
-        notify(context, key, compact, expanded, ongoing = false)
+        notify(
+            context = context,
+            key = key,
+            compact = compact,
+            expanded = expanded,
+            ongoing = false,
+            title = status.track.title,
+            contentText = message,
+            detailText = "$stats · $speed",
+            progress = progress,
+            indeterminate = false
+        )
     }
 
     private fun bindCommon(
         views: RemoteViews,
-        context: Context,
         status: DownloadStatus,
         stage: String,
         stats: String,
@@ -156,35 +191,17 @@ object RexDownloadNotification {
         iconOverride: Int? = null
     ) {
         views.setImageViewResource(
-            resId(context, "id", "download_notification_icon"),
-            iconOverride ?: resId(context, "drawable", "ic_rexmusic_download")
+            R.id.download_notification_icon,
+            iconOverride ?: R.drawable.ic_rexmusic_download
         )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_title"),
-            status.track.title
-        )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_artist"),
-            status.track.artist
-        )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_status"),
-            stage
-        )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_stats"),
-            stats
-        )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_speed"),
-            speed
-        )
-        views.setTextViewText(
-            resId(context, "id", "download_notification_percent"),
-            percentLabel
-        )
+        views.setTextViewText(R.id.download_notification_title, status.track.title)
+        views.setTextViewText(R.id.download_notification_artist, status.track.artist)
+        views.setTextViewText(R.id.download_notification_status, stage)
+        views.setTextViewText(R.id.download_notification_stats, stats)
+        views.setTextViewText(R.id.download_notification_speed, speed)
+        views.setTextViewText(R.id.download_notification_percent, percentLabel)
         views.setProgressBar(
-            resId(context, "id", "download_notification_progress"),
+            R.id.download_notification_progress,
             100,
             progress,
             indeterminate
@@ -196,14 +213,47 @@ object RexDownloadNotification {
         key: String,
         compact: RemoteViews,
         expanded: RemoteViews,
-        ongoing: Boolean
+        ongoing: Boolean,
+        title: String,
+        contentText: String,
+        detailText: String,
+        progress: Int,
+        indeterminate: Boolean
     ) {
         init(context)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w(TAG, "POST_NOTIFICATIONS belum diizinkan; unduhan tetap berjalan tanpa notifikasi.")
+            return
+        }
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            Log.w(TAG, "Notifikasi aplikasi dinonaktifkan di setelan Android.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = nm.getNotificationChannel(CHANNEL_ID)
+            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                Log.w(TAG, "Channel Unduhan RexMusic dinonaktifkan di setelan Android.")
+                return
+            }
+        }
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(resId(context, "drawable", "ic_rexmusic_download"))
+            .setSmallIcon(R.drawable.ic_rexmusic_download)
+            // Teks dan progress standar tetap tersedia sebagai fallback OS.
+            .setContentTitle(title)
+            .setContentText(contentText)
+            .setSubText(detailText)
+            .setProgress(100, progress, indeterminate)
             .setCustomContentView(compact)
             .setCustomBigContentView(expanded)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setColor(ContextCompat.getColor(context, R.color.rexmusic_download_blue))
             .setOnlyAlertOnce(true)
             .setAutoCancel(!ongoing)
             .setOngoing(ongoing)
@@ -211,14 +261,19 @@ object RexDownloadNotification {
             .setContentIntent(contentIntent(context))
             .setShowWhen(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
 
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(idFor(key), builder.build())
+        try {
+            nm.notify(idFor(key), builder.build())
+        } catch (error: SecurityException) {
+            // Misalnya izin notifikasi dicabut antara pemeriksaan dan notify().
+            Log.w(TAG, "Android menolak menampilkan notifikasi unduhan.", error)
+        }
     }
 
     private fun contentIntent(context: Context): PendingIntent? {
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
-        intent.flags = android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return PendingIntent.getActivity(
             context,
             19_001,
@@ -228,36 +283,34 @@ object RexDownloadNotification {
     }
 
     private fun stageLabel(stage: DownloadStage): String = when (stage) {
-        DownloadStage.Queued -> "Menunggu antrean..."
-        DownloadStage.Resolving -> "Menyiapkan audio..."
-        DownloadStage.Downloading -> "Mengunduh audio..."
-        DownloadStage.FetchingLyrics -> "Mengunduh lirik..."
-        DownloadStage.Finalizing -> "Menyimpan offline..."
+        DownloadStage.Queued -> "Menunggu antrean…"
+        DownloadStage.Resolving -> "Menyiapkan audio…"
+        DownloadStage.Downloading -> "Mengunduh audio…"
+        DownloadStage.FetchingLyrics -> "Mengunduh lirik…"
+        DownloadStage.Finalizing -> "Menyimpan offline…"
     }
 
     private fun sizeLabel(status: DownloadStatus): String = when {
         status.downloadedBytes > 0L && status.totalBytes > 0L ->
             "${formatMb(status.downloadedBytes)} MB / ${formatMb(status.totalBytes)} MB"
         status.downloadedBytes > 0L ->
-            "${formatMb(status.downloadedBytes)} MB / ? MB"
+            "${formatMb(status.downloadedBytes)} MB / ukuran ?"
         status.totalBytes > 0L ->
-            "0.0 MB / ${formatMb(status.totalBytes)} MB"
+            "0.00 MB / ${formatMb(status.totalBytes)} MB"
         else ->
-            "Menyiapkan ukuran..."
+            "Menyiapkan ukuran…"
     }
 
     private fun speedLabel(bytesPerSecond: Long): String = when {
-        bytesPerSecond <= 0L -> "-- MB/s"
-        else -> "${formatMb(bytesPerSecond)} MB/s"
+        bytesPerSecond <= 0L -> "Kecepatan —"
+        bytesPerSecond < 1024L -> "$bytesPerSecond B/s"
+        bytesPerSecond < 1024L * 1024L ->
+            String.format(Locale.US, "%.1f KB/s", bytesPerSecond / 1024.0)
+        else -> String.format(Locale.US, "%.2f MB/s", bytesPerSecond / (1024.0 * 1024.0))
     }
 
-    private fun formatMb(bytes: Long): String {
-        val mb = bytes / (1024.0 * 1024.0)
-        return String.format(Locale.US, "%.2f", mb)
-    }
-
-    private fun resId(context: Context, type: String, name: String): Int =
-        context.resources.getIdentifier(name, type, context.packageName)
+    private fun formatMb(bytes: Long): String =
+        String.format(Locale.US, "%.2f", bytes / (1024.0 * 1024.0))
 
     private fun idFor(key: String): Int = BASE_ID + (key.hashCode() and 0x3FFF)
 }
