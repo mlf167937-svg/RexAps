@@ -125,7 +125,9 @@ internal fun RexWarpSpeedTestPortraitLayout(
             ),
             exit = fadeOut(tween(160))
         ) {
-            state.error?.let(::ErrorPanel)
+            if (state.error != null) {
+                ErrorPanel(message = state.error!!)
+            }
         }
 
         PrivacyPanel()
