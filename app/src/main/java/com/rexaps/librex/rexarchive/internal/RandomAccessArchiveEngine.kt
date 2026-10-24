@@ -10,7 +10,6 @@ import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
 
 /** Random-access backends: 7z needs a seekable file; RAR is read/extract only. */
 internal object RandomAccessArchiveEngine {

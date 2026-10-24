@@ -3,8 +3,6 @@ package com.rexaps.ui.theme
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import java.util.concurrent.CopyOnWriteArraySet
 
 enum class RexAnimationLevel { FULL, BALANCED, SAVER, OFF }

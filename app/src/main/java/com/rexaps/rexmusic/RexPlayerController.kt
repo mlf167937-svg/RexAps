@@ -5,23 +5,15 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
-import android.os.Build
-import android.os.PowerManager
 import java.io.File
-import java.io.FileInputStream
-import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 
 /**
  * Pemutar musik tingkat aplikasi. Hidup di luar ViewModel supaya musik tetap jalan
@@ -30,341 +22,138 @@ import kotlinx.coroutines.launch
  */
 object RexPlayerController {
 
-    private lateinit var appContext: Context
-    private lateinit var audioManager: AudioManager
-    private lateinit var store: RexHistoryStore
-    private lateinit var queueStore: RexQueueStore
-    private lateinit var taste: RexTasteStore
-    private lateinit var playlistStore: RexPlaylistStore
-    private var initialized = false
+    internal lateinit var appContext: Context
+    internal lateinit var audioManager: AudioManager
+    internal lateinit var store: RexHistoryStore
+    internal lateinit var queueStore: RexQueueStore
+    internal lateinit var taste: RexTasteStore
+    internal lateinit var playlistStore: RexPlaylistStore
+    internal var initialized = false
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val _state = MutableStateFlow(
+    internal val _state = MutableStateFlow(
         RexMusicUiState(tracks = RexMusicRegistry.defaultTracks)
     )
     val state: StateFlow<RexMusicUiState> = _state.asStateFlow()
 
     // player
-    private var player: MediaPlayer? = null
-    private var syncVolume: Float = 1f
-    private var syncPrepareTrackId: String? = null
-    private var prepared = false
-    private var progressJob: Job? = null
-    private var seekJob: Job? = null
-    private var seekPending = false
-    private var tasteCounted = false
+    internal var player: MediaPlayer? = null
+    internal var syncVolume: Float = 1f
+    internal var syncPrepareTrackId: String? = null
+    internal var prepared = false
+    internal var progressJob: Job? = null
+    internal var seekJob: Job? = null
+    internal var seekPending = false
+    internal var tasteCounted = false
 
-    // search / resolve / prepare / buffering flags
-    private var searchJob: Job? = null
-    private var playJob: Job? = null
-    private var searching = false
-    private var resolving = false
-    private var preparing = false
-    private var buffering = false
-    private var resolveText = ""
+    internal var searchJob: Job? = null
+    internal var playJob: Job? = null
+    internal var searching = false
+    internal var resolving = false
+    internal var preparing = false
+    internal var buffering = false
+    internal var resolveText = ""
 
-    // konteks: daftar asal lagu (search / rekomendasi / riwayat / perpustakaan offline)
-    private var queue: List<RexTrack> = emptyList()
-    private var queueIndex = 0
+    internal var queue: List<RexTrack> = emptyList()
+    internal var queueIndex = 0
 
-    // true = tombol next mengikuti urutan konteks (dipakai perpustakaan offline), bukan autoplay acak
-    private var followContext = false
+    internal var followContext = false
 
-    // antrian buatan pengguna (metadata saja) + autoplay pintar
-    private val userQueue = mutableListOf<RexTrack>()
-    private var autoplay = true
+    internal val userQueue = mutableListOf<RexTrack>()
+    internal var autoplay = true
 
-    // riwayat kronologis (terlama di depan, terbaru di belakang). Hanya metadata.
-    private val history = mutableListOf<RexTrack>()
+    internal val history = mutableListOf<RexTrack>()
 
-    // audio focus
-    private var focusRequest: AudioFocusRequest? = null
+    internal var focusRequest: AudioFocusRequest? = null
     private var resumeOnGain = false
-    private val audioAttrs = AudioAttributes.Builder()
+    internal val audioAttrs = AudioAttributes.Builder()
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .build()
 
     @Synchronized
-    fun init(context: Context) {
-        if (initialized) return
-        initialized = true
-        appContext = context.applicationContext
-        audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        store = RexHistoryStore(appContext)
-        queueStore = RexQueueStore(appContext)
-        taste = RexTasteStore(appContext)
-        playlistStore = RexPlaylistStore(appContext)
-        history.addAll(store.load())
-        userQueue.addAll(queueStore.load())
-        autoplay = taste.autoplay
-        _state.update { it.copy(popularCount = RexPopularSongs.tracks.size, playlists = playlistStore.list()) }
+    fun init(context: Context) = this.__split_init_1(context)
 
-        RexOfflineManager.init(appContext)
-        scope.launch { RexOfflineManager.state.collect { onOfflineChanged(it) } }
-        scope.launch { RexOfflineManager.messages.collect { postNotice(it) } }
+    internal fun offlineMode(): Boolean = this.__splitExtra_offlineMode_1()
 
-        publishQueueInfo()
-        publishTaste()
-    }
+    internal fun onOfflineChanged(o: OfflineState) = this.__splitExtra_onOfflineChanged_2(o)
 
-    private fun offlineMode(): Boolean = RexOfflineManager.state.value.enabled
 
-    private fun onOfflineChanged(o: OfflineState) {
-        val modeChanged = _state.value.offline.enabled != o.enabled
-        _state.update { it.copy(offline = o) }
-        if (modeChanged) publishQueueInfo()
-    }
+    fun setOfflineMode(on: Boolean) = this.__splitExtra_setOfflineMode_3(on)
 
-    //  Offline mode 
 
-    fun setOfflineMode(on: Boolean) {
-        RexOfflineManager.setOfflineMode(on)
-        clearSearch()
-        postNotice(if (on) "Mode offline aktif. Hanya lagu unduhan yang diputar" else "Kembali online")
-    }
+    fun refreshPlaylists() = this.__splitExtra_refreshPlaylists_4()
 
-    // ---------------- Playlist JSON ----------------
+    fun createPlaylist(name: String) = this.__split_createPlaylist_2(name)
 
-    fun refreshPlaylists() {
-        if (!initialized) return
-        _state.update { it.copy(playlists = playlistStore.list()) }
-    }
+    fun addToPlaylist(name: String, track: RexTrack) = this.__split_addToPlaylist_3(name, track)
 
-    fun createPlaylist(name: String) {
-        if (playlistStore.create(name) == null) {
-            postNotice("Nama playlist tidak valid atau sudah ada")
-            return
-        }
-        refreshPlaylists()
-        postNotice("Playlist dibuat: ${name.trim()}")
-    }
+    fun removeFromPlaylist(name: String, track: RexTrack) = this.__splitExtra_removeFromPlaylist_5(name, track)
 
-    fun addToPlaylist(name: String, track: RexTrack) {
-        if (playlistStore.addTrack(name, track)) {
-            refreshPlaylists()
-            postNotice("Ditambahkan ke $name")
-        } else {
-            postNotice("Playlist tidak bisa diperbarui")
-        }
-    }
+    fun deletePlaylist(name: String) = this.__splitExtra_deletePlaylist_6(name)
 
-    fun removeFromPlaylist(name: String, track: RexTrack) {
-        if (playlistStore.removeTrack(name, track.id)) {
-            refreshPlaylists()
-            postNotice("Dihapus dari $name")
-        }
-    }
-
-    fun deletePlaylist(name: String) {
-        if (playlistStore.delete(name)) {
-            refreshPlaylists()
-            postNotice("Playlist dihapus: $name")
-        }
-    }
-
-    fun playPlaylist(name: String, startTrackId: String? = null) {
-        val playlist = playlistStore.load(name) ?: return
-        val tracks = if (offlineMode()) playlist.tracks.filter { RexOfflineManager.isDownloaded(it) } else playlist.tracks
-        if (tracks.isEmpty()) {
-            postNotice(if (offlineMode()) "Playlist ini belum punya lagu offline" else "Playlist masih kosong")
-            return
-        }
-        // When a track is tapped inside playlist details, start at that track while
-        // keeping the playlist as the active playback context for Next / Previous.
-        val startIndex = if (startTrackId == null) 0 else tracks.indexOfFirst { it.id == startTrackId }
-        if (startIndex < 0) {
-            postNotice(if (offlineMode()) "Lagu ini belum tersedia offline" else "Lagu tidak ditemukan di playlist")
-            return
-        }
-        startQueue(tracks, startIndex, follow = true)
-    }
+    fun playPlaylist(name: String, startTrackId: String? = null) = this.__split_playPlaylist_4(name, startTrackId)
 
     /** Putar lagu dari perpustakaan offline; Next mengikuti urutan perpustakaan. */
-    fun playFromOffline(track: RexTrack) {
-        val list = RexOfflineManager.state.value.entries.map { it.track }
-        val index = list.indexOfFirst { it.id == track.id }
-        if (index < 0) return
-        startQueue(list, index, follow = true)
-    }
+    fun playFromOffline(track: RexTrack) = this.__split_playFromOffline_5(track)
 
     /** Prepare a local track for synchronized playback without emitting audio before the room target time. */
-    fun prepareFromOfflineForSync(track: RexTrack) {
-        val list = RexOfflineManager.state.value.entries.map { it.track }
-        val index = list.indexOfFirst { it.id == track.id }
-        if (index < 0) return
-        syncPrepareTrackId = track.id
-        startQueue(list, index, follow = true)
-    }
+    fun prepareFromOfflineForSync(track: RexTrack) = this.__split_prepareFromOfflineForSync_6(track)
 
     /** "Putar semua" / "Acak" di perpustakaan offline. */
-    fun playOfflineAll(shuffle: Boolean) {
-        val list = RexOfflineManager.state.value.entries.map { it.track }
-        if (list.isEmpty()) {
-            postNotice("Belum ada lagu offline")
-            return
-        }
-        startQueue(if (shuffle) list.shuffled() else list, 0, follow = true)
-    }
+    fun playOfflineAll(shuffle: Boolean) = this.__split_playOfflineAll_7(shuffle)
 
-    //  Search 
 
     /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
-    fun search(query: String) {
-        searchJob?.cancel()
-        if (offlineMode()) return
-        val q = query.trim()
-        if (q.isEmpty()) {
-            clearSearch()
-            return
-        }
-        searchJob = scope.launch {
-            delay(SEARCH_DEBOUNCE_MS)
-            searching = true
-            _state.update { it.copy(error = null) }
-            publishLoading()
-            RexMusicApi.search(q)
-                .onSuccess { list ->
-                    searching = false
-                    _state.update { it.copy(searchResults = list) }
-                }
-                .onFailure { e ->
-                    searching = false
-                    _state.update { it.copy(error = e.message ?: "search gagal") }
-                }
-            publishLoading()
-        }
-    }
+    fun search(query: String) = this.__split_search_8(query)
 
-    fun clearSearch() {
-        searchJob?.cancel()
-        searching = false
-        _state.update { it.copy(searchResults = emptyList()) }
-        publishLoading()
-    }
+    fun clearSearch() = this.__splitExtra_clearSearch_7()
 
-    fun dismissError() = _state.update { it.copy(error = null) }
+    fun dismissError() = this.__splitExtra_dismissError_8()
 
-    fun consumeNotice() = _state.update { it.copy(notice = null) }
+    fun consumeNotice() = this.__splitExtra_consumeNotice_9()
 
-    private fun postNotice(message: String) = _state.update { it.copy(notice = message) }
+    internal fun postNotice(message: String) = this.__splitExtra_postNotice_10(message)
 
-    fun clearHistory() {
-        history.clear()
-        store.save(history)
-        publishQueueInfo()
-    }
+    fun clearHistory() = this.__splitExtra_clearHistory_11()
 
-    //  Play from list 
 
-    fun playFromMain(index: Int) {
-        val list = _state.value.tracks
-        if (index !in list.indices) return
-        startQueue(list, index)
-    }
+    fun playFromMain(index: Int) = this.__splitExtra_playFromMain_12(index)
 
-    fun playFromSearch(index: Int) {
-        val list = _state.value.searchResults
-        if (index !in list.indices) return
-        startQueue(list, index)
-    }
+    fun playFromSearch(index: Int) = this.__splitExtra_playFromSearch_13(index)
 
     /** index mengacu ke state.history (terbaru di depan). Lagu yang sudah diunduh diputar dari file. */
-    fun playFromHistory(index: Int) {
-        val list = _state.value.history
-        if (index !in list.indices) return
-        startQueue(list, index)
-    }
+    fun playFromHistory(index: Int) = this.__splitExtra_playFromHistory_14(index)
 
-    private fun startQueue(list: List<RexTrack>, index: Int, follow: Boolean = false) {
-        cancelPending()
-        queue = list
-        queueIndex = index
-        followContext = follow
-        beginTrack(list[index])
-    }
+    internal fun startQueue(list: List<RexTrack>, index: Int, follow: Boolean = false) = this.__splitExtra_startQueue_15(list, index, follow)
 
     /** Mix pintar: langsung pilih lagu dari artis favorit / populer (atau dari unduhan saat offline). */
-    fun playMix() {
-        cancelPending()
-        followContext = false
-        playSmart()
-    }
+    fun playMix() = this.__splitExtra_playMix_16()
 
-    //  User queue 
 
-    fun addToQueue(track: RexTrack) {
-        val entry = track.copy(audioUrl = "")
-        when {
-            userQueue.any { sameSong(it, entry) } -> postNotice("Sudah ada di antrian")
-            userQueue.size >= MAX_QUEUE -> postNotice("Antrian penuh (maks $MAX_QUEUE lagu)")
-            else -> {
-                userQueue.add(entry)
-                persistQueue()
-                publishQueueInfo()
-                postNotice("Ditambahkan ke antrian")
-            }
-        }
-    }
+    fun addToQueue(track: RexTrack) = this.__split_addToQueue_9(track)
 
-    fun removeFromQueue(index: Int) {
-        if (index !in userQueue.indices) return
-        userQueue.removeAt(index)
-        persistQueue()
-        publishQueueInfo()
-    }
+    fun removeFromQueue(index: Int) = this.__splitExtra_removeFromQueue_17(index)
 
-    fun moveQueueToTop(index: Int) {
-        if (index !in 1 until userQueue.size) return
-        val track = userQueue.removeAt(index)
-        userQueue.add(0, track)
-        persistQueue()
-        publishQueueInfo()
-    }
+    fun moveQueueToTop(index: Int) = this.__split_moveQueueToTop_10(index)
 
-    fun clearQueue() {
-        if (userQueue.isEmpty()) return
-        userQueue.clear()
-        persistQueue()
-        publishQueueInfo()
-        postNotice("Antrian dikosongkan")
-    }
+    fun clearQueue() = this.__splitExtra_clearQueue_18()
 
     /** Putar lagu dari antrian sekarang juga (lagunya keluar dari antrian). */
-    fun playFromQueue(index: Int) {
-        if (index !in userQueue.indices) return
-        val track = userQueue.removeAt(index)
-        persistQueue()
-        cancelPending()
-        beginTrack(track)
-    }
+    fun playFromQueue(index: Int) = this.__splitExtra_playFromQueue_19(index)
 
-    private fun persistQueue() = queueStore.save(userQueue.toList())
+    internal fun persistQueue() = this.__splitExtra_persistQueue_20()
 
-    //  Repeat & autoplay 
 
     /** Ulangi lagu yang sedang diputar sebanyak [times] kali lagi (0 = mati, maks 50). */
-    fun setRepeat(times: Int) {
-        val n = times.coerceIn(0, MAX_REPEAT)
-        _state.update { it.copy(repeatTotal = n, repeatLeft = n) }
-    }
+    fun setRepeat(times: Int) = this.__splitExtra_setRepeat_21(times)
 
-    fun setAutoplay(on: Boolean) {
-        autoplay = on
-        taste.autoplay = on
-        publishQueueInfo()
-        postNotice(if (on) "Autoplay pintar aktif" else "Mengikuti urutan daftar")
-    }
+    fun setAutoplay(on: Boolean) = this.__splitExtra_setAutoplay_22(on)
 
-    //  Next / previous 
 
     /** Tombol next dari pengguna. */
-    fun next() {
-        penalizeEarlySkip()
-        cancelPending()
-        advance()
-    }
+    fun next() = this.__splitExtra_next_23()
 
     /**
      * Kembali:
@@ -372,654 +161,128 @@ object RexPlayerController {
      * - Ada riwayat -> putar lagu sebelumnya (nama disimpan, audio diambil ulang lewat API / dari file offline).
      * - Tidak ada riwayat -> mundur di daftar asal.
      */
-    fun prev(force: Boolean = false) {
-        if (!force && prepared && _state.value.positionMs > RESTART_THRESHOLD_MS) {
-            seekTo(0f)
-            return
-        }
-        val now = _state.value.nowPlaying
-        val target = previousTarget(now)
-        if (target != null) {
-            cancelPending()
-            history.removeAll { sameSong(it, target) || (now != null && sameSong(it, now)) }
-            store.save(history)
-            syncQueueTo(target)
-            beginTrack(target)
-            return
-        }
-        if (queue.isEmpty()) {
-            seekTo(0f)
-            return
-        }
-        cancelPending()
-        queueIndex = if (queueIndex - 1 < 0) queue.size - 1 else queueIndex - 1
-        queue.getOrNull(queueIndex)?.let { beginTrack(it) }
-    }
+    fun prev(force: Boolean = false) = this.__split_prev_11(force)
 
-    fun currentTrack(): RexTrack? = _state.value.nowPlaying
+    fun currentTrack(): RexTrack? = this.__splitExtra_currentTrack_24()
 
     /**
      * Urutan: antrian pengguna -> autoplay pintar -> daftar asal.
      * Saat offline, lagu yang belum diunduh dilewati.
      */
-    private fun advance() {
-        val offline = offlineMode()
-        val queued = userQueue.indexOfFirst { !offline || RexOfflineManager.isDownloaded(it) }
-        if (queued >= 0) {
-            val track = userQueue.removeAt(queued)
-            persistQueue()
-            beginTrack(track)
-            return
-        }
-        if (autoplay && !followContext) {
-            playSmart()
-            return
-        }
-        playContextNext()
-    }
+    internal fun advance() = this.__split_advance_12()
 
-    private fun playContextNext() {
-        if (queue.isEmpty()) return
-        val offline = offlineMode()
-        for (i in queue.indices) {
-            queueIndex = (queueIndex + 1) % queue.size
-            val track = queue[queueIndex]
-            if (!offline || RexOfflineManager.isDownloaded(track)) {
-                beginTrack(track)
-                return
-            }
-        }
-        _state.update { it.copy(error = "tidak ada lagu offline lain untuk diputar") }
-    }
+    internal fun playContextNext() = this.__split_playContextNext_13()
 
     /** Pastikan target ada di antrian konteks & queueIndex menunjuk ke sana. */
-    private fun syncQueueTo(target: RexTrack) {
-        val idx = queue.indexOfFirst { sameSong(it, target) }
-        if (idx >= 0) {
-            queueIndex = idx
-            return
-        }
-        val at = queueIndex.coerceIn(0, queue.size)
-        queue = queue.toMutableList().apply { add(at, target) }
-        queueIndex = at
-    }
+    internal fun syncQueueTo(target: RexTrack) = this.__split_syncQueueTo_14(target)
 
-    private fun cancelPending() {
-        playJob?.cancel()
-        playJob = null
-    }
+    internal fun cancelPending() = this.__splitExtra_cancelPending_25()
 
-    //  Begin / resolve 
 
-    private fun beginTrack(track: RexTrack) {
-        stopPlayer()
-        markTrack(track)
-        loadLyrics(track)
-        playJob = scope.launch { resolveAndStart(track) }
-    }
+    internal fun beginTrack(track: RexTrack) = this.__splitExtra_beginTrack_26(track)
 
     /** Set state "lagu baru" (reset ulangi, posisi, dsb). Tidak menyentuh player. */
-    private fun markTrack(track: RexTrack) {
-        tasteCounted = false
-        resolving = true
-        resolveText = when {
-            RexOfflineManager.isDownloaded(track) -> "membuka dari penyimpanan..."
-            track.spotifyUrl.isBlank() -> "mencari ${track.title}..."
-            else -> "menyiapkan audio..."
-        }
-        _state.update {
-            it.copy(
-                nowPlaying = track, currentIndex = queueIndex,
-                isPlaying = false, positionMs = 0L, durationMs = 0L,
-                bufferedPercent = 0, seekVersion = it.seekVersion + 1, error = null,
-                repeatTotal = 0, repeatLeft = 0, nowPlayingOffline = false
-            )
-        }
-        publishLoading()
-        publishQueueInfo()
-        RexMusicService.start(appContext)
-    }
+    internal fun markTrack(track: RexTrack) = this.__split_markTrack_15(track)
 
     /**
      * File offline dipakai kalau ada (tanpa internet). Kalau belum diunduh: saat mode offline gagal
      * dengan pesan jelas, saat online diambil lewat API. true = pemutaran dimulai.
      */
-    private suspend fun resolveAndStart(track: RexTrack): Boolean {
-        val local = RexOfflineManager.audioFile(track)
-        if (local != null) {
-            resolving = false
-            _state.update { it.copy(nowPlayingOffline = true) }
-            publishLoading()
-            startPlayer(local.absolutePath, local = true)
-            return true
-        }
-        if (offlineMode()) {
-            resolving = false
-            _state.update { it.copy(error = "Mode offline: \"${track.title}\" belum diunduh") }
-            publishLoading()
-            return false
-        }
+    internal suspend fun resolveAndStart(track: RexTrack): Boolean = this.__split_resolveAndStart_16(track)
 
-        val result = RexTrackResolver.resolve(track)
-        resolving = false
-        val fresh = result.getOrNull()
-        if (fresh == null) {
-            _state.update { it.copy(error = result.exceptionOrNull()?.message ?: "gagal memuat audio") }
-            publishLoading()
-            return false
-        }
-        replaceTrack(fresh)
-        publishLoading()
-        startPlayer(fresh.audioUrl)
-        return true
-    }
 
-    //  Lyrics 
+    internal var lyricsJob: Job? = null
 
-    private var lyricsJob: Job? = null
-
-    private fun loadLyrics(track: RexTrack) {
-        lyricsJob?.cancel()
-        val offline = RexOfflineManager.readOfflineLyrics(track)
-        if (offline != null && !offline.isEmpty) {
-            _state.update { it.copy(lyrics = offline, lyricsLoading = false, lyricsError = null) }
-            pushWidgetUpdate()
-            return
-        }
-        if (offlineMode()) {
-            _state.update {
-                it.copy(
-                    lyrics = Lyrics(),
-                    lyricsLoading = false,
-                    lyricsError = "Lirik offline belum tersedia untuk lagu ini"
-                )
-            }
-            pushWidgetUpdate()
-            return
-        }
-        _state.update {
-            it.copy(lyrics = Lyrics(), lyricsLoading = true, lyricsError = null)
-        }
-        pushWidgetUpdate()
-        val q = "${track.artist} ${track.title}".trim()
-        lyricsJob = scope.launch {
-            RexMusicApi.fetchLyrics(q)
-                .onSuccess { lyr ->
-                    _state.update { it.copy(lyrics = lyr, lyricsLoading = false, lyricsError = null) }
-                    pushWidgetUpdate()
-                }
-                .onFailure { e ->
-                    _state.update {
-                        it.copy(
-                            lyricsLoading = false,
-                            lyricsError = e.message ?: "gagal memuat lirik"
-                        )
-                    }
-                    pushWidgetUpdate()
-                }
-        }
-    }
+    internal fun loadLyrics(track: RexTrack) = this.__split_loadLyrics_17(track)
 
     /**
      * Paksa widget re-render tiap kali state penting berubah (lirik selesai dimuat, lagu ganti, dll).
      * Service akan mengirim cover bitmap-nya sendiri saat siap.
      */
-    private fun pushWidgetUpdate() {
-        if (!initialized) return
-        runCatching {
-            com.rexaps.rexmusic.widget.RexMusicWidget.updateAll(
-                appContext,
-                _state.value,
-                force = true
-            )
-        }
-    }
+    internal fun pushWidgetUpdate() = this.__split_pushWidgetUpdate_18()
 
-    fun toggleLyrics() = _state.update { it.copy(lyricsVisible = !it.lyricsVisible) }
+    fun toggleLyrics() = this.__splitExtra_toggleLyrics_27()
 
-    fun closeLyrics() = _state.update { it.copy(lyricsVisible = false) }
+    fun closeLyrics() = this.__splitExtra_closeLyrics_28()
     /** Update track di queue + semua list berdasarkan id (bukan index, jadi anti out-of-bounds). */
-    private fun replaceTrack(fresh: RexTrack) {
-        queue = queue.replaceById(fresh)
-        _state.update {
-            it.copy(
-                nowPlaying = fresh,
-                tracks = it.tracks.replaceById(fresh),
-                searchResults = it.searchResults.replaceById(fresh),
-                history = it.history.replaceById(fresh)
-            )
-        }
-    }
+    internal fun replaceTrack(fresh: RexTrack) = this.__split_replaceTrack_19(fresh)
 
-    //  Smart autoplay 
 
     /** Pilih lagu berikutnya sendiri; coba sampai [SMART_RETRIES] kali kalau audio gagal dimuat. */
-    private fun playSmart() {
-        stopPlayer()
-        resolving = true
-        resolveText = "memilih lagu untukmu..."
-        _state.update {
-            it.copy(
-                isPlaying = false, positionMs = 0L, durationMs = 0L, bufferedPercent = 0,
-                seekVersion = it.seekVersion + 1, error = null, repeatTotal = 0, repeatLeft = 0,
-                nowPlayingOffline = false
-            )
-        }
-        publishLoading()
-        RexMusicService.start(appContext)
-
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            val tried = mutableSetOf<String>()
-            var attempts = 0
-            while (attempts < SMART_RETRIES) {
-                val pick = smartPick(tried) ?: break
-                tried += songKey(pick)
-                markTrack(pick)
-                if (resolveAndStart(pick)) return@launch
-                attempts++
-            }
-            if (attempts == 0) {
-                resolving = false
-                publishLoading()
-                when {
-                    offlineMode() && RexOfflineManager.state.value.entries.isEmpty() ->
-                        _state.update { it.copy(error = "belum ada lagu offline. Unduh lagu dulu saat online") }
-                    queue.isNotEmpty() -> playContextNext()
-                    else -> _state.update {
-                        it.copy(error = "belum ada lagu berikutnya. Isi RexPopularSongs atau putar dari daftar")
-                    }
-                }
-            }
-        }
-        playJob = job
-        job.start()
-    }
+    internal fun playSmart() = this.__split_playSmart_20()
 
     /**
      * Online: ~65% dari artis favorit (kalau selera sudah terbaca), selain itu acak dari populer.
      * Offline: sama, tapi hanya dari lagu yang sudah diunduh (tanpa internet).
      * Lagu yang baru diputar dihindari.
      */
-    private suspend fun smartPick(exclude: Set<String>): RexTrack? {
-        val avoid = recentKeys() + exclude
-        if (offlineMode()) return offlinePick(avoid)
+    internal suspend fun smartPick(exclude: Set<String>): RexTrack? = this.__split_smartPick_21(exclude)
 
-        val favorite = taste.pickFavorite()
-        if (favorite != null && Random.nextFloat() < TASTE_CHANCE) {
-            pickFromArtist(favorite, avoid)?.let { return it }
-        }
-        popularPick(avoid)?.let { return it }
-        if (favorite != null) pickFromArtist(favorite, avoid)?.let { return it }
-        return null
-    }
+    internal fun offlinePick(avoid: Set<String>): RexTrack? = this.__split_offlinePick_22(avoid)
 
-    private fun offlinePick(avoid: Set<String>): RexTrack? {
-        val all = RexOfflineManager.state.value.entries.map { it.track }
-        if (all.isEmpty()) return null
-        val favorite = taste.pickFavorite()
-        if (favorite != null && Random.nextFloat() < TASTE_CHANCE) {
-            all.filter {
-                primaryArtist(it.artist).equals(favorite, ignoreCase = true) && songKey(it) !in avoid
-            }.randomOrNull()?.let { return it }
-        }
-        val nowKey = _state.value.nowPlaying?.let { songKey(it) }
-        return all.filter { songKey(it) !in avoid }.randomOrNull()
-            ?: all.filter { songKey(it) != nowKey }.randomOrNull()
-            ?: all.randomOrNull()
-    }
+    internal suspend fun pickFromArtist(artist: String, avoid: Set<String>): RexTrack? = this.__split_pickFromArtist_23(artist, avoid)
 
-    private suspend fun pickFromArtist(artist: String, avoid: Set<String>): RexTrack? {
-        val list = RexMusicApi.search(artist).getOrNull() ?: return null
-        val key = artist.lowercase()
-        return list
-            .filter { it.artist.lowercase().contains(key) && songKey(it) !in avoid }
-            .randomOrNull()
-    }
+    internal fun popularPick(avoid: Set<String>): RexTrack? = this.__split_popularPick_24(avoid)
 
-    private fun popularPick(avoid: Set<String>): RexTrack? {
-        val all = RexPopularSongs.tracks
-        if (all.isEmpty()) return null
-        val nowKey = _state.value.nowPlaying?.let { songKey(it) }
-        return all.filter { songKey(it) !in avoid }.randomOrNull()
-            ?: all.filter { songKey(it) != nowKey }.randomOrNull()
-    }
+    internal fun recentKeys(): Set<String> = this.__splitExtra_recentKeys_29()
 
-    private fun recentKeys(): Set<String> {
-        val keys = history.takeLast(RECENT_WINDOW).map { songKey(it) }.toMutableSet()
-        _state.value.nowPlaying?.let { keys += songKey(it) }
-        return keys
-    }
+    internal fun penalizeEarlySkip() = this.__split_penalizeEarlySkip_25()
 
-    private fun penalizeEarlySkip() {
-        val now = _state.value.nowPlaying ?: return
-        if (prepared && !tasteCounted && _state.value.positionMs < EARLY_SKIP_MS) {
-            taste.recordSkip(now.artist)
-            publishTaste()
-        }
-    }
+    internal fun publishTaste() = this.__splitExtra_publishTaste_30()
 
-    private fun publishTaste() {
-        _state.update { it.copy(favoriteArtists = taste.favorites(3)) }
-    }
 
-    //  History 
-
-    private fun sameSong(a: RexTrack, b: RexTrack): Boolean =
-        a.id == b.id ||
-            (a.title.equals(b.title, ignoreCase = true) && a.artist.equals(b.artist, ignoreCase = true))
+    internal fun sameSong(a: RexTrack, b: RexTrack): Boolean = this.__splitExtra_sameSong_31(a, b)
 
     /** Catat lagu ke riwayat (tanpa audioUrl). Dipanggil setelah lagu benar-benar mulai diputar. */
-    private fun pushHistory(track: RexTrack) {
-        val entry = track.copy(audioUrl = "")
-        history.removeAll { sameSong(it, entry) }
-        history.add(entry)
-        while (history.size > MAX_HISTORY) history.removeAt(0)
-        store.save(history)
-        publishQueueInfo()
-    }
+    internal fun pushHistory(track: RexTrack) = this.__split_pushHistory_26(track)
 
     /** Lagu tepat sebelum lagu yang sedang diputar di riwayat (saat offline: hanya yang sudah diunduh). */
-    private fun previousTarget(now: RexTrack?): RexTrack? {
-        val last = history.lastOrNull()
-        val list = if (now != null && last != null && sameSong(last, now)) {
-            history.dropLast(1)
-        } else {
-            history
-        }
-        val offline = offlineMode()
-        return list.lastOrNull { !offline || RexOfflineManager.isDownloaded(it) }
-    }
+    internal fun previousTarget(now: RexTrack?): RexTrack? = this.__split_previousTarget_27(now)
 
-    private fun publishQueueInfo() {
-        val now = _state.value.nowPlaying
-        val hist = history.asReversed().filter { now == null || !sameSong(it, now) }
-        val contextNext = !autoplay || followContext
-        val up = userQueue.firstOrNull()
-            ?: if (contextNext && queue.size > 1) queue[(queueIndex + 1) % queue.size] else null
-        _state.update {
-            it.copy(
-                history = hist,
-                upNext = up,
-                previous = previousTarget(now),
-                userQueue = userQueue.toList(),
-                autoplay = autoplay
-            )
-        }
-    }
+    internal fun publishQueueInfo() = this.__split_publishQueueInfo_28()
 
-    //  Player 
 
     /** [source] = URL audio (online) atau path file (local = true). */
-    private fun startPlayer(source: String, local: Boolean = false) {
-        if (source.isBlank()) return fail("URL audio kosong")
-        stopPlayer()
-        if (!requestFocus()) return fail("audio sedang dipakai aplikasi lain")
-        try {
-            val mp = MediaPlayer()
-            player = mp
-            runCatching { mp.setVolume(syncVolume, syncVolume) }
-            preparing = true
-            publishLoading()
-            mp.setAudioAttributes(audioAttrs)
-            runCatching { mp.setWakeMode(appContext, PowerManager.PARTIAL_WAKE_LOCK) }
-            if (local) {
-                // Use the path overload for legacy Android (including Android 8).
-                // Keeping an FD open only until setDataSource returns can trigger
-                // vendor-specific native MediaPlayer failures during prepareAsync.
-                mp.setDataSource(File(source).absolutePath)
-            } else {
-                mp.setDataSource(source)
-            }
-            mp.setOnPreparedListener {
-                if (player !== mp) return@setOnPreparedListener
-                prepared = true
-                preparing = false
-                buffering = false
-                val preparePaused = syncPrepareTrackId == _state.value.nowPlaying?.id
-                if (preparePaused) syncPrepareTrackId = null
-                _state.update { s -> s.copy(durationMs = mp.duration.toLong(), isPlaying = !preparePaused) }
-                publishLoading()
-                // MediaPlayer is already stopped before its first start after onPrepared.
-                // Calling pause() in this state can raise MEDIA_ERROR_INVALID_OPERATION (-38).
-                // For sync preparation, leave it prepared and silent until startSyncPlayback().
-                if (!preparePaused) mp.start()
-                startProgressLoop(mp)
-                _state.value.nowPlaying?.let { pushHistory(it) }
-            }
-            mp.setOnBufferingUpdateListener { _, percent ->
-                if (player !== mp) return@setOnBufferingUpdateListener
-                _state.update { s -> s.copy(bufferedPercent = percent.coerceIn(0, 100)) }
-            }
-            mp.setOnInfoListener { _, what, _ ->
-                if (player === mp) {
-                    when (what) {
-                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> setBuffering(true)
-                        MediaPlayer.MEDIA_INFO_BUFFERING_END -> setBuffering(false)
-                    }
-                }
-                false
-            }
-            mp.setOnCompletionListener {
-                if (player !== mp) return@setOnCompletionListener
-                val left = _state.value.repeatLeft
-                if (left > 0) {
-                    // ulangi lagu yang sama tanpa memanggil API lagi
-                    _state.value.nowPlaying?.let { taste.recordPlay(it.artist, REPEAT_TASTE_WEIGHT) }
-                    _state.update { s ->
-                        s.copy(
-                            repeatLeft = left - 1, positionMs = 0L, isPlaying = true,
-                            seekVersion = s.seekVersion + 1
-                        )
-                    }
-                    runCatching {
-                        mp.seekTo(0)
-                        mp.start()
-                    }
-                } else {
-                    _state.update { s -> s.copy(isPlaying = false, repeatTotal = 0, repeatLeft = 0) }
-                    cancelPending()
-                    advance()
-                }
-            }
-            mp.setOnErrorListener { _, what, extra ->
-                // Only invalidate resolved network audio. A local MP3 error should
-                // not evict any cached API URL for the same track.
-                if (!local) {
-                    queue.getOrNull(queueIndex)?.let { RexMusicApi.invalidateAudio(it) }
-                    _state.value.nowPlaying?.let { RexMusicApi.invalidateAudio(it) }
-                }
-                stopPlayer() // supaya tombol play bisa mencoba ulang
-                fail("gagal memutar audio (kode $what, detail $extra)")
-                true
-            }
-            mp.prepareAsync()
-        } catch (e: Exception) {
-            stopPlayer()
-            fail(e.message ?: "gagal memutar audio")
-        }
-    }
+    internal fun startPlayer(source: String, local: Boolean = false) = this.__split_startPlayer_29(source, local)
 
-    private fun setBuffering(value: Boolean) {
-        if (buffering == value) return
-        buffering = value
-        publishLoading()
-    }
+    internal fun setBuffering(value: Boolean) = this.__splitExtra_setBuffering_32(value)
 
-    private fun stopPlayer() {
-        progressJob?.cancel()
-        seekJob?.cancel()
-        seekPending = false
-        prepared = false
-        preparing = false
-        buffering = false
-        runCatching { player?.release() }
-        player = null
-        abandonFocus()
-    }
+    internal fun stopPlayer() = this.__split_stopPlayer_30()
 
     /** Hentikan total (tombol tutup di notifikasi). Lagu tetap tercatat, bisa diputar ulang. */
-    fun stop() {
-        cancelPending()
-        resolving = false
-        stopPlayer()
-        _state.update {
-            it.copy(
-                isPlaying = false, positionMs = 0L, durationMs = 0L, bufferedPercent = 0,
-                repeatTotal = 0, repeatLeft = 0
-            )
-        }
-        publishLoading()
-    }
+    fun stop() = this.__split_stop_31()
 
     /** Progress + deteksi lag + pencatatan selera (>= 15 detik dianggap benar-benar didengar). */
-    private fun startProgressLoop(mp: MediaPlayer) {
-        progressJob?.cancel()
-        progressJob = scope.launch {
-            var lastPos = -1L
-            var stalledTicks = 0
-            while (isActive && player === mp) {
-                if (!seekPending) {
-                    runCatching {
-                        if (mp.isPlaying) {
-                            val pos = mp.currentPosition.toLong()
-                            _state.update { it.copy(positionMs = pos) }
-                            if (pos == lastPos) {
-                                if (++stalledTicks >= STALL_TICKS) setBuffering(true)
-                            } else {
-                                stalledTicks = 0
-                                lastPos = pos
-                                setBuffering(false)
-                            }
-                            if (!tasteCounted && pos >= TASTE_LISTEN_MS) {
-                                tasteCounted = true
-                                _state.value.nowPlaying?.let { taste.recordPlay(it.artist) }
-                                publishTaste()
-                            }
-                        } else {
-                            stalledTicks = 0
-                        }
-                    }
-                }
-                delay(PROGRESS_INTERVAL_MS)
-            }
-        }
-    }
+    internal fun startProgressLoop(mp: MediaPlayer) = this.__split_startProgressLoop_32(mp)
 
     /** Play/pause. Kalau player sudah mati (error / ditutup) -> putar ulang lagu ini. */
-    fun togglePlay() {
-        val mp = player
-        if (mp == null) {
-            val now = _state.value.nowPlaying
-            if (!resolving && now != null) {
-                cancelPending()
-                beginTrack(now)
-            }
-            return
-        }
-        if (!prepared) return
-        if (runCatching { mp.isPlaying }.getOrDefault(false)) {
-            pauseInternal()
-        } else if (requestFocus()) {
-            runCatching { mp.start() }
-            _state.update { it.copy(isPlaying = true) }
-        }
-    }
+    fun togglePlay() = this.__split_togglePlay_33()
 
-    fun play() {
-        if (!_state.value.isPlaying) togglePlay()
-    }
+    fun play() = this.__splitExtra_play_33()
 
-    fun pause() {
-        if (_state.value.isPlaying) togglePlay()
-    }
+    fun pause() = this.__splitExtra_pause_34()
 
     /** Local playback gain for RexMusicSync; does not change Android system volume. */
-    fun setSyncVolume(volume: Float) {
-        syncVolume = volume.coerceIn(0f, 1f)
-        runCatching { player?.setVolume(syncVolume, syncVolume) }
-    }
+    fun setSyncVolume(volume: Float) = this.__splitExtra_setSyncVolume_35(volume)
 
     /** Posisi UI langsung update; seek asli didebounce supaya drag tidak membebani MediaPlayer. */
-    fun seekTo(ratio: Float) {
-        val d = _state.value.durationMs
-        if (d <= 0L) return
-        seekToPosition((d * ratio.coerceIn(0f, 1f)).toLong())
-    }
+    fun seekTo(ratio: Float) = this.__splitExtra_seekTo_36(ratio)
 
     /** Immediate seek for sync correction; unlike the UI drag path, this is not debounced. */
-    fun seekToPositionImmediate(positionMs: Long) {
-        val mp = player ?: return
-        val d = _state.value.durationMs
-        if (!prepared || d <= 0L) return
-        val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        seekJob?.cancel()
-        seekPending = false
-        runCatching { mp.seekTo(target) }
-        _state.update { it.copy(positionMs = target.toLong(), seekVersion = it.seekVersion + 1) }
-    }
+    fun seekToPositionImmediate(positionMs: Long) = this.__split_seekToPositionImmediate_34(positionMs)
 
     /** Start the already-prepared player at the requested sync position. Must be called on main. */
-    fun startSyncPlayback(positionMs: Long) {
-        val mp = player ?: return
-        if (!prepared || !requestFocus()) return
-        val d = _state.value.durationMs
-        val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        seekJob?.cancel()
-        seekPending = false
-        if (kotlin.math.abs(_state.value.positionMs - target.toLong()) <= 25L) {
-            runCatching { if (!mp.isPlaying) mp.start() }
-            _state.update { it.copy(isPlaying = true) }
-            return
-        }
-        runCatching {
-            mp.setOnSeekCompleteListener { completed ->
-                if (player === completed) {
-                    runCatching { if (!completed.isPlaying) completed.start() }
-                    _state.update { it.copy(positionMs = target.toLong(), isPlaying = true) }
-                    completed.setOnSeekCompleteListener(null)
-                }
-            }
-            mp.seekTo(target)
-        }.onFailure {
-            runCatching { if (!mp.isPlaying) mp.start() }
-            _state.update { it.copy(isPlaying = true) }
-        }
-    }
+    fun startSyncPlayback(positionMs: Long) = this.__split_startSyncPlayback_35(positionMs)
 
     /** Seek absolut, dipakai synced lyrics supaya baris yang diketuk tepat ke timestamp API. */
-    fun seekToPosition(positionMs: Long) {
-        val mp = player ?: return
-        val d = _state.value.durationMs
-        if (!prepared || d <= 0L) return
-        val target = positionMs.coerceIn(0L, d)
-        seekPending = true
-        _state.update { it.copy(positionMs = target, seekVersion = it.seekVersion + 1) }
-        seekJob?.cancel()
-        seekJob = scope.launch {
-            delay(SEEK_DEBOUNCE_MS)
-            runCatching { mp.seekTo(target.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
-            delay(180)
-            seekPending = false
-        }
-    }
+    fun seekToPosition(positionMs: Long) = this.__split_seekToPosition_36(positionMs)
 
-    private fun pauseInternal() {
-        if (prepared) runCatching { player?.pause() }
-        buffering = false
-        _state.update { it.copy(isPlaying = false) }
-        publishLoading()
-    }
+    internal fun pauseInternal() = this.__splitExtra_pauseInternal_37()
 
-    private fun fail(message: String) {
-        preparing = false
-        buffering = false
-        _state.update { it.copy(error = message, isPlaying = false) }
-        publishLoading()
-    }
+    internal fun fail(message: String) = this.__splitExtra_fail_38(message)
 
-    //  Audio focus 
 
-    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+    internal val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS -> {
                 resumeOnGain = false
@@ -1041,75 +304,32 @@ object RexPlayerController {
         }
     }
 
-    private fun requestFocus(): Boolean {
-        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(audioAttrs)
-                .setOnAudioFocusChangeListener(focusListener)
-                .build()
-                .also { focusRequest = it }
-            audioManager.requestAudioFocus(req)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN
-            )
-        }
-        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-    }
+    internal fun requestFocus(): Boolean = this.__split_requestFocus_37()
 
-    private fun abandonFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(focusListener)
-        }
-    }
+    internal fun abandonFocus() = this.__split_abandonFocus_38()
 
-    //  Misc 
 
     /**
      * loading = search / resolve / prepare.
      * Buffering (lag saat memutar) hanya lewat [LoadPhase] supaya halaman browse tidak ikut loading.
      */
-    private fun publishLoading() = _state.update {
-        val phase = when {
-            resolving -> LoadPhase.Resolving
-            preparing -> LoadPhase.Preparing
-            buffering -> LoadPhase.Buffering
-            searching -> LoadPhase.Searching
-            else -> LoadPhase.Idle
-        }
-        it.copy(
-            loading = searching || resolving || preparing,
-            phase = phase,
-            loadingText = when (phase) {
-                LoadPhase.Resolving -> resolveText
-                LoadPhase.Preparing -> "menyiapkan audio..."
-                LoadPhase.Buffering -> "buffering..."
-                LoadPhase.Searching -> "mencari..."
-                LoadPhase.Idle -> ""
-            }
-        )
-    }
+    internal fun publishLoading() = this.__split_publishLoading_39()
 
-    private fun List<RexTrack>.replaceById(t: RexTrack) = map { if (it.id == t.id) t else it }
+    internal fun List<RexTrack>.replaceById(t: RexTrack) = map { if (it.id == t.id) t else it }
 
-    private const val SEARCH_DEBOUNCE_MS = 400L
-    private const val SEEK_DEBOUNCE_MS = 80L
-    private const val PROGRESS_INTERVAL_MS = 100L
-    private const val RESTART_THRESHOLD_MS = 3000L
-    private const val STALL_TICKS = 6
-    private const val MAX_HISTORY = 50
-    private const val MAX_QUEUE = 100
-    private const val MAX_REPEAT = 50
+    internal const val SEARCH_DEBOUNCE_MS = 400L
+    internal const val SEEK_DEBOUNCE_MS = 80L
+    internal const val PROGRESS_INTERVAL_MS = 100L
+    internal const val RESTART_THRESHOLD_MS = 3000L
+    internal const val STALL_TICKS = 6
+    internal const val MAX_HISTORY = 50
+    internal const val MAX_QUEUE = 100
+    internal const val MAX_REPEAT = 50
 
-    // smart autoplay (silakan ubah sesuai selera)
-    private const val TASTE_CHANCE = 0.65f        // peluang lagu berikutnya dari artis favorit
-    private const val TASTE_LISTEN_MS = 15_000L   // didengar segini lama = dihitung "suka"
-    private const val EARLY_SKIP_MS = 10_000L     // di-skip sebelum ini = dianggap kurang suka
-    private const val REPEAT_TASTE_WEIGHT = 0.5
-    private const val RECENT_WINDOW = 8           // hindari lagu yang baru diputar
-    private const val SMART_RETRIES = 3
+    internal const val TASTE_CHANCE = 0.65f        // peluang lagu berikutnya dari artis favorit
+    internal const val TASTE_LISTEN_MS = 15_000L   // didengar segini lama = dihitung "suka"
+    internal const val EARLY_SKIP_MS = 10_000L     // di-skip sebelum ini = dianggap kurang suka
+    internal const val REPEAT_TASTE_WEIGHT = 0.5
+    internal const val RECENT_WINDOW = 8           // hindari lagu yang baru diputar
+    internal const val SMART_RETRIES = 3
 }
