@@ -51,8 +51,8 @@ import kotlinx.coroutines.launch
             mp.setOnInfoListener { _, what, _ ->
                 if (player === mp) {
                     when (what) {
-                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> setBuffering(true)
-                        MediaPlayer.MEDIA_INFO_BUFFERING_END -> setBuffering(false)
+                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> updateBuffering(true)
+                        MediaPlayer.MEDIA_INFO_BUFFERING_END -> updateBuffering(false)
                     }
                 }
                 false

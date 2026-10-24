@@ -63,11 +63,11 @@ import kotlinx.coroutines.launch
                             val pos = mp.currentPosition.toLong()
                             _state.update { it.copy(positionMs = pos) }
                             if (pos == lastPos) {
-                                if (++stalledTicks >= STALL_TICKS) setBuffering(true)
+                                if (++stalledTicks >= STALL_TICKS) updateBuffering(true)
                             } else {
                                 stalledTicks = 0
                                 lastPos = pos
-                                setBuffering(false)
+                                updateBuffering(false)
                             }
                             if (!tasteCounted && pos >= TASTE_LISTEN_MS) {
                                 tasteCounted = true
