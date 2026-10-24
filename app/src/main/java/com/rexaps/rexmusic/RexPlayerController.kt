@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /**
  * Pemutar musik tingkat aplikasi. Hidup di luar ViewModel supaya musik tetap jalan
@@ -21,7 +20,6 @@ import kotlinx.coroutines.launch
  * Semua fungsi dipanggil dari main thread.
  */
 object RexPlayerController {
-
     internal lateinit var appContext: Context
     internal lateinit var audioManager: AudioManager
     internal lateinit var store: RexHistoryStore
@@ -29,9 +27,7 @@ object RexPlayerController {
     internal lateinit var taste: RexTasteStore
     internal lateinit var playlistStore: RexPlaylistStore
     internal var initialized = false
-
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
     internal val _state = MutableStateFlow(
         RexMusicUiState(tracks = RexMusicRegistry.defaultTracks)
     )
@@ -92,29 +88,25 @@ object RexPlayerController {
         userQueue.addAll(queueStore.load())
         autoplay = taste.autoplay
         _state.update { it.copy(popularCount = RexPopularSongs.tracks.size, playlists = playlistStore.list()) }
-
         RexOfflineManager.init(appContext)
         scope.launch { RexOfflineManager.state.collect { onOfflineChanged(it) } }
         scope.launch { RexOfflineManager.messages.collect { postNotice(it) } }
-
         publishQueueInfo()
         publishTaste()
     }
 
     internal fun offlineMode(): Boolean = RexOfflineManager.state.value.enabled
-
+    
     internal fun onOfflineChanged(o: OfflineState) {
         return this.__splitImpl_onOfflineChanged(o)
     }
 
-    //  Offline mode 
-
+    // Offline mode
     fun setOfflineMode(on: Boolean) {
         return this.__splitImpl_setOfflineMode(on)
     }
 
     // ---------------- Playlist JSON ----------------
-
     fun refreshPlaylists() {
         return this.__splitImpl_refreshPlaylists()
     }
@@ -154,8 +146,7 @@ object RexPlayerController {
         return this.__splitImpl_playOfflineAll(shuffle)
     }
 
-    //  Search 
-
+    // Search
     /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
     fun search(query: String) {
         return this.__splitImpl_search(query)
@@ -166,17 +157,14 @@ object RexPlayerController {
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
-
     fun consumeNotice() = _state.update { it.copy(notice = null) }
-
     internal fun postNotice(message: String) = _state.update { it.copy(notice = message) }
 
     fun clearHistory() {
         return this.__splitImpl_clearHistory()
     }
 
-    //  Play from list 
-
+    // Play from list
     fun playFromMain(index: Int) {
         return this.__splitImpl_playFromMain(index)
     }
@@ -199,8 +187,7 @@ object RexPlayerController {
         return this.__splitImpl_playMix()
     }
 
-    //  User queue 
-
+    // User queue
     fun addToQueue(track: RexTrack) {
         return this.__splitImpl_addToQueue(track)
     }
@@ -224,8 +211,7 @@ object RexPlayerController {
 
     internal fun persistQueue() = queueStore.save(userQueue.toList())
 
-    //  Repeat & autoplay 
-
+    // Repeat & autoplay
     /** Ulangi lagu yang sedang diputar sebanyak [times] kali lagi (0 = mati, maks 50). */
     fun setRepeat(times: Int) {
         return this.__splitImpl_setRepeat(times)
@@ -235,8 +221,7 @@ object RexPlayerController {
         return this.__splitImpl_setAutoplay(on)
     }
 
-    //  Next / previous 
-
+    // Next / previous
     /** Tombol next dari pengguna. */
     fun next() {
         return this.__splitImpl_next()
@@ -276,8 +261,7 @@ object RexPlayerController {
         playJob = null
     }
 
-    //  Begin / resolve 
-
+    // Begin / resolve
     internal fun beginTrack(track: RexTrack) {
         return this.__splitImpl_beginTrack(track)
     }
@@ -295,10 +279,8 @@ object RexPlayerController {
         return this.__splitImpl_resolveAndStart(track)
     }
 
-    //  Lyrics 
-
+    // Lyrics
     internal var lyricsJob: Job? = null
-
     internal fun loadLyrics(track: RexTrack) {
         return this.__splitImpl_loadLyrics(track)
     }
@@ -312,15 +294,14 @@ object RexPlayerController {
     }
 
     fun toggleLyrics() = this.__splitImpl_toggleLyrics()
-
     fun closeLyrics() = _state.update { it.copy(lyricsVisible = false) }
+
     /** Update track di queue + semua list berdasarkan id (bukan index, jadi anti out-of-bounds). */
     internal fun replaceTrack(fresh: RexTrack) {
         return this.__splitImpl_replaceTrack(fresh)
     }
 
-    //  Smart autoplay 
-
+    // Smart autoplay
     /** Pilih lagu berikutnya sendiri; coba sampai [SMART_RETRIES] kali kalau audio gagal dimuat. */
     internal fun playSmart() {
         return this.__splitImpl_playSmart()
@@ -359,8 +340,7 @@ object RexPlayerController {
         return this.__splitImpl_publishTaste()
     }
 
-    //  History 
-
+    // History
     internal fun sameSong(a: RexTrack, b: RexTrack): Boolean = this.__splitImpl_sameSong(a, b)
 
     /** Catat lagu ke riwayat (tanpa audioUrl). Dipanggil setelah lagu benar-benar mulai diputar. */
@@ -377,14 +357,13 @@ object RexPlayerController {
         return this.__splitImpl_publishQueueInfo()
     }
 
-    //  Player 
-
+    // Player
     /** [source] = URL audio (online) atau path file (local = true). */
     internal fun startPlayer(source: String, local: Boolean = false) {
         return this.__splitImpl_startPlayer(source, local)
     }
 
-    internal fun setBuffering(value: Boolean) {
+    internal fun updateBuffering(value: Boolean) {
         return this.__splitImpl_setBuffering(value)
     }
 
@@ -448,8 +427,7 @@ object RexPlayerController {
         return this.__splitImpl_fail(message)
     }
 
-    //  Audio focus 
-
+    // Audio focus
     internal val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS -> {
@@ -480,8 +458,7 @@ object RexPlayerController {
         return this.__splitImpl_abandonFocus()
     }
 
-    //  Misc 
-
+    // Misc
     /**
      * loading = search / resolve / prepare.
      * Buffering (lag saat memutar) hanya lewat [LoadPhase] supaya halaman browse tidak ikut loading.
