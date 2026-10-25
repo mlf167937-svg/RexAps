@@ -116,16 +116,35 @@ private val RexShapes = Shapes(
     extraLarge = RoundedCornerShape(26.dp)
 )
 
-/** Follows the host app's system theme; README preview can still choose its own theme. */
+/**
+ * RexGit is embedded in RexAps, so the app-level MaterialTheme is the single source of truth.
+ * Keep this wrapper for existing call sites, but inherit the host palette, typography and shapes
+ * instead of forcing GitHub-inspired colors that disconnect the module from the rest of RexAps.
+ */
 @Composable
 fun RexGitTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val inheritedColors = MaterialTheme.colorScheme
+    val inheritedTypography = MaterialTheme.typography
+    val inheritedShapes = MaterialTheme.shapes
+
     MaterialTheme(
-        colorScheme = if (darkTheme) RexDarkColors else RexLightColors,
-        typography = RexTypography,
-        shapes = RexShapes,
+        colorScheme = inheritedColors,
+        typography = inheritedTypography.copy(
+            headlineLarge = inheritedTypography.headlineLarge.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.35).sp
+            ),
+            headlineMedium = inheritedTypography.headlineMedium.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.2).sp
+            ),
+            titleLarge = inheritedTypography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+            titleMedium = inheritedTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+        ),
+        shapes = inheritedShapes,
         content = content
     )
 }
