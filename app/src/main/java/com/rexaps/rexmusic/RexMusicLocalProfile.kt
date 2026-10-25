@@ -68,7 +68,7 @@ internal object RexLocalProfileBridge {
 }
 
 /** One shared event per RexMusic composition; tab headers use this to open the profile sheet. */
-internal val LocalRexMusicOpenProfile = staticCompositionLocalOf<() -> Unit>({})
+internal val LocalRexMusicOpenProfile = staticCompositionLocalOf<() -> Unit> { { } }
 
 @Composable
 internal fun RexLocalProfilePhoto(

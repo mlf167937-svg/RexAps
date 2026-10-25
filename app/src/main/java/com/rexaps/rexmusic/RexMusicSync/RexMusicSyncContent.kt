@@ -359,7 +359,7 @@ private fun SyncSetupScreen(
                             Text(profile.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("Nama mengikuti RexLocal Account", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.VerifiedUser, contentDescription = "Identitas dari Local Account", tint = scheme.primary, modifier = Modifier.size(19.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Identitas dari Local Account", tint = scheme.primary, modifier = Modifier.size(19.dp))
                     }
                     if (mode == SyncEntryMode.HOST) {
                         Text("Setelah room aktif, bagikan IP dan password kepada teman.", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
