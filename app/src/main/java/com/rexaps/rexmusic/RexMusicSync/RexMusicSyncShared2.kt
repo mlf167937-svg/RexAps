@@ -71,9 +71,10 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
         }
     }
 
-internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, name: String, ip: String, password: String) {
+internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, ip: String, password: String) {
         closeAll()
-        _state.value = _state.value.copy(hosting = false, connected = false, room = room, name = name,
+        val profileName = RexLocalProfileBridge.read().name.trim().ifBlank { "Rex User" }
+        _state.value = _state.value.copy(hosting = false, connected = false, room = room, name = profileName,
             ip = ip, password = password, status = "Menghubungkan…", error = null)
         scope.launch {
             try {
@@ -84,7 +85,7 @@ internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, name: String,
                 val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
                 client = s; clientWriter = writer
                 val id = java.util.UUID.randomUUID().toString()
-                send(writer, JSONObject().put("type", "join").put("id", id).put("room", room.trim()).put("name", name.trim()).put("password", password))
+                send(writer, JSONObject().put("type", "join").put("id", id).put("room", room.trim()).put("name", profileName).put("password", password))
                 val first = reader.readLine() ?: error("Host menutup koneksi")
                 val welcome = JSONObject(first)
                 if (welcome.optString("type") != "welcome") error(welcome.optString("reason", "Ditolak host"))

@@ -12,15 +12,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -90,22 +91,27 @@ internal fun __splitImpl_buildCropReq(ctx: Context, uri: Uri, target: CropTarget
 @Composable
 internal fun __splitImpl_ProfileStats(ctl: RexProfileController) {
     val colors = MaterialTheme.colorScheme
-    GlassCard(Modifier.fillMaxWidth()) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = colors.surface.copy(alpha = .52f),
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = .42f))
+    ) {
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            StatItem(ctl.stories.size, "Story", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(32.dp).background(colors.outlineVariant.copy(.6f)))
             StatItem(ctl.videos.size, "Video", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(32.dp).background(colors.outlineVariant.copy(.6f)))
+            Box(Modifier.width(1.dp).height(30.dp).background(colors.outlineVariant.copy(.55f)))
+            StatItem(ctl.stories.size, "Story", Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(30.dp).background(colors.outlineVariant.copy(.55f)))
             Column(
-                Modifier.weight(1f),
+                Modifier.weight(1.1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.Lock, null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                Text("100% Lokal", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                Icon(Icons.Default.Lock, null, tint = colors.primary, modifier = Modifier.size(17.dp))
+                Text("LOKAL", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -138,42 +144,57 @@ internal fun __splitImpl_RexProfileRoot(padding: PaddingValues) {
         } else {
             RexAccountScreenPortrait(ctl)
         }
-
-        Surface(
-            Modifier.align(Alignment.TopEnd).padding(14.dp),
-            shape = CircleShape,
-            color = Color.Black.copy(.35f),
-            border = BorderStroke(1.dp, Color.White.copy(.18f))
-        ) {
-            IconButton(onClick = { ctl.showEdit = true }) {
-                Icon(Icons.Default.PhotoCamera, null, tint = Color.White)
-            }
-        }
     }
 
     RexProfileOverlays(ctl)
 }
 
 @Composable
-internal fun __splitImpl_ProfileActions(ctl: RexProfileController) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(
-            onClick = { ctl.showEdit = true },
-            Modifier.weight(1f).height(50.dp),
-            shape = RoundedCornerShape(16.dp)
+internal fun ProfileEditButton(ctl: RexProfileController, modifier: Modifier = Modifier) {
+    Surface(
+        modifier,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = .42f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
+    ) {
+        Row(
+            Modifier.clickable { ctl.showEdit = true }.padding(horizontal = 13.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Edit profil")
+            Icon(Icons.Default.Edit, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Text("Edit profil", color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         }
-        FilledTonalButton(
+    }
+}
+
+@Composable
+internal fun __splitImpl_ProfileActions(ctl: RexProfileController) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(
             onClick = { ctl.showStoryCompose = true },
-            Modifier.weight(1f).height(50.dp),
-            shape = RoundedCornerShape(16.dp)
+            modifier = Modifier.weight(1f).height(46.dp),
+            shape = RoundedCornerShape(14.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
         ) {
-            Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Buat story")
+            Icon(Icons.Default.AutoAwesome, null, Modifier.size(17.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("Buat story", maxLines = 1)
+        }
+        OutlinedButton(
+            onClick = { ctl.onPickVideo() },
+            modifier = Modifier.weight(1f).height(46.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f)),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+        ) {
+            Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Tambah video", maxLines = 1)
         }
     }
 }

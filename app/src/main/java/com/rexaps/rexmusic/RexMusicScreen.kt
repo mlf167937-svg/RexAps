@@ -37,16 +37,21 @@ internal const val TAB_SYNC = 4
 @Composable
 fun RexMusicScreen(
     onBack: () -> Unit = {},
-    vm: RexMusicViewModel = viewModel()
+    vm: RexMusicViewModel = viewModel(),
+    onOpenLocalProfile: () -> Unit = onBack
 ) {
     RexMusicTheme {
-        RexMusicContent(onBack, vm)
+        RexMusicContent(onBack, vm, onOpenLocalProfile)
     }
 }
 
 @Composable
-internal fun RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
-        return __splitImpl_RexMusicContent(onBack, vm)
+internal fun RexMusicContent(
+    onBack: () -> Unit,
+    vm: RexMusicViewModel,
+    onOpenLocalProfile: () -> Unit = onBack
+) {
+        return __splitImpl_RexMusicContent(onBack, vm, onOpenLocalProfile)
     }
 
 @Composable

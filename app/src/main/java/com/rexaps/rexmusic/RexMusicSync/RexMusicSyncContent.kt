@@ -52,7 +52,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
     var room by rememberSaveable { mutableStateOf("RexSyncRoom1") }
     var ip by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("rexsync") }
-    var name by rememberSaveable { mutableStateOf("") }
+    val localProfile = rememberRexMusicProfileSnapshotForSync()
     var query by rememberSaveable { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf<List<RexTrack>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
@@ -160,8 +160,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                     onIpChange = { ip = it },
                     password = password,
                     onPasswordChange = { password = it },
-                    name = name,
-                    onNameChange = { name = it },
+                    profile = localProfile,
                     connecting = connecting,
                     error = state.error,
                     onAutoIp = { ip = RexMusicSyncEngine.detectIp(context) },
@@ -170,7 +169,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                         if (mode == SyncEntryMode.HOST) {
                             RexMusicSyncEngine.createRoom(room, password, ip)
                         } else {
-                            RexMusicSyncEngine.joinRoom(room.trim(), name.ifBlank { "User" }.trim(), ip.trim(), password)
+                            RexMusicSyncEngine.joinRoom(room.trim(), ip.trim(), password)
                         }
                     }
                 )
@@ -314,8 +313,7 @@ private fun SyncSetupScreen(
     onIpChange: (String) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
-    name: String,
-    onNameChange: (String) -> Unit,
+    profile: RexLocalProfileSnapshot,
     connecting: Boolean,
     error: String?,
     onAutoIp: () -> Unit,
@@ -348,15 +346,27 @@ private fun SyncSetupScreen(
                         trailingIcon = { TextButton(onClick = onAutoIp) { Text("AUTO") } }
                     )
                     OutlinedTextField(value = password, onValueChange = onPasswordChange, label = { Text("Password room") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    if (mode == SyncEntryMode.JOIN) {
-                        OutlinedTextField(value = name, onValueChange = onNameChange, label = { Text("Nama kamu") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp))
+                            .background(scheme.surfaceVariant.copy(alpha = 0.70f))
+                            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.70f), RoundedCornerShape(17.dp))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        RexLocalProfilePhoto(profile, Modifier.size(42.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(profile.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Nama mengikuti RexLocal Account", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Default.VerifiedUser, contentDescription = "Identitas dari Local Account", tint = scheme.primary, modifier = Modifier.size(19.dp))
                     }
                     if (mode == SyncEntryMode.HOST) {
                         Text("Setelah room aktif, bagikan IP dan password kepada teman.", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
                     Button(
                         onClick = onStart,
-                        enabled = !connecting && ip.isNotBlank() && room.isNotBlank() && password.isNotBlank() && (mode == SyncEntryMode.HOST || name.isNotBlank()),
+                        enabled = !connecting && ip.isNotBlank() && room.isNotBlank() && password.isNotBlank() && (mode == SyncEntryMode.HOST || profile.name.isNotBlank()),
                         modifier = Modifier.fillMaxWidth().height(54.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {

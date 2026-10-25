@@ -13,9 +13,10 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
         roomName = room.trim().ifBlank { "RexSyncRoom1" }
         roomStartedElapsedMs = SystemClock.elapsedRealtime()
         roomPassword = password
+        val hostName = RexLocalProfileBridge.read().name.trim().ifBlank { "Rex User" }
         _state.value = _state.value.copy(hosting = true, connected = true, room = roomName,
-            password = password, ip = ip, status = "Membuka room…", error = null,
-            members = listOf(SyncMember("host", "Host")))
+            password = password, ip = ip, name = hostName, status = "Membuka room…", error = null,
+            members = listOf(SyncMember("host", hostName)))
         roomJob = scope.launch {
             try {
                 val ss = ServerSocket(SYNC_PORT, 32, InetAddress.getByName("0.0.0.0"))

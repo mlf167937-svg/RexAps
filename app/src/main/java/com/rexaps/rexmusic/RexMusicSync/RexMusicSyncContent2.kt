@@ -144,13 +144,12 @@ internal fun __splitImpl_SyncConnectionCard(
     onIpChange: (String) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
-    name: String,
-    onNameChange: (String) -> Unit,
     active: Boolean,
     onAutoIp: () -> Unit,
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit
 ) {
+    val localProfile = rememberRexMusicProfileSnapshotForSync()
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -199,14 +198,23 @@ internal fun __splitImpl_SyncConnectionCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text("Join an existing room", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = { Text("Nama kamu") },
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = !active
-            )
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    RexLocalProfilePhoto(localProfile, Modifier.size(42.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(localProfile.name, style = MaterialTheme.typography.titleSmall)
+                        Text("Nama mengikuti RexLocal Account", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             Button(
                 onClick = onJoinRoom,
                 enabled = !active && ip.isNotBlank(),

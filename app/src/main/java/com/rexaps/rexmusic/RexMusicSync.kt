@@ -79,8 +79,8 @@ internal object RexMusicSyncEngine {
         return this.__splitImpl_monitorPeers()
     }
 
-    fun joinRoom(room: String, name: String, ip: String, password: String) {
-        return this.__splitImpl_joinRoom(room, name, ip, password)
+    fun joinRoom(room: String, ip: String, password: String) {
+        return this.__splitImpl_joinRoom(room, ip, password)
     }
 
     internal fun handleClientMessage(m: JSONObject) {
@@ -204,14 +204,12 @@ internal fun SyncConnectionCard(
     onIpChange: (String) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
-    name: String,
-    onNameChange: (String) -> Unit,
     active: Boolean,
     onAutoIp: () -> Unit,
     onCreateRoom: () -> Unit,
     onJoinRoom: () -> Unit
 ) {
-        return __splitImpl_SyncConnectionCard(room, onRoomChange, ip, onIpChange, password, onPasswordChange, name, onNameChange, active, onAutoIp, onCreateRoom, onJoinRoom)
+        return __splitImpl_SyncConnectionCard(room, onRoomChange, ip, onIpChange, password, onPasswordChange, active, onAutoIp, onCreateRoom, onJoinRoom)
     }
 
 @Composable

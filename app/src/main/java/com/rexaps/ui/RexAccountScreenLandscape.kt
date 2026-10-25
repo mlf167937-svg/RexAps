@@ -17,15 +17,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/**
- * Layout profil landscape: kolom kiri berisi banner + identitas + aksi,
- * kolom kanan berisi galeri 4 kolom yang bisa di-scroll.
- */
+/** Layout landscape memakai panel profil ringkas dan galeri yang mendapat ruang utama. */
 @Composable
 internal fun RexAccountScreenLandscape(ctl: RexProfileController) {
     val colors = MaterialTheme.colorScheme
@@ -34,48 +30,44 @@ internal fun RexAccountScreenLandscape(ctl: RexProfileController) {
         Aurora(Modifier.fillMaxSize())
 
         Row(Modifier.fillMaxSize()) {
-
-            /* ── Kiri: profil ── */
             Column(
-                Modifier
-                    .width(340.dp)
+                Modifier.width(320.dp)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
             ) {
                 Box(Modifier.fillMaxWidth()) {
                     BannerView(ctl.acct, ctl.rev, Modifier.fillMaxWidth().aspectRatio(BANNER_ASPECT)) { 0f }
+                    ProfileEditButton(ctl, Modifier.align(Alignment.TopStart).padding(14.dp))
                     StoryRingAvatar(
                         acct = ctl.acct,
                         rev = ctl.rev,
                         storyCount = ctl.stories.size,
-                        dia = 104.dp,
-                        modifier = Modifier.align(Alignment.BottomStart).offset(x = 20.dp, y = 52.dp),
+                        dia = 88.dp,
+                        modifier = Modifier.align(Alignment.BottomStart).offset(x = 18.dp, y = 42.dp),
                         onClick = {
-                            if (ctl.stories.isNotEmpty()) ctl.storyIndex = 0 else ctl.showEdit = true
+                            if (ctl.stories.isNotEmpty()) ctl.storyIndex = 0 else ctl.showStoryCompose = true
                         },
                         onAdd = { ctl.showStoryCompose = true }
                     )
                 }
 
                 Column(
-                    Modifier.padding(horizontal = 20.dp).padding(top = 64.dp, bottom = 24.dp),
+                    Modifier.padding(horizontal = 18.dp).padding(top = 54.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Reveal(ctl.visible, 0) { ProfileIdentity(ctl.acct, centered = false) }
-                    Reveal(ctl.visible, 120) { ProfileStats(ctl) }
-                    Reveal(ctl.visible, 220) { ProfileActions(ctl) }
+                    Reveal(ctl.visible, 100) { ProfileStats(ctl) }
+                    Reveal(ctl.visible, 180) { ProfileActions(ctl) }
                 }
             }
 
-            /* ── Kanan: galeri ── */
             Column(
-                Modifier
-                    .weight(1f)
+                Modifier.weight(1f)
                     .fillMaxHeight()
-                    .padding(top = 20.dp, end = 20.dp, bottom = 20.dp)
+                    .padding(start = 10.dp, top = 16.dp, end = 18.dp, bottom = 18.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Reveal(ctl.visible, 320) {
+                Reveal(ctl.visible, 240) {
                     ProfileTabs(ctl, columns = 4, cellAspect = 3f / 4f)
                 }
             }

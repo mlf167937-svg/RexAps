@@ -47,6 +47,7 @@ internal fun __splitImpl_PlaylistDetailScreen(
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.DeleteOutline, contentDescription = "Hapus playlist", tint = scheme.onSurfaceVariant)
                 }
+                RexMusicProfileAvatarButton()
             }
         }
         item(key = "playlist-detail-hero") {

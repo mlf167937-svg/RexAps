@@ -6,6 +6,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -116,17 +117,32 @@ internal fun __splitImpl_VideoFeed(
             }
             Box(Modifier.fillMaxWidth().height(120.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(.5f), Color.Transparent))))
             Row(
-                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(),
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 14.dp, vertical = 12.dp).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "${pager.currentPage + 1} / ${files.size}",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { onDelete(files[pager.currentPage]) }) { Icon(Icons.Default.Delete, null, tint = Color.White) }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color.White) }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "MEDIA LOKAL",
+                        color = Color.White.copy(alpha = .72f),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${pager.currentPage + 1} dari ${files.size}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Surface(shape = CircleShape, color = Color.White.copy(alpha = .12f)) {
+                    IconButton(onClick = { onDelete(files[pager.currentPage]) }) {
+                        Icon(Icons.Default.Delete, null, tint = Color.White)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = CircleShape, color = Color.White.copy(alpha = .12f)) {
+                    IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color.White) }
+                }
             }
         }
     }

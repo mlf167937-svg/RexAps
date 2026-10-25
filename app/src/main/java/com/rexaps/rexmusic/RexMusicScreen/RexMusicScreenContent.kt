@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -46,7 +47,11 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 
 @Composable
-internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewModel) {
+internal fun __splitImpl_RexMusicContent(
+    onBack: () -> Unit,
+    vm: RexMusicViewModel,
+    onOpenLocalProfile: () -> Unit
+) {
     val context = LocalContext.current
 
     val state by remember(vm) {
@@ -75,6 +80,8 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
     var menuTarget by remember { mutableStateOf<MenuTarget?>(null) }
     var playlistTarget by remember { mutableStateOf<RexTrack?>(null) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
+    var showLocalProfile by rememberSaveable { mutableStateOf(false) }
+    var localProfile by remember { mutableStateOf(RexLocalProfileBridge.read()) }
 
     // Preserve liked IDs across configuration changes without needing to serialize RexTrack objects.
     val likedIds = rememberSaveable(
@@ -360,6 +367,12 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
         }
     )
 
+    CompositionLocalProvider(
+        LocalRexMusicOpenProfile provides {
+            localProfile = RexLocalProfileBridge.read()
+            showLocalProfile = true
+        }
+    ) {
     Box(Modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             // Base the layout on this window's available bounds, not device configuration.
@@ -639,6 +652,7 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
             )
         }
     }
+    }
 
     if (showQueue) {
         QueueSheet(
@@ -887,6 +901,17 @@ internal fun __splitImpl_RexMusicContent(onBack: () -> Unit, vm: RexMusicViewMod
                 ) {
                     Text("Batal")
                 }
+            }
+        )
+    }
+
+    if (showLocalProfile) {
+        RexLocalProfileSheet(
+            profile = localProfile,
+            onDismiss = { showLocalProfile = false },
+            onViewFullProfile = {
+                showLocalProfile = false
+                onOpenLocalProfile()
             }
         )
     }

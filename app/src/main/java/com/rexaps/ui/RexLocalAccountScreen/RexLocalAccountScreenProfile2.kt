@@ -210,29 +210,33 @@ internal fun __splitImpl_ProfileIdentity(acct: RexLocalAccount, centered: Boolea
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = align,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Text(
             acct.name,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            textAlign = textAlign
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = textAlign,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
-        Surface(shape = CircleShape, color = colors.primary.copy(.14f)) {
-            Text(
-                acct.username,
-                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                color = colors.primary,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+        Text(
+            acct.username,
+            color = colors.primary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         if (acct.bio.isNotBlank()) {
             Text(
                 acct.bio,
                 color = colors.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
-                textAlign = textAlign
+                textAlign = textAlign,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

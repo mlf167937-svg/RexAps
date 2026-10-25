@@ -33,5 +33,7 @@ internal fun __splitImpl_HomeHeader(greeting: String, offline: Boolean, onToggle
         }
         Spacer(Modifier.width(8.dp))
         ModeChip(offline, onToggle)
+        Spacer(Modifier.width(8.dp))
+        RexMusicProfileAvatarButton()
     }
 }

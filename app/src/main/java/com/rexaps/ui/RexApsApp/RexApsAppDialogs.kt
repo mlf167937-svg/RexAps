@@ -116,7 +116,14 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
                                     RexNavGraph(onBack = { route = RexRoute.NONE })
 
                                 RexRoute.REXMUSIC ->
-                                    RexMusicScreen(onBack = { route = RexRoute.NONE })
+                                    RexMusicScreen(
+                                        onBack = { route = RexRoute.NONE },
+                                        onOpenLocalProfile = {
+                                            route = RexRoute.NONE
+                                            routeLoading = false
+                                            selectedTab = RexTab.ACCOUNT
+                                        }
+                                    )
 
                                 RexRoute.REXMANAGER ->
                                     RexManagerScreen(onExit = { route = RexRoute.NONE })

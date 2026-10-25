@@ -80,34 +80,36 @@ internal fun __splitImpl_PlaylistTab(
             ) {
                 item(key = "playlist-page-header") {
                     Column(
-                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "KOLEKSI MUSIK",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    letterSpacing = 1.2.sp
-                                )
-                                Text("Playlist", style = MaterialTheme.typography.headlineLarge)
-                            }
                             FilledTonalButton(
                                 onClick = { showCreate = true },
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                shape = RoundedCornerShape(15.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(19.dp))
                                 Spacer(Modifier.width(7.dp))
-                                Text("Buat playlist")
+                                Text("Tambahkan Playlist", maxLines = 1)
                             }
+                            Spacer(Modifier.weight(1f))
+                            RexMusicProfileAvatarButton()
                         }
-                        Text(
-                            "Susun lagu sesuai suasana, aktivitas, atau momen favoritmu.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                "KOLEKSI MUSIK",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = 1.2.sp
+                            )
+                            Text("Playlist", style = MaterialTheme.typography.headlineLarge)
+                            Text(
+                                "Susun lagu sesuai suasana, aktivitas, atau momen favoritmu.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
                             "${state.playlists.size} playlist · tersimpan di perangkat",
                             style = MaterialTheme.typography.labelMedium,

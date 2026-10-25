@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -172,16 +174,30 @@ internal fun __splitImpl_FeedItem(file: File, acct: RexLocalAccount, rev: Int, a
     var userPlaying by remember(active) { mutableStateOf(true) }
 
     Box(
-        Modifier.fillMaxSize().clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null
-        ) { userPlaying = !userPlaying },
+        Modifier.fillMaxSize().then(
+            if (isVideo) Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { userPlaying = !userPlaying } else Modifier
+        ),
         contentAlignment = Alignment.Center
     ) {
         if (isVideo) {
-            RexVideo(file.path, Modifier.fillMaxSize(), loop = true, muted = false, playing = active && userPlaying, fit = true)
+            RexVideo(
+                file.path,
+                Modifier.fillMaxSize(),
+                loop = true,
+                muted = false,
+                playing = active && userPlaying,
+                fit = false
+            )
             if (active && !userPlaying) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(.85f), modifier = Modifier.size(88.dp))
+                Box(
+                    Modifier.size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = .48f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(44.dp))
+                }
             }
         } else {
             val bmp by produceState<Bitmap?>(null, file.path) {
@@ -190,17 +206,75 @@ internal fun __splitImpl_FeedItem(file: File, acct: RexLocalAccount, rev: Int, a
             bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
         }
 
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(.6f)))))
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Black.copy(alpha = .22f),
+                        .22f to Color.Transparent,
+                        .62f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = .78f)
+                    )
+                )
+            )
+        )
+
+        Surface(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 14.dp, end = 16.dp),
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = .34f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = .16f))
+        ) {
+            Row(
+                Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Icon(Icons.Default.Lock, null, tint = Color.White.copy(alpha = .9f), modifier = Modifier.size(13.dp))
+                Text("LOKAL", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            }
+        }
 
         Row(
-            Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(16.dp),
+            Modifier.align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
         ) {
-            AvatarContent(acct, rev, false, Modifier.size(42.dp).border(2.dp, Color.White, CircleShape))
-            Column {
-                Text(acct.username, color = Color.White, fontWeight = FontWeight.Bold)
-                Text(file.name, color = Color.White.copy(.75f), style = MaterialTheme.typography.labelSmall)
+            AvatarContent(acct, rev, false, Modifier.size(44.dp).border(1.5.dp, Color.White.copy(alpha = .88f), CircleShape))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    acct.name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    acct.username,
+                    color = Color.White.copy(alpha = .84f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (isVideo) "Video tersimpan di perangkat ini" else "Foto tersimpan di perangkat ini",
+                    color = Color.White.copy(alpha = .68f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Surface(shape = CircleShape, color = Color.White.copy(alpha = .12f)) {
+                Icon(
+                    if (isVideo) Icons.Default.Movie else Icons.Default.Image,
+                    null,
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp).size(17.dp)
+                )
             }
         }
     }

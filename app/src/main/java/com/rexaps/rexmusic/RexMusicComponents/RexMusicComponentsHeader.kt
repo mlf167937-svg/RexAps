@@ -22,5 +22,7 @@ internal fun __splitImpl_TabHeader(title: String, offline: Boolean, onToggle: ()
         )
         Spacer(Modifier.width(12.dp))
         ModeChip(offline, onToggle)
+        Spacer(Modifier.width(8.dp))
+        RexMusicProfileAvatarButton()
     }
 }

@@ -77,29 +77,31 @@ internal fun __splitImpl_RexVideo(
 
 @Composable
 internal fun __splitImpl_AddTile(modifier: Modifier, title: String, sub: String, onClick: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(18.dp)
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(12.dp)
     Box(
-        modifier
-            .pressable(onClick)
+        modifier.pressable(onClick)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(c.primary.copy(.20f), c.tertiary.copy(.14f))))
-            .border(1.dp, c.primary.copy(.35f), shape),
+            .background(colors.surfaceVariant.copy(alpha = .30f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = .58f), shape),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(8.dp)
+        ) {
             Box(
-                Modifier.size(42.dp).clip(CircleShape).background(c.primary),
+                Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(colors.primary.copy(alpha = .14f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, null, tint = c.onPrimary, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Add, null, tint = colors.primary, modifier = Modifier.size(21.dp))
             }
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            Text(sub, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(sub, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
         }
     }
 }
-
 @Composable
 internal fun __splitImpl_MediaOption(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
