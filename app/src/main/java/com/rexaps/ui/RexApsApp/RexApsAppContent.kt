@@ -1,10 +1,7 @@
 package com.rexaps.ui
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rexaps.ui.theme.RexThemeMaterial
 
 @Composable
 internal fun __splitImpl_FeaturedCard(
@@ -40,19 +38,15 @@ internal fun __splitImpl_FeaturedCard(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(28.dp)
+    val visual = currentThemeVisualSpec()
+    val glass = visual.material == RexThemeMaterial.GLASS
+    val shape = RoundedCornerShape((28 + visual.radiusBias).coerceIn(22, 34).dp)
     val primary = colors.primary
     val outline = colors.outlineVariant
-
-    val transition = rememberInfiniteTransition(label = "featured")
-    val glow by transition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = if (isActive) 0.9f else 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
+    val glow by animateFloatAsState(
+        targetValue = if (isActive) .74f else .25f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "featuredGlow"
     )
 
     Box(
@@ -67,7 +61,7 @@ internal fun __splitImpl_FeaturedCard(
                 spotColor = primary.copy(alpha = 0.3f)
             )
             .clip(shape)
-            .background(colors.surfaceVariant)
+            .background(colors.surfaceVariant.copy(alpha = if (glass) visual.surfaceAlpha else .96f))
             .drawBehind {
                 drawCircle(
                     brush = Brush.radialGradient(
@@ -82,19 +76,20 @@ internal fun __splitImpl_FeaturedCard(
             .border(
                 width = 1.dp,
                 brush = Brush.linearGradient(
-                    listOf(primary.copy(alpha = 0.3f + 0.6f * glow), outline)
+                    listOf(primary.copy(alpha = if (glass) visual.highlightAlpha else (.3f + 0.5f * glow).coerceIn(0f, 1f)), outline.copy(alpha = visual.borderAlpha))
                 ),
                 shape = shape
             )
             .padding(24.dp)
     ) {
+        RexThemeMotifOverlay(visual, primary, colors.tertiary, Modifier.matchParentSize().alpha(if (glass) .90f else .35f))
         Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 64.dp)
+                ModuleArtwork(moduleId = app.id, size = 64.dp)
                 StatusPill(available = app.available)
             }
 

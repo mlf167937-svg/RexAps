@@ -39,9 +39,9 @@ internal fun __splitImpl_MusicPlayerCard(
         ) {
             val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
             val coverSize = if (landscape) {
-                minOf(maxWidth * 0.36f, maxHeight - 100.dp).coerceAtLeast(128.dp)
+                minOf(300.dp, maxWidth * 0.36f, (maxHeight - 88.dp).coerceAtLeast(128.dp)).coerceAtLeast(128.dp)
             } else {
-                minOf(maxWidth - 48.dp, maxHeight * 0.42f).coerceAtLeast(160.dp)
+                minOf(300.dp, (maxWidth - 40.dp).coerceAtLeast(144.dp), maxHeight * 0.42f).coerceAtLeast(144.dp)
             }
 
             if (landscape) {

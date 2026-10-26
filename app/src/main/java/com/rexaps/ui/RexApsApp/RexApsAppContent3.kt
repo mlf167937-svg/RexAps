@@ -1,10 +1,7 @@
 package com.rexaps.ui
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,9 +23,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rexaps.ui.theme.RexThemeMaterial
 
 @Composable
 internal fun __splitImpl_AppCard(
@@ -37,9 +37,10 @@ internal fun __splitImpl_AppCard(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
-    val borderColor =
-        if (app.available) colors.primary.copy(alpha = 0.35f) else colors.outlineVariant
+    val visual = currentThemeVisualSpec()
+    val glass = visual.material == RexThemeMaterial.GLASS
+    val shape = RoundedCornerShape((24 + visual.radiusBias).coerceIn(18, 30).dp)
+    val borderColor = if (app.available) colors.primary.copy(alpha = if (glass) visual.borderAlpha else .35f) else colors.outlineVariant
 
     Box(
         modifier = modifier
@@ -48,18 +49,21 @@ internal fun __splitImpl_AppCard(
             .pressable(enabled = app.available, onClick = onClick)
             .alpha(if (app.available) 1f else 0.55f)
             .shadow(
-                elevation = if (app.available) 4.dp else 0.dp,
+                elevation = if (app.available) 5.dp else 0.dp,
                 shape = shape,
-                ambientColor = colors.primary.copy(alpha = 0.2f),
-                spotColor = colors.primary.copy(alpha = 0.2f)
+                ambientColor = colors.primary.copy(alpha = if (glass) .16f else .20f),
+                spotColor = colors.primary.copy(alpha = if (glass) .14f else .20f)
             )
             .clip(shape)
-            .background(colors.surfaceVariant)
+            .background(colors.surfaceVariant.copy(alpha = if (glass) visual.surfaceAlpha else .96f))
             .border(1.dp, borderColor, shape)
-            .padding(18.dp)
     ) {
+        if (!glass) {
+            Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(colors.primary.copy(alpha = .055f), Color.Transparent))))
+        }
+        RexThemeMotifOverlay(visual, colors.primary, colors.tertiary, Modifier.matchParentSize().alpha(if (glass) .86f else .26f))
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(18.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -67,7 +71,7 @@ internal fun __splitImpl_AppCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                AppIcon(letter = app.name.take(1).uppercase(), size = 48.dp)
+                ModuleArtwork(moduleId = app.id, size = 48.dp)
 
                 if (app.available) {
                     Box(
@@ -126,17 +130,15 @@ internal fun __splitImpl_HeroCard(
     isActive: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val onAccent = MaterialTheme.colorScheme.onPrimary
+    val colors = MaterialTheme.colorScheme
+    val visual = currentThemeVisualSpec()
+    val glass = visual.material == RexThemeMaterial.GLASS
+    val onAccent = if (glass) colors.onSurface else colors.onPrimary
 
-    val transition = rememberInfiniteTransition(label = "hero")
-    val drift by transition.animateFloat(
-        initialValue = 0f,
+    val drift by animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(7000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "drift"
+        animationSpec = tween(460, easing = FastOutSlowInEasing),
+        label = "heroDrift"
     )
 
     Box(
@@ -148,8 +150,8 @@ internal fun __splitImpl_HeroCard(
                 ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                 spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
             )
-            .clip(RoundedCornerShape(28.dp))
-            .background(accentBrush())
+            .clip(RoundedCornerShape((28 + visual.radiusBias).coerceIn(22, 34).dp))
+            .background(if (glass) Brush.linearGradient(listOf(colors.surface.copy(alpha = visual.surfaceAlpha), colors.primary.copy(alpha = visual.surfaceAlpha * .62f))) else accentBrush())
             .drawBehind {
                 drawCircle(
                     color = onAccent.copy(alpha = 0.14f),
@@ -169,6 +171,7 @@ internal fun __splitImpl_HeroCard(
                 )
             }
     ) {
+        RexThemeMotifOverlay(visual, colors.primary, colors.tertiary, Modifier.matchParentSize().alpha(if (glass) .95f else .24f))
         Column(
             modifier = Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

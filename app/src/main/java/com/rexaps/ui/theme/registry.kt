@@ -74,6 +74,8 @@ object RexThemeRegistry {
     fun get(id: String): RexDesignTokens = byId[id] ?: default
     fun byCategory(): Map<String, List<RexDesignTokens>> = all.groupBy { it.category }
     fun validateAll(): Map<String, List<String>> = all.associate { it.id to it.validate() }
+    /** Empty means every registered theme has an explicit material/motif specification. */
+    fun validateVisualCoverage(): Set<String> = RexThemeVisuals.coverage(all.map { it.id }.toSet())
 
     fun contrastRatio(foreground: Long, background: Long): Double {
         fun channel(value: Long, shift: Int): Double {

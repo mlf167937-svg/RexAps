@@ -40,6 +40,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rexaps.ui.theme.RexThemeMaterial
+import com.rexaps.ui.theme.RexThemeVisuals
 
 @Composable
 internal fun __splitImpl_ThemeTile(
@@ -50,12 +52,14 @@ internal fun __splitImpl_ThemeTile(
 ) {
     val colors = MaterialTheme.colorScheme
     val spec = remember(option) { RexPaletteSpec.of(option) }
+    val visual = remember(option) { RexThemeVisuals.forTheme(option.labelToThemeId()) }
 
     val previewBg = Color(spec.background)
     val previewCard = Color(spec.card)
-    val previewOutline = Color(spec.outline)
+    val previewOutline = Color(spec.outline).copy(alpha = visual.borderAlpha)
     val previewPrimary = Color(spec.primary)
     val previewTertiary = Color(spec.tertiary)
+    val glass = visual.material == RexThemeMaterial.GLASS
 
     val shape = RoundedCornerShape(18.dp)
     val previewShape = RoundedCornerShape(12.dp)
@@ -96,12 +100,59 @@ internal fun __splitImpl_ThemeTile(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp)
+                .height(72.dp)
                 .clip(previewShape)
-                .background(Brush.linearGradient(listOf(previewBg, previewCard)))
+                .background(previewBg)
                 .border(1.dp, previewOutline, previewShape)
         ) {
-            if (option == RexThemeOption.GLASS_BLUE_MOON) {
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.linearGradient(
+                        listOf(
+                            if (glass) previewCard.copy(alpha = visual.surfaceAlpha) else previewCard.copy(alpha = .88f),
+                            previewBg.copy(alpha = .84f),
+                            previewPrimary.copy(alpha = if (glass) .12f else .22f)
+                        )
+                    )
+                )
+            )
+            RexThemeMotifOverlay(
+                visual, previewPrimary, previewTertiary,
+                Modifier.matchParentSize().alpha(if (glass) .95f else .78f)
+            )
+            if (glass) {
+                Box(
+                    Modifier.align(Alignment.TopStart).fillMaxWidth().height(17.dp).background(
+                        Brush.verticalGradient(listOf(Color.White.copy(alpha = visual.highlightAlpha), Color.Transparent))
+                    )
+                )
+            }
+            // Material sample makes the tile preview communicate the theme's surface treatment,
+            // especially the genuinely translucent Glass variants.
+            val sampleShape = RoundedCornerShape(8.dp)
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 22.dp)
+                    .size(width = 56.dp, height = 34.dp)
+                    .clip(sampleShape)
+                    .background(previewCard.copy(alpha = if (glass) visual.surfaceAlpha else .92f))
+                    .border(1.dp, previewPrimary.copy(alpha = if (glass) visual.borderAlpha else .36f), sampleShape)
+            ) {
+                Box(
+                    Modifier.fillMaxWidth().height(6.dp).background(
+                        Brush.horizontalGradient(
+                            listOf(Color.White.copy(alpha = visual.highlightAlpha), Color.Transparent)
+                        )
+                    )
+                )
+                Column(Modifier.align(Alignment.Center).padding(horizontal = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Box(Modifier.fillMaxWidth(.72f).height(2.dp).clip(CircleShape).background(previewPrimary.copy(alpha = .85f)))
+                    Box(Modifier.fillMaxWidth(.46f).height(2.dp).clip(CircleShape).background(previewTertiary.copy(alpha = .82f)))
+                }
+            }
+
+            if (option == RexThemeOption.DARK_BLUE_MOON) {
                 Surface(
                     modifier = Modifier.align(Alignment.TopStart).padding(5.dp),
                     shape = RoundedCornerShape(6.dp),
@@ -120,6 +171,7 @@ internal fun __splitImpl_ThemeTile(
                         Brush.linearGradient(listOf(previewPrimary, previewTertiary)),
                         CircleShape
                     )
+                    .border(1.dp, Color.White.copy(alpha = visual.highlightAlpha), CircleShape)
             )
             Box(
                 modifier = Modifier
@@ -131,7 +183,8 @@ internal fun __splitImpl_ThemeTile(
                         scaleY = checkScale
                         alpha = checkScale.coerceIn(0f, 1f)
                     }
-                    .background(colors.primary, CircleShape),
+                    .background(colors.primary, CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = .45f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

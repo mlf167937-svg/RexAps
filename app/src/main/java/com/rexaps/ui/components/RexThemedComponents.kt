@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.rexaps.ui.theme.RexDesignTokens
+import com.rexaps.ui.theme.RexThemeMaterial
+import com.rexaps.ui.theme.RexThemeVisuals
 
 @Composable
 fun RexButton(
@@ -126,7 +128,10 @@ fun RexCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(tokens.radiusLg.dp)
+    val visual = RexThemeVisuals.forTheme(tokens.id)
+    val glass = visual.material == RexThemeMaterial.GLASS
+    val shape = RoundedCornerShape((tokens.radiusLg + visual.radiusBias).coerceIn(16, 36).dp)
+    val baseSurface = Color(tokens.surface)
 
     Card(
         modifier = modifier.animateContentSize(
@@ -137,21 +142,31 @@ fun RexCard(
         ),
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = Color(tokens.surface)
+            containerColor = baseSurface.copy(alpha = if (glass) visual.surfaceAlpha else 1f)
         ),
         border = BorderStroke(
-            tokens.borderThin.dp,
-            Color(tokens.border).copy(alpha = .82f)
+            (if (glass) tokens.borderThin else tokens.borderHairline).dp,
+            Color(tokens.border).copy(alpha = if (glass) visual.borderAlpha else .82f)
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = tokens.shadowMd.dp,
+            defaultElevation = (if (glass) tokens.shadowSm else tokens.shadowMd).dp,
             pressedElevation = tokens.shadowSm.dp,
-            focusedElevation = tokens.shadowLg.dp,
-            hoveredElevation = tokens.shadowLg.dp
+            focusedElevation = (if (glass) tokens.shadowMd else tokens.shadowLg).dp,
+            hoveredElevation = (if (glass) tokens.shadowMd else tokens.shadowLg).dp
         )
     ) {
         Column(
-            Modifier.padding(16.dp),
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(tokens.accent).copy(alpha = if (glass) visual.highlightAlpha * .28f else .035f),
+                            Color.Transparent
+                        )
+                    )
+                )
+                .padding(16.dp),
             content = content
         )
     }

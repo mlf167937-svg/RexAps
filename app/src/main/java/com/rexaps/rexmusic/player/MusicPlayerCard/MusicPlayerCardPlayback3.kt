@@ -7,8 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -181,6 +184,7 @@ internal fun __splitImpl_PlayerDetails(
         Spacer(Modifier.height(16.dp))
         BottomActions(state, downloaded, downloadStatus, actions)
         PlayerError(state.error, actions.onPlayPause)
+        LyricsInlineSection(state.lyrics, positionState.value, actions.onLyrics)
         NeighborSection(state, actions.onOpenPrevious, actions.onNext)
     }
 }
@@ -201,5 +205,74 @@ internal fun Modifier.__splitImpl_playerBackground(accent: Color?): Modifier {
                 )
             )
         )
+    }
+}
+
+
+@Composable
+internal fun LyricsInlineSection(lyrics: Lyrics, positionMs: Long, onOpenFull: () -> Unit) {
+    // An unavailable lyric intentionally removes the entire section, including its divider and spacing.
+    if (lyrics.isEmpty) return
+
+    val colors = MaterialTheme.colorScheme
+    val activeIndex = if (lyrics.synced.isNotEmpty()) {
+        lyrics.synced.indexOfLast { it.timeMs <= positionMs }
+    } else -1
+
+    Column(
+        Modifier.fillMaxWidth().padding(top = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Lirik", style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
+                Text(
+                    if (lyrics.hasSynced) "Tersinkron dengan lagu" else "Lirik lagu",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onBackground.copy(alpha = .58f)
+                )
+            }
+            TextButton(onClick = onOpenFull) {
+                Text("Lihat penuh")
+                Spacer(Modifier.width(3.dp))
+                Icon(Icons.Default.OpenInFull, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+        HorizontalDivider(color = colors.outlineVariant.copy(alpha = .6f))
+
+        if (lyrics.synced.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                lyrics.synced.forEachIndexed { index, line ->
+                    val active = index == activeIndex
+                    Text(
+                        text = line.text,
+                        style = if (active) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        color = when {
+                            active -> colors.primary
+                            index < activeIndex -> colors.onBackground.copy(alpha = .52f)
+                            else -> colors.onBackground.copy(alpha = .78f)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (active) colors.primary.copy(alpha = .11f) else Color.Transparent)
+                            .clickable(onClick = onOpenFull)
+                            .padding(horizontal = if (active) 12.dp else 4.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = lyrics.plain.trim(),
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onBackground.copy(alpha = .84f),
+                lineHeight = 28.sp
+            )
+        }
     }
 }

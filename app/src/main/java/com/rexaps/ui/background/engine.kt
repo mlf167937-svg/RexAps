@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -17,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.rexaps.ui.theme.RexAnimationLevel
 import com.rexaps.ui.theme.RexDesignTokens
+import com.rexaps.ui.theme.RexThemeVisuals
+import com.rexaps.ui.drawRexMotif
 
 @Composable
 fun RexAmbientBackground(
@@ -25,19 +28,20 @@ fun RexAmbientBackground(
     level: RexAnimationLevel = RexAnimationLevel.BALANCED,
     intensity: Float = .72f
 ) {
-    val motionEnabled =
-        level != RexAnimationLevel.OFF && intensity > 0f
+    val visual = remember(theme.id) { RexThemeVisuals.forTheme(theme.id) }
+    val motionEnabled = level != RexAnimationLevel.OFF && intensity > 0f
 
     if (!motionEnabled) {
-        // Render background statis tanpa menjalankan animasi berulang.
+        // Reduced motion keeps the signature motif static instead of removing theme identity.
         Canvas(modifier.fillMaxSize()) {
             drawRect(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color(theme.background),
-                        Color(theme.backgroundAlt)
-                    )
-                )
+                brush = Brush.verticalGradient(listOf(Color(theme.background), Color(theme.backgroundAlt)))
+            )
+            drawRexMotif(
+                motif = visual.motif,
+                primary = Color(theme.primary),
+                secondary = Color(theme.accent),
+                intensity = .34f * visual.glowAlpha
             )
         }
         return
@@ -45,6 +49,7 @@ fun RexAmbientBackground(
 
     RexAnimatedAmbientLayer(
         theme = theme,
+        visual = visual,
         modifier = modifier,
         level = level,
         intensity = intensity
@@ -54,6 +59,7 @@ fun RexAmbientBackground(
 @Composable
 private fun RexAnimatedAmbientLayer(
     theme: RexDesignTokens,
+    visual: com.rexaps.ui.theme.RexThemeVisualSpec,
     modifier: Modifier,
     level: RexAnimationLevel,
     intensity: Float
@@ -68,9 +74,9 @@ private fun RexAnimatedAmbientLayer(
             animation = tween<Float>(
                 durationMillis =
                     if (level == RexAnimationLevel.SAVER) {
-                        26000
+                        (visual.ambientDurationMs * 1.45f).toInt()
                     } else {
-                        16500
+                        visual.ambientDurationMs
                     },
                 easing = LinearEasing
             ),
@@ -86,9 +92,9 @@ private fun RexAnimatedAmbientLayer(
             animation = tween<Float>(
                 durationMillis =
                     if (level == RexAnimationLevel.SAVER) {
-                        30000
+                        (visual.ambientDurationMs * 1.65f).toInt()
                     } else {
-                        19000
+                        (visual.ambientDurationMs * 1.12f).toInt()
                     },
                 easing = LinearEasing
             ),
@@ -204,37 +210,13 @@ private fun RexAnimatedAmbientLayer(
             )
         )
 
-        // Orbit dekoratif.
-        val orbit = Offset(
-            w * (.82f - .05f * phase),
-            h * (.18f + .05f * phase)
-        )
-
-        drawCircle(
-            Color(theme.borderStrong).copy(
-                alpha = alpha * .40f
-            ),
-            min * .20f,
-            orbit,
-            style = Stroke(1.2f)
-        )
-
-        drawCircle(
-            Color(theme.primary).copy(
-                alpha = alpha * .24f
-            ),
-            min * .28f,
-            orbit,
-            style = Stroke(1f)
-        )
-
-        drawCircle(
-            Color(theme.secondary).copy(
-                alpha = alpha * .18f
-            ),
-            min * .35f,
-            orbit,
-            style = Stroke(1f)
+        // A signature motif is resolved by theme ID (not merely its category).
+        // This stays Canvas-only to keep the ambient layer allocation-light.
+        drawRexMotif(
+            motif = visual.motif,
+            primary = Color(theme.primary),
+            secondary = Color(theme.accent),
+            intensity = strength * visual.glowAlpha
         )
 
         // Partikel ambient.
@@ -276,10 +258,8 @@ private fun RexAnimatedAmbientLayer(
         }
 
         // Grid tipis hanya untuk tema Neon dan Cosmic.
-        if (
-            theme.category == "Neon" ||
-            theme.category == "Cosmic"
-        ) {
+        if (visual.material == com.rexaps.ui.theme.RexThemeMaterial.NEON ||
+            theme.category == "Cosmic") {
             val step =
                 (min / 12f).coerceAtLeast(30f)
 

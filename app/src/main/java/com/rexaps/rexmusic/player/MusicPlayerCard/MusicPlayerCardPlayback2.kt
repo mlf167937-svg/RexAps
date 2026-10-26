@@ -38,6 +38,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun __splitImpl_TrackInfo(
     title: String,
@@ -49,72 +50,21 @@ internal fun __splitImpl_TrackInfo(
     onLyrics: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
-                title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.basicMarquee()
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(2.dp))
             Text(
-                artist, style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                artist,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-
-            val activeLyric = activeLyricText(lyrics, positionMs)
-            if (activeLyric != null || !lyrics.isEmpty) {
-                Spacer(Modifier.height(9.dp))
-                AnimatedVisibility(visible = activeLyric != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
-                            .clickable(onClick = onLyrics)
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.FormatQuote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Crossfade(targetState = activeLyric, label = "currentLyric") { line ->
-                            Text(
-                                text = line.orEmpty(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-                AnimatedVisibility(visible = activeLyric == null && !lyrics.isEmpty) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onLyrics)
-                            .padding(horizontal = 2.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Subtitles,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Lihat lirik",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            }
         }
         Spacer(Modifier.width(8.dp))
         LikeButton(isLiked, onToggleLike)
@@ -138,10 +88,10 @@ internal fun __splitImpl_PlayerCover(
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     val currentNext by rememberUpdatedState(onSwipeNext)
     val currentPrev by rememberUpdatedState(onSwipePrev)
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(20.dp)
     val glow = accent ?: MaterialTheme.colorScheme.primary
     val scale = animateFloatAsState(
-        targetValue = if (playing || busy) 1f else 0.9f,
+        targetValue = if (playing) .985f else 1f,
         animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
         label = "coverScale"
     )
