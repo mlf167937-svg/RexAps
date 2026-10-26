@@ -30,32 +30,57 @@ internal fun __splitImpl_ProFeaturedCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val grad = proGradientFor(app.name)
+    val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(32.dp)
+    val glow by animateFloatAsState(
+        targetValue = if (app.available) 1f else 0.45f,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "featuredModuleGlow"
+    )
 
     Box(
         modifier
             .fillMaxWidth()
             .height(190.dp)
             .alpha(if (app.available) 1f else 0.6f)
-            .shadow(elevation = 24.dp, shape = shape, spotColor = grad.first().copy(alpha = 0.45f))
+            .shadow(
+                elevation = 20.dp,
+                shape = shape,
+                ambientColor = colors.primary.copy(alpha = 0.22f),
+                spotColor = colors.primary.copy(alpha = 0.24f)
+            )
             .clip(shape)
-            .background(Brush.linearGradient(grad))
+            .background(colors.surfaceVariant)
             .proPress(enabled = app.available, onClick = onClick)
             .drawBehind {
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.16f),
-                    radius = size.width * 0.38f,
-                    center = Offset(size.width * 0.92f, size.height * 0.05f)
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            colors.primary.copy(alpha = 0.20f * glow),
+                            colors.tertiary.copy(alpha = 0.13f * glow),
+                            Color.Transparent
+                        ),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height)
+                    )
                 )
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.10f),
-                    radius = size.width * 0.22f,
-                    center = Offset(size.width * 0.78f, size.height)
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors.primary.copy(alpha = 0.16f * glow), Color.Transparent),
+                        center = Offset(size.width * 0.87f, size.height * 0.18f),
+                        radius = size.width * 0.52f
+                    ),
+                    radius = size.width * 0.52f,
+                    center = Offset(size.width * 0.87f, size.height * 0.18f)
                 )
             }
             .padding(22.dp)
     ) {
+        ProModuleAmbientLayer(
+            moduleId = app.id,
+            modifier = Modifier.fillMaxSize(),
+            intensity = 0.06f
+        )
         Column(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
@@ -68,66 +93,81 @@ internal fun __splitImpl_ProFeaturedCard(
                 Box(
                     Modifier
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.22f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                        .background(colors.primary.copy(alpha = 0.12f))
+                        .border(1.dp, colors.primary.copy(alpha = 0.18f), CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         "Aplikasi utama",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = colors.primary
                     )
                 }
-                if (!app.available) {
-                    Box(
-                        Modifier
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.25f))
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
-                    ) {
-                        Text("Segera", style = MaterialTheme.typography.labelSmall, color = Color.White)
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = app.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = app.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.85f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                ProModuleGlyph(
+                    moduleId = app.id,
+                    size = 68.dp,
+                    modifier = Modifier.alpha(0.94f)
                 )
             }
 
-            if (app.available) {
-                Row(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        "Buka",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = app.name,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = grad.first()
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        tint = grad.first(),
-                        modifier = Modifier.size(16.dp)
+                    Text(
+                        text = app.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (app.available) {
+                    Row(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(colors.primary.copy(alpha = 0.13f))
+                            .border(1.dp, colors.primary.copy(alpha = 0.22f), CircleShape)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "Buka",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.primary
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        "Segera",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.surface.copy(alpha = 0.72f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
             }

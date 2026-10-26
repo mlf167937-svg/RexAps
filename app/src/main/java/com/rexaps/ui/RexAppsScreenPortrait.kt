@@ -23,7 +23,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -32,18 +31,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /* ═════════════════════ Shared premium kit (dipakai portrait & landscape) ═════════════════════ */
-
-internal val proGradients = listOf(
-    listOf(Color(0xFF7C3AED), Color(0xFFEC4899)),
-    listOf(Color(0xFF0EA5E9), Color(0xFF6366F1)),
-    listOf(Color(0xFF10B981), Color(0xFF06B6D4)),
-    listOf(Color(0xFFF59E0B), Color(0xFFEF4444)),
-    listOf(Color(0xFF8B5CF6), Color(0xFF3B82F6)),
-    listOf(Color(0xFFF43F5E), Color(0xFFF97316))
-)
-
-internal fun proGradientFor(key: String): List<Color> =
-    proGradients[key.hashCode().mod(proGradients.size)]
 
 internal fun proFilterApps(apps: List<RexModule>, query: String, filter: String): List<RexModule> {
     val q = query.trim()
@@ -113,23 +100,8 @@ internal fun ProAmbientBackdrop(modifier: Modifier = Modifier) {
     }
 
 @Composable
-internal fun ProIcon(name: String, colors: List<Color>, dim: Dp) {
-    val shape = RoundedCornerShape(dim * 0.34f)
-    Box(
-        Modifier
-            .size(dim)
-            .shadow(elevation = 12.dp, shape = shape, spotColor = colors.first().copy(alpha = 0.5f))
-            .clip(shape)
-            .background(Brush.linearGradient(colors)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = name.take(1).uppercase(),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-    }
+internal fun ProIcon(moduleId: String, dim: Dp, modifier: Modifier = Modifier) {
+    ProModuleGlyph(moduleId = moduleId, size = dim, modifier = modifier)
 }
 
 @Composable
