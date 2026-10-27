@@ -329,7 +329,6 @@ private fun SchoolNavigationCard(
                     Text(detail, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
                 }
             }
-            action?.invoke()
         }
     }
 }
