@@ -19,14 +19,18 @@ internal data class SavingsTransaction(
     val amount: Long,
     val kind: String,
     val category: String,
-    val date: String
+    val date: String,
+    val isRecurring: Boolean = false,
+    val recurringInterval: String = "monthly" // weekly, monthly, yearly
 )
 
 internal data class SavingsGoal(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val targetAmount: Long,
-    val savedAmount: Long
+    val savedAmount: Long,
+    val deadline: String = "",
+    val priority: Int = 0 // 0 = low, 1 = medium, 2 = high
 )
 
 internal data class SchoolSubject(
@@ -36,7 +40,8 @@ internal data class SchoolSubject(
     val startTime: String,
     val endTime: String,
     val teacher: String = "",
-    val room: String = ""
+    val room: String = "",
+    val attendanceRate: Float = 100f
 )
 
 internal data class UniformPlan(
@@ -53,7 +58,25 @@ internal data class Homework(
     val pages: String = "",
     val deadlineDate: String,
     val deadlineTime: String,
-    val done: Boolean = false
+    val done: Boolean = false,
+    val priority: Int = 1, // 1 = normal, 2 = urgent
+    val createdAt: String = todayIso()
+)
+
+internal data class SavingsAnalytics(
+    val totalIncome: Long = 0L,
+    val totalExpense: Long = 0L,
+    val averageDailySpending: Long = 0L,
+    val savingsRate: Float = 0f, // percentage
+    val topCategories: List<CategoryStat> = emptyList(),
+    val lastUpdated: String = todayIso()
+)
+
+internal data class CategoryStat(
+    val category: String,
+    val amount: Long,
+    val percentage: Float,
+    val transactionCount: Int
 )
 
 internal data class RexLifeData(
@@ -63,8 +86,53 @@ internal data class RexLifeData(
     val uniforms: List<UniformPlan> = emptyList(),
     val homework: List<Homework> = emptyList()
 ) {
+    // Computed analytics
+    fun getAnalytics(): SavingsAnalytics {
+        val totalIncome = transactions.filter { it.kind != "expense" }.sumOf { it.amount }
+        val totalExpense = transactions.filter { it.kind == "expense" }.sumOf { it.amount }
+        val avgDaily = if (transactions.isNotEmpty()) totalExpense / maxOf(transactions.size, 1) else 0L
+        
+        val categoryGroups = transactions
+            .filter { it.kind == "expense" }
+            .groupBy { it.category.ifBlank { "Uncategorized" } }
+            .map { (cat, items) ->
+                val amt = items.sumOf { it.amount }
+                CategoryStat(
+                    category = cat,
+                    amount = amt,
+                    percentage = if (totalExpense > 0) (amt.toFloat() / totalExpense) * 100 else 0f,
+                    transactionCount = items.size
+                )
+            }
+            .sortedByDescending { it.amount }
+            .take(5)
+
+        val savingsRate = if (totalIncome > 0) 
+            ((totalIncome - totalExpense).toFloat() / totalIncome) * 100 
+        else 0f
+
+        return SavingsAnalytics(
+            totalIncome = totalIncome,
+            totalExpense = totalExpense,
+            averageDailySpending = avgDaily,
+            savingsRate = savingsRate.coerceIn(-100f, 100f),
+            topCategories = categoryGroups
+        )
+    }
+
+    fun getUpcomingDeadlines(): List<Homework> {
+        return homework
+            .filterNot { it.done }
+            .sortedWith(compareBy<Homework> { it.deadlineDate }.thenBy { it.deadlineTime })
+            .take(5)
+    }
+
+    fun getTodaySubjects(dayName: String): List<SchoolSubject> {
+        return subjects.filter { it.day == dayName }.sortedBy { it.startTime }
+    }
+
     fun toJson(): JSONObject = JSONObject()
-        .put("schemaVersion", 1)
+        .put("schemaVersion", 2)
         .put("transactions", JSONArray().also { array ->
             transactions.forEach { item ->
                 array.put(JSONObject()
@@ -73,7 +141,9 @@ internal data class RexLifeData(
                     .put("amount", item.amount)
                     .put("kind", item.kind)
                     .put("category", item.category)
-                    .put("date", item.date))
+                    .put("date", item.date)
+                    .put("isRecurring", item.isRecurring)
+                    .put("recurringInterval", item.recurringInterval))
             }
         })
         .put("goals", JSONArray().also { array ->
@@ -82,7 +152,9 @@ internal data class RexLifeData(
                     .put("id", item.id)
                     .put("title", item.title)
                     .put("targetAmount", item.targetAmount)
-                    .put("savedAmount", item.savedAmount))
+                    .put("savedAmount", item.savedAmount)
+                    .put("deadline", item.deadline)
+                    .put("priority", item.priority))
             }
         })
         .put("subjects", JSONArray().also { array ->
@@ -94,7 +166,8 @@ internal data class RexLifeData(
                     .put("startTime", item.startTime)
                     .put("endTime", item.endTime)
                     .put("teacher", item.teacher)
-                    .put("room", item.room))
+                    .put("room", item.room)
+                    .put("attendanceRate", item.attendanceRate))
             }
         })
         .put("uniforms", JSONArray().also { array ->
@@ -115,7 +188,9 @@ internal data class RexLifeData(
                     .put("pages", item.pages)
                     .put("deadlineDate", item.deadlineDate)
                     .put("deadlineTime", item.deadlineTime)
-                    .put("done", item.done))
+                    .put("done", item.done)
+                    .put("priority", item.priority)
+                    .put("createdAt", item.createdAt))
             }
         })
 
@@ -136,7 +211,9 @@ internal data class RexLifeData(
                     amount = it.optLong("amount"),
                     kind = it.optString("kind", "income"),
                     category = it.optString("category"),
-                    date = it.optString("date")
+                    date = it.optString("date"),
+                    isRecurring = it.optBoolean("isRecurring", false),
+                    recurringInterval = it.optString("recurringInterval", "monthly")
                 )
             }
 
@@ -146,7 +223,9 @@ internal data class RexLifeData(
                     id = it.optString("id").ifBlank { UUID.randomUUID().toString() },
                     title = it.optString("title"),
                     targetAmount = it.optLong("targetAmount"),
-                    savedAmount = it.optLong("savedAmount")
+                    savedAmount = it.optLong("savedAmount"),
+                    deadline = it.optString("deadline", ""),
+                    priority = it.optInt("priority", 0)
                 )
             }
 
@@ -159,7 +238,8 @@ internal data class RexLifeData(
                     startTime = it.optString("startTime", "07:00"),
                     endTime = it.optString("endTime", "07:45"),
                     teacher = it.optString("teacher"),
-                    room = it.optString("room")
+                    room = it.optString("room"),
+                    attendanceRate = it.optDouble("attendanceRate", 100.0).toFloat()
                 )
             }
 
@@ -182,7 +262,9 @@ internal data class RexLifeData(
                     pages = it.optString("pages"),
                     deadlineDate = it.optString("deadlineDate"),
                     deadlineTime = it.optString("deadlineTime", "23:59"),
-                    done = it.optBoolean("done")
+                    done = it.optBoolean("done"),
+                    priority = it.optInt("priority", 1),
+                    createdAt = it.optString("createdAt", todayIso())
                 )
             }
 
@@ -226,7 +308,6 @@ internal class RexLifeStore(context: Context) {
         persist(next)
     }
 
-    /** Call after returning from Android's all-files-access settings. */
     fun refreshStorage() {
         val target = resolveDataFile()
         if (target.absolutePath == dataFile.absolutePath) {
@@ -238,10 +319,8 @@ internal class RexLifeStore(context: Context) {
         val targetAlreadyHasData = target.exists() && target.length() > 0L
         val privateCopyHasData = !usingPublicFolder && dataFile.exists() && dataFile.length() > 0L
         if (targetAlreadyHasData && !storageError && !privateCopyHasData) {
-            // On a fresh install with no private copy yet, restore an existing public backup.
             data = readFile(target)
         } else {
-            // Prefer the currently active copy when migrating after the user has made edits.
             writeFile(target, data)
         }
         dataFile = target
@@ -258,7 +337,6 @@ internal class RexLifeStore(context: Context) {
                 activeStoragePath = rootPathFor(dataFile)
             }
             .onFailure {
-                // Preserve edits even if Android revokes shared-storage access mid-session.
                 dataFile = File(privateRoot, "data/rexlife.json")
                 runCatching { writeFile(dataFile, value) }
                 usingPublicFolder = false
@@ -327,3 +405,5 @@ internal class RexLifeStore(context: Context) {
         const val PUBLIC_FOLDER_PATH = "/storage/emulated/0/Download/RexAps/RexLife"
     }
 }
+
+internal fun todayIso(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())

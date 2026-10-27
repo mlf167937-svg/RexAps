@@ -1,24 +1,23 @@
 package com.rexaps.rexlife
 
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -38,8 +37,12 @@ internal fun RexLifePageHeader(
     trailing: (@Composable () -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
+    var isPressed by remember { mutableStateOf(false) }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = tween(300, easing = EaseOutCubic)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -80,7 +83,9 @@ internal fun RexLifeSectionTitle(
     action: (@Composable () -> Unit)? = null
 ) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = tween(200, easing = EaseOutCubic)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -106,12 +111,20 @@ internal fun RexLifeFeatureCard(
 ) {
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(24.dp)
+    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 148.dp)
-            .animateContentSize()
-            .clickable(onClick = onClick),
+            .animateContentSize(animationSpec = tween(300, easing = EaseOutCubic))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .scale(if (isPressed) 0.98f else 1f),
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = c.surface.copy(alpha = .96f)),
         border = BorderStroke(1.dp, c.outlineVariant.copy(alpha = .75f)),
@@ -131,7 +144,9 @@ internal fun RexLifeFeatureCard(
                     )
             )
             Column(
-                Modifier.fillMaxSize().padding(16.dp),
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -193,6 +208,17 @@ internal fun RexLifeHero(
 ) {
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(28.dp)
+    val infiniteTransition = rememberInfiniteTransition(label = "HeroPulse")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "GlowAlpha"
+    )
+
     Box(
         modifier
             .fillMaxWidth()
@@ -207,7 +233,7 @@ internal fun RexLifeHero(
                 .offset(x = 28.dp, y = (-30).dp)
                 .size(160.dp)
                 .clip(CircleShape)
-                .background(c.onPrimary.copy(alpha = .06f))
+                .background(c.onPrimary.copy(alpha = glowAlpha))
         )
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Surface(
@@ -259,13 +285,18 @@ internal fun RexLifeEmptyState(
         verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         Box(
-            Modifier.size(54.dp).clip(RoundedCornerShape(18.dp)).background(c.primary.copy(alpha = .11f)),
+            Modifier
+                .size(54.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.primary.copy(alpha = .11f)),
             contentAlignment = Alignment.Center
         ) { Icon(icon, null, tint = c.primary, modifier = Modifier.size(27.dp)) }
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(description, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         if (actionLabel != null && onAction != null) {
-            Button(onClick = onAction) { Text(actionLabel) }
+            Button(onClick = onAction, modifier = Modifier.fillMaxWidth()) {
+                Text(actionLabel)
+            }
         }
     }
 }
@@ -334,4 +365,62 @@ internal fun RexLifeStorageCard(
             }
         }
     }
+}
+
+/**
+ * Enhanced card dengan animated state changes dan better visual feedback.
+ */
+@Composable
+internal fun RexLifeInteractiveCard(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+    content: @Composable () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .scale(if (isPressed) 0.97f else 1f)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 6.dp
+        )
+    ) {
+        content()
+    }
+}
+
+/**
+ * Tab dengan animated underline.
+ */
+@Composable
+internal fun AnimatedTabIndicator(
+    selectedTabIndex: Int,
+    tabCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val animatedPosition by animateDpAsState(
+        targetValue = (100.dp / tabCount) * selectedTabIndex,
+        animationSpec = tween(300, easing = EaseOutCubic),
+        label = "TabPosition"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .offset(x = animatedPosition, y = 0.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.primary)
+    )
 }
