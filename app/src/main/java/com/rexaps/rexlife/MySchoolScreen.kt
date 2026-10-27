@@ -81,7 +81,7 @@ internal fun MySchoolScreen(
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedGap(18.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         RexLifePageHeader(
             title = pageTitle,
@@ -233,7 +233,7 @@ private fun MySchoolOverviewEnhanced(
     )
     
     // Enhanced metrics dengan animations
-    Row(horizontalArrangement = Arrangement.spacedGap(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         SchoolMetricEnhanced(
             "Mata pelajaran",
             subjects.map { it.name }.distinct().size.toString(),
@@ -250,7 +250,7 @@ private fun MySchoolOverviewEnhanced(
     }
     
     RexLifeSectionTitle("Ruang kerja", "Pilih yang ingin kamu kelola.")
-    Column(verticalArrangement = Arrangement.spacedGap(11.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         SchoolNavigationCardEnhanced(
             title = "Jadwal pelajaran",
             detail = if (subjects.isEmpty()) "Belum ada jadwal. Tambahkan jadwal mingguan." else "${subjects.size} sesi pelajaran terjadwal",
@@ -283,7 +283,7 @@ private fun MySchoolOverviewEnhanced(
     }
     
     // Countdown to nearest deadline
-    Column(verticalArrangement = Arrangement.spacedGap(11.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         RexLifeSectionTitle("Deadline terdekat", "Tugas yang belum selesai.")
         val upcoming = homework.filterNot { it.done }.sortedWith(compareBy<Homework> { it.deadlineDate }.thenBy { it.deadlineTime }).take(3)
         if (upcoming.isEmpty()) {
@@ -333,7 +333,7 @@ private fun SchoolMetricEnhanced(
         Row(
             Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedGap(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
                 Modifier
@@ -344,9 +344,9 @@ private fun SchoolMetricEnhanced(
             ) {
                 Icon(icon, null, tint = alertColor, modifier = Modifier.size(22.dp))
             }
-            Column(verticalArrangement = Arrangement.spacedGap(3.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     AnimatedNumberCounter(value.toLongOrNull() ?: 0L)
                     if (isAlert) {
                         PulseAnimation(isActive = true) {
@@ -370,8 +370,8 @@ private fun SchoolNavigationCardEnhanced(
     val c = MaterialTheme.colorScheme
 
     RexLifeInteractiveCard(onClick = onClick) {
-        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedGap(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(12.dp)) {
+        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     Modifier
                         .size(46.dp)
@@ -381,8 +381,8 @@ private fun SchoolNavigationCardEnhanced(
                 ) {
                     Icon(icon, null, tint = c.primary, modifier = Modifier.size(24.dp))
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(6.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         if (hasAlert) PulseAnimation(isActive = true) {
                             Surface(color = c.error.copy(alpha = 0.15f), shape = CircleShape) {
@@ -417,7 +417,7 @@ private fun ScheduleSectionEnhanced(
         RexLifeDays.forEachIndexed { dayIndex, day ->
             val daySubjects = subjects.filter { it.day == day }.sortedBy { it.startTime }
             if (daySubjects.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedGap(9.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     AnimatedVisibility(
                         visible = true,
                         enter = slideInVertically(
@@ -425,7 +425,7 @@ private fun ScheduleSectionEnhanced(
                             initialOffsetY = { it }
                         ) + fadeIn(animationSpec = tween(400, delayMillis = dayIndex * 50))
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(
                                 Modifier
                                     .width(4.dp)
@@ -464,9 +464,9 @@ private fun SubjectCardEnhanced(subject: SchoolSubject, onClick: () -> Unit, onD
                 .fillMaxWidth()
                 .padding(start = 14.dp, top = 13.dp, bottom = 13.dp, end = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedGap(11.dp)
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedGap(3.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(subject.startTime, style = MaterialTheme.typography.labelMedium, color = c.primary, fontWeight = FontWeight.Bold)
                 Box(
                     Modifier
@@ -477,7 +477,7 @@ private fun SubjectCardEnhanced(subject: SchoolSubject, onClick: () -> Unit, onD
                 )
                 Text(subject.endTime, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(subject.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 val details = listOf(subject.teacher, subject.room.takeIf { it.isNotBlank() }?.let { "Ruang $it" }).filterNotNull().filter { it.isNotBlank() }
                 Text(details.joinToString(" · ").ifBlank { "Ketuk untuk mengedit detail" }, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -507,7 +507,7 @@ private fun UniformSectionEnhanced(uniforms: List<UniformPlan>, onEditDay: (Stri
                         .fillMaxWidth()
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedGap(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Box(
                         Modifier
@@ -518,7 +518,7 @@ private fun UniformSectionEnhanced(uniforms: List<UniformPlan>, onEditDay: (Stri
                     ) {
                         Icon(Icons.Default.Checkroom, null, tint = c.tertiary)
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(4.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(day, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Text(plan?.outfit?.takeIf { it.isNotBlank() } ?: "Belum diatur", style = MaterialTheme.typography.bodyMedium, color = if (plan == null) c.onSurfaceVariant else c.onSurface)
                         if (!plan?.items.isNullOrBlank()) Text(plan!!.items, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -540,7 +540,7 @@ private fun HomeworkSectionEnhanced(
 ) {
     var filter by rememberSaveable { mutableStateOf("pending") }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("Tugas dan PR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("${homework.count { !it.done }} belum selesai · ${homework.count { it.done }} selesai", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -550,7 +550,7 @@ private fun HomeworkSectionEnhanced(
             Text("Tambah PR")
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedGap(7.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         FilterChip(selected = filter == "pending", onClick = { filter = "pending" }, label = { Text("Belum selesai") })
         FilterChip(selected = filter == "all", onClick = { filter = "all" }, label = { Text("Semua") })
         FilterChip(selected = filter == "done", onClick = { filter = "done" }, label = { Text("Selesai") })
@@ -600,7 +600,7 @@ private fun HomeworkCompactCardEnhanced(homework: Homework) {
                     .fillMaxWidth()
                     .padding(13.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedGap(11.dp)
+                horizontalArrangement = Arrangement.spacedBy(11.dp)
             ) {
                 Box(
                     Modifier
@@ -611,8 +611,8 @@ private fun HomeworkCompactCardEnhanced(homework: Homework) {
                 ) {
                     Icon(Icons.Default.Book, null, tint = if (urgentPulse) c.error else c.primary)
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(4.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(homework.subject, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         if (urgentPulse) Surface(color = c.error.copy(alpha = 0.15f), shape = CircleShape) {
                             Text("URGENT", modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = c.error, fontWeight = FontWeight.Bold)
@@ -641,10 +641,10 @@ private fun HomeworkCardEnhanced(
                 .fillMaxWidth()
                 .padding(start = 8.dp, end = 6.dp, top = 9.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedGap(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Checkbox(checked = homework.done, onCheckedChange = { onToggleDone() })
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(4.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(homework.subject, style = MaterialTheme.typography.labelMedium, color = c.primary, fontWeight = FontWeight.Bold)
                 Text(homework.description, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 val metadata = buildList {
@@ -684,7 +684,7 @@ private fun SubjectEditorDialog(
                     .fillMaxWidth()
                     .heightIn(max = 510.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(name, { name = it }, label = { Text("Mata pelajaran *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Box {
@@ -700,7 +700,7 @@ private fun SubjectEditorDialog(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedGap(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Mulai", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedButton(onClick = {
@@ -762,7 +762,7 @@ private fun UniformEditorDialog(
                     .fillMaxWidth()
                     .heightIn(max = 450.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Box {
                     OutlinedTextField(day, {}, label = { Text("Hari") }, readOnly = true, modifier = Modifier
@@ -826,11 +826,11 @@ private fun HomeworkEditorDialog(
                     .fillMaxWidth()
                     .heightIn(max = 600.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (scheduledSubjects.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(2.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Mata pelajaran", style = MaterialTheme.typography.labelLarge)
                             Text(
                                 if (manualSubject) "Input manual" else "Ambil dari jadwal pelajaran",
@@ -893,7 +893,7 @@ private fun HomeworkEditorDialog(
                 )
                 
                 Text("Prioritas", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedGap(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = priority == 1, onClick = { priority = 1 }, label = { Text("Normal") })
                     FilterChip(selected = priority == 2, onClick = { priority = 2 }, label = { Text("URGENT") })
                 }
@@ -908,7 +908,7 @@ private fun HomeworkEditorDialog(
                     Text(formatDateDisplay(date))
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(verticalArrangement = Arrangement.spacedGap(2.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Jam pengumpulan", style = MaterialTheme.typography.labelLarge)
                         Text(time, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -970,7 +970,6 @@ private fun showNativeDatePicker(
     ).show()
 }
 
-private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 private fun isValidTime(value: String): Boolean {
     if (!value.matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))) return false

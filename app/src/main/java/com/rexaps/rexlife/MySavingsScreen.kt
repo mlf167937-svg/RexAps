@@ -2,6 +2,7 @@ package com.rexaps.rexlife
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -309,7 +310,7 @@ private fun SavingsBalanceCardEnhanced(balance: Long, income: Long, expense: Lon
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
-            Column(verticalArrangement = Arrangement.spacedGap(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("TOTAL SALDO", style = MaterialTheme.typography.labelMedium, color = c.onPrimary.copy(alpha = .80f))
                 AnimatedNumberCounter(
                     value = balance,
@@ -328,16 +329,16 @@ private fun SavingsBalanceCardEnhanced(balance: Long, income: Long, expense: Lon
             }
         }
         Divider(color = c.onPrimary.copy(alpha = .20f))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedGap(12.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(5.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Icon(Icons.Default.ArrowDownward, null, tint = c.onPrimary.copy(alpha = .82f), modifier = Modifier.size(15.dp))
                     Text("Uang masuk", style = MaterialTheme.typography.labelMedium, color = c.onPrimary.copy(alpha = .82f))
                 }
                 AnimatedNumberCounter(value = income, formatter = { formatRupiah(it) })
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(5.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Icon(Icons.Default.ArrowUpward, null, tint = c.onPrimary.copy(alpha = .82f), modifier = Modifier.size(15.dp))
                     Text("Pengeluaran", style = MaterialTheme.typography.labelMedium, color = c.onPrimary.copy(alpha = .82f))
                 }
@@ -350,7 +351,7 @@ private fun SavingsBalanceCardEnhanced(balance: Long, income: Long, expense: Lon
 @Composable
 private fun SpendingCategoryBar(stat: CategoryStat, index: Int) {
     val c = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedGap(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -400,8 +401,8 @@ private fun SavingsGoalCardEnhanced(goal: SavingsGoal, onEdit: () -> Unit, onDel
         onClick = onEdit,
         modifier = Modifier.animateContentSize(animationSpec = tween(300, easing = EaseOutCubic))
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedGap(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(10.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     Modifier
                         .size(42.dp)
@@ -411,8 +412,8 @@ private fun SavingsGoalCardEnhanced(goal: SavingsGoal, onEdit: () -> Unit, onDel
                 ) {
                     Icon(Icons.Default.TrackChanges, null, tint = priorityColor)
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(6.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(goal.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         if (goal.priority == 2) {
                             Surface(color = c.error.copy(alpha = 0.15f), shape = CircleShape) {
@@ -452,7 +453,7 @@ private fun SavingsTransactionCardEnhanced(
                 .fillMaxWidth()
                 .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedGap(11.dp)
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
         ) {
             Box(
                 Modifier
@@ -463,11 +464,11 @@ private fun SavingsTransactionCardEnhanced(
             ) {
                 Icon(if (income) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward, null, tint = if (income) c.primary else c.error)
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedGap(3.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(transaction.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(listOf(transaction.category, transaction.date).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
             }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedGap(4.dp)) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AnimatedNumberCounter(
                     value = transaction.amount,
                     formatter = { "${if (income) "+" else "−"}${formatRupiah(it)}" }
@@ -510,9 +511,9 @@ private fun SavingsTransactionDialog(
                     .fillMaxWidth()
                     .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedGap(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = kind == "income", onClick = { kind = "income" }, label = { Text("Uang masuk") })
                     FilterChip(selected = kind == "expense", onClick = { kind = "expense" }, label = { Text("Pengeluaran") })
                 }
@@ -521,7 +522,7 @@ private fun SavingsTransactionDialog(
                 OutlinedTextField(category, { category = it }, label = { Text("Kategori (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(date, { date = it }, label = { Text("Tanggal (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(checked = isRecurring, onCheckedChange = { isRecurring = it })
                     Text("Transaksi berulang?", style = MaterialTheme.typography.labelMedium)
                 }
@@ -571,14 +572,14 @@ private fun SavingsGoalDialog(
                     .fillMaxWidth()
                     .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(title, { title = it }, label = { Text("Nama target") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(targetText, { targetText = it.filter(Char::isDigit) }, label = { Text("Nominal target (Rp)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(savedText, { savedText = it.filter(Char::isDigit) }, label = { Text("Sudah terkumpul (Rp)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 
                 Text("Prioritas", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedGap(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = priority == 0, onClick = { priority = 0 }, label = { Text("Rendah") })
                     FilterChip(selected = priority == 1, onClick = { priority = 1 }, label = { Text("Normal") })
                     FilterChip(selected = priority == 2, onClick = { priority = 2 }, label = { Text("Urgent") })
@@ -607,7 +608,6 @@ private fun SavingsGoalDialog(
     )
 }
 
-private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 private fun isValidIsoDate(value: String): Boolean {
     val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
@@ -617,8 +617,3 @@ private fun isValidIsoDate(value: String): Boolean {
     }.getOrDefault(false)
 }
 
-internal fun formatRupiah(amount: Long): String {
-    val sign = if (amount < 0) "- " else ""
-    val digits = kotlin.math.abs(amount).toString().reversed().chunked(3).joinToString(".").reversed()
-    return "${sign}Rp$digits"
-}

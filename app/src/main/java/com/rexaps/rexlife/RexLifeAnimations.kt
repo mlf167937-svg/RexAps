@@ -5,8 +5,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlin.math.roundToLong
 
 /**
  * Animasi entrance untuk card dengan stagger effect.
@@ -38,13 +40,14 @@ fun getCardExitAnimation(index: Int): ExitTransition {
 /**
  * Bounce scale animation untuk button tap feedback.
  */
+@Composable
 fun scaledClickModifier(
     isPressed: Boolean,
     scale: Float = 0.95f
 ): Modifier {
     val animatedScale by animateFloatAsState(
         targetValue = if (isPressed) scale else 1f,
-        animationSpec = spring(dampingRatio = SpringDampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
         label = "ScalePress"
     )
     return Modifier.scale(animatedScale)
@@ -156,8 +159,12 @@ fun AnimatedNumberCounter(
     modifier: Modifier = Modifier,
     formatter: (Long) -> String = { formatRupiah(it) }
 ) {
-    val animatedValue by animateLongAsState(
+    val animatedValue by animateValueAsState(
         targetValue = value,
+        typeConverter = TwoWayConverter<Long, AnimationVector1D>(
+            convertToVector = { amount -> AnimationVector1D(amount.toFloat()) },
+            convertFromVector = { vector -> vector.value.roundToLong() }
+        ),
         animationSpec = tween(800, easing = EaseOutCubic),
         label = "CounterAnimation"
     )
@@ -198,7 +205,9 @@ fun ShimmerEffect(
         modifier = modifier
             .graphicsLayer { this.alpha = alpha }
             .background(MaterialTheme.colorScheme.surfaceVariant)
-    )
+    ) {
+        content()
+    }
 }
 
 /**
@@ -305,26 +314,4 @@ fun AnimatedHeightContent(
     ) {
         content()
     }
-}
-
-private val CircularProgressIndicator = @Composable { modifier: Modifier ->
-    Box(
-        modifier = modifier
-            .background(
-                color = Color.Transparent,
-                shape = CircleShape
-            )
-    )
-}
-
-private val Text = @Composable { text: String, modifier: Modifier, style: androidx.compose.material3.TextStyle ->
-    androidx.compose.material3.Text(text, modifier = modifier, style = style)
-}
-
-private val LinearProgressIndicator = @Composable { progress: Float, modifier: Modifier, color: Color, trackColor: Color ->
-    androidx.compose.material3.LinearProgressIndicator(progress = progress, modifier = modifier, color = color, trackColor = trackColor)
-}
-
-private val Surface = @Composable { shape: androidx.compose.foundation.shape.RoundedCornerShape, color: Color, contentColor: Color, content: @Composable () -> Unit ->
-    androidx.compose.material3.Surface(shape = shape, color = color, contentColor = contentColor, content = content)
 }

@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,7 +120,7 @@ private fun RexLifeDashboardEnhanced(
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedGap(20.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         RexLifePageHeader(
             title = "RexLife",
@@ -134,7 +136,7 @@ private fun RexLifeDashboardEnhanced(
         
         // Quick stats dengan smooth animations
         Row(
-            horizontalArrangement = Arrangement.spacedGap(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             EnhancedDashboardMetric(
@@ -162,7 +164,7 @@ private fun RexLifeDashboardEnhanced(
                 colors = CardDefaults.cardColors(containerColor = c.surface),
                 border = androidx.compose.foundation.BorderStroke(1.dp, c.outlineVariant.copy(alpha = 0.7f))
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedGap(12.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -178,7 +180,7 @@ private fun RexLifeDashboardEnhanced(
                     
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedGap(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StatBox(
                             label = "Pemasukan",
@@ -212,7 +214,7 @@ private fun RexLifeDashboardEnhanced(
         }
         
         // Features Grid dengan stagger animation
-        Column(verticalArrangement = Arrangement.spacedGap(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             RexLifeSectionTitle(
                 title = "Ruang kerja",
                 subtitle = "Pilih fitur untuk mulai mengelola data"
@@ -220,7 +222,7 @@ private fun RexLifeDashboardEnhanced(
             features.chunked(2).forEachIndexed { rowIndex, pair ->
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedGap(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     pair.forEachIndexed { colIndex, feature ->
                         AnimatedVisibility(
@@ -257,7 +259,7 @@ private fun RexLifeDashboardEnhanced(
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedGap(8.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 "RexLife V1 · Lokal, offline, tanpa notifikasi",
@@ -265,7 +267,7 @@ private fun RexLifeDashboardEnhanced(
                 color = c.onSurfaceVariant
             )
             Row(
-                horizontalArrangement = Arrangement.spacedGap(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -328,7 +330,7 @@ private fun RexLifeFeatureCardEnhanced(
                 Modifier
                     .fillMaxSize()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedGap(10.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -385,7 +387,7 @@ private fun RexLifeFeatureCardEnhanced(
                     }
                 }
                 
-                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedGap(4.dp)) {
+                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
                         description,
@@ -417,8 +419,8 @@ private fun EnhancedDashboardMetric(
         shape = RoundedCornerShape(22.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (isAlert) c.error.copy(alpha = 0.5f) else c.outlineVariant.copy(alpha = .7f))
     ) {
-        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedGap(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedGap(6.dp)) {
+        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
                 if (isAlert) {
                     PulseAnimation(isActive = true) {
@@ -455,7 +457,7 @@ private fun StatBox(
         Column(
             Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedGap(6.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
             AnimatedNumberCounter(value.replace("Rp", "").replace(".", "").toLongOrNull() ?: 0L)
@@ -479,7 +481,7 @@ private fun RexLifePlaceholderScreenEnhanced(
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(18.dp),
-        verticalArrangement = Arrangement.spacedGap(20.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         RexLifePageHeader(title = title, subtitle = subtitle, onBack = onBack)
         
@@ -504,7 +506,7 @@ private fun RexLifePlaceholderScreenEnhanced(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedGap(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Icon(icon, null, tint = c.primary, modifier = Modifier.size(56.dp))
                     Text("Segera Hadir", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -539,8 +541,3 @@ private fun openStorageSettings(context: Context) {
         }
 }
 
-internal fun formatRupiah(amount: Long): String {
-    val sign = if (amount < 0) "- " else ""
-    val digits = kotlin.math.abs(amount).toString().reversed().chunked(3).joinToString(".").reversed()
-    return "${sign}Rp$digits"
-}

@@ -407,3 +407,10 @@ internal class RexLifeStore(context: Context) {
 }
 
 internal fun todayIso(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
+internal fun formatRupiah(amount: Long): String {
+    val absoluteDigits = java.math.BigInteger.valueOf(amount).abs().toString()
+    val groupedDigits = absoluteDigits.reversed().chunked(3).joinToString(".").reversed()
+    val sign = if (amount < 0L) "- " else ""
+    return "${sign}Rp$groupedDigits"
+}
