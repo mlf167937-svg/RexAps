@@ -16,4 +16,6 @@
 - **rexmusic** — waveform bars breathe to playback state.
 - **rexchat** — message bubbles fade-slide with a subtle typing indicator.
 
+- **rexlife** — soft heart pulse, restrained card lift, and saving-goal progress transition.
+
 These signatures are the canonical motion recipes for consistent implementation. Generic module entry/loading/error/success behavior is exposed through the shared motion and component primitives.

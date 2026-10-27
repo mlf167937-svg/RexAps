@@ -187,6 +187,22 @@ private fun DrawScope.drawModuleGlyph(id: String, main: Color, light: Color, acc
             nodes.forEach { (x, y) -> line(50f, 50f, x, y, accent, stroke * .7f); circle(x, y, 4.5f, light) }
             circle(50f, 50f, 5f, accent)
         }
+        "rexlife" -> {
+            val heart = Path().apply {
+                moveTo(w * .5f, h * .79f)
+                cubicTo(w * .39f, h * .69f, w * .18f, h * .52f, w * .19f, h * .37f)
+                cubicTo(w * .20f, h * .20f, w * .39f, h * .20f, w * .5f, h * .35f)
+                cubicTo(w * .61f, h * .20f, w * .80f, h * .20f, w * .81f, h * .37f)
+                cubicTo(w * .82f, h * .52f, w * .61f, h * .69f, w * .5f, h * .79f)
+                close()
+            }
+            drawPath(heart, main, style = Stroke(stroke * 1.25f))
+            line(28f, 51f, 41f, 51f, light, stroke * 1.1f)
+            line(41f, 51f, 48f, 39f, accent, stroke * 1.1f)
+            line(48f, 39f, 55f, 61f, light, stroke * 1.1f)
+            line(55f, 61f, 62f, 49f, accent, stroke * 1.1f)
+            line(62f, 49f, 72f, 49f, light, stroke * 1.1f)
+        }
         else -> {
             // Distinct fallback glyph if a future module has no dedicated grammar yet.
             circle(50f, 50f, 30f, main, false, stroke * 1.4f)

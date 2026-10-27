@@ -6,6 +6,11 @@ enum class RexRoute(
 ) {
     NONE(null, ""),
 
+    REXLIFE(
+        "rexlife",
+        "RexLife"
+    ),
+
     REXFOX(
         "rexfox",
         "RexFox"

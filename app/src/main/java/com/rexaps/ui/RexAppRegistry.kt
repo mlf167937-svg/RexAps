@@ -12,6 +12,13 @@ object RexAppRegistry {
     val modules = listOf(
 
         RexModule(
+            id = "rexlife",
+            name = "RexLife",
+            description = "Personal life management",
+            available = true
+        ),
+
+        RexModule(
             id = "rexfox",
             name = "RexFox",
             description = "Browser cepat & ringan",

@@ -3,6 +3,7 @@ package com.rexaps.ui.motion
 /** Stable, app-owned motion identity for every discovered module. */
 object RexModuleSignatures {
     val byModule: Map<String, String> = linkedMapOf(
+        "rexlife" to "soft heart pulse; card lift on focus; saving-goal progress transition",
         "rexwarp" to "portal tunnel rotation; accelerate on connect; wave ring on success",
         "rexcoder" to "glowing caret; execution progress sweep; typewriter output",
         "rexgit" to "branch stroke-draw; pulsing HEAD node; flowing push/pull particles",

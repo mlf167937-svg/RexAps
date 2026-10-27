@@ -283,6 +283,14 @@ private fun DrawScope.drawProModuleSymbol(
             nodes.forEach { (x, y) -> line(50f, 50f, x, y, accent, stroke * 0.8f); dot(x, y, 3.8f, main) }
             dot(50f, 50f, 4f, accent)
         }
+        "rexlife" -> {
+            poly(listOf(50f to 80f, 20f to 51f, 17f to 39f, 23f to 28f, 35f to 25f, 50f to 39f, 65f to 25f, 77f to 28f, 83f to 39f, 80f to 51f), main, stroke * 1.2f, close = true)
+            line(28f, 51f, 41f, 51f, accent, stroke * 1.1f)
+            line(41f, 51f, 48f, 39f, main, stroke * 1.1f)
+            line(48f, 39f, 55f, 61f, accent, stroke * 1.1f)
+            line(55f, 61f, 62f, 49f, main, stroke * 1.1f)
+            line(62f, 49f, 72f, 49f, accent, stroke * 1.1f)
+        }
         else -> {
             frame(22f, 22f, 56f, 56f, main, 7f, stroke)
             line(34f, 50f, 66f, 50f, accent, stroke * 1.2f)

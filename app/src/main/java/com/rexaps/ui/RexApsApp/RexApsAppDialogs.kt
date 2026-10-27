@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.view.WindowCompat
+import com.rexaps.rexlife.RexLifeScreen
 import com.rexaps.rexcoder.RexCoderScreen
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexgit.RexGit
@@ -93,6 +94,8 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
                             )
                         } else {
                             when (route) {
+                                RexRoute.REXLIFE -> RexLifeScreen(onExit = { route = RexRoute.NONE })
+
                                 RexRoute.REXFOX -> RexFoxScreen(activity = activity)
 
                                 RexRoute.REXPANEL ->
