@@ -134,7 +134,7 @@ object RexAppRegistry {
             id = "rexai",
             name = "RexAI",
             description = "AI tools & generator",
-            available = false
+            available = true
         )
     )
 

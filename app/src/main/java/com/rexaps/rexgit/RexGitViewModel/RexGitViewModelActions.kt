@@ -151,3 +151,21 @@ internal fun RexGitViewModel.__splitImpl_refreshStatus() {
             }
         }
     }
+
+internal fun RexGitViewModel.startPollingActions() {
+    launchIO {
+        _state.update { it.copy(isPollingActions = true) }
+        while(_state.value.isPollingActions) {
+            refreshActions()
+            kotlinx.coroutines.delay(5000)
+        }
+    }
+}
+
+internal fun RexGitViewModel.stopPollingActions() {
+    _state.update { it.copy(isPollingActions = false) }
+}
+
+internal fun RexGitViewModel.refreshActions() {
+    // Polling logic for GitHub Actions
+}

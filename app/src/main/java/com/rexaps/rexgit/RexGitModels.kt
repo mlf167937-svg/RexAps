@@ -173,6 +173,7 @@ data class RexGitUiState(
     val editorDirty: Boolean = false,
 
     val isLoading: Boolean = false,
+    val isPollingActions: Boolean = false,
     val isRepoLoading: Boolean = false,
     val isPushing: Boolean = false,
     val pushStage: String = "Checking Files...",

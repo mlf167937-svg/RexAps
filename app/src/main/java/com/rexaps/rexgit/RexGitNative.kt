@@ -1,5 +1,15 @@
 package com.rexaps.rexgit
 
+import org.eclipse.jgit.lib.ProgressMonitor
+
+class RexGitProgressMonitor : ProgressMonitor {
+    override fun start(totalTasks: Int) {}
+    override fun beginTask(title: String, totalWork: Int) {}
+    override fun update(completed: Int) {}
+    override fun endTask() {}
+    override fun isCancelled(): Boolean = false
+}
+
 import android.content.Context
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.storage.file.WindowCacheConfig

@@ -16,7 +16,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            var showSplash by remember {
+            var showSplash by androidx.compose.runtime.saveable.rememberSaveable {
                 mutableStateOf(true)
             }
 
