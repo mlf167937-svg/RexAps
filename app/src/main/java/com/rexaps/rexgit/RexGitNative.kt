@@ -1,6 +1,12 @@
 package com.rexaps.rexgit
 
 import org.eclipse.jgit.lib.ProgressMonitor
+import android.content.Context
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.storage.file.WindowCacheConfig
+import org.eclipse.jgit.transport.RemoteRefUpdate
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import java.io.File
 
 class RexGitProgressMonitor : ProgressMonitor {
     override fun start(totalTasks: Int) {}
@@ -9,13 +15,6 @@ class RexGitProgressMonitor : ProgressMonitor {
     override fun endTask() {}
     override fun isCancelled(): Boolean = false
 }
-
-import android.content.Context
-import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.storage.file.WindowCacheConfig
-import org.eclipse.jgit.transport.RemoteRefUpdate
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
-import java.io.File
 
 data class RexGitNativeResult(
     val success: Boolean,
