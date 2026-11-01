@@ -3,9 +3,12 @@ package com.rexaps.rexai
 import androidx.compose.runtime.Composable
 
 @Composable
-internal fun ChatGPTScreen(onBack: () -> Unit) {
+fun ChatGPTScreen(holder: RexAIWebStateHolder, onBack: () -> Unit) {
     RexAIWebViewScreen(
-        provider = RexAIProvider.CHATGPT,
+        providerId = "chatgpt",
+        title = "ChatGPT",
+        startUrl = "https://chatgpt.com/",
+        holder = holder,
         onBack = onBack
     )
 }

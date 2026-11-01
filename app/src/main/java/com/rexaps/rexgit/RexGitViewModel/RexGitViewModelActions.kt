@@ -1,171 +1,122 @@
 package com.rexaps.rexgit
 
-import java.io.File
+import androidx.lifecycle.viewModelScope
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.update
 
-internal fun RexGitViewModel.__splitImpl_refresh() {
-        launchIO {
-            _state.update {
-                it.copy(isLoading = true)
-            }
-
-            try {
-                val repos = repositoryManager.scan()
-                val (path, fallback) = storageInfo()
-
-                _state.update {
-                    it.copy(
-                        repositories = repos,
-                        storagePath = path,
-                        storageFallback = fallback
-                    )
-                }
-
-                try {
-                    val auth = externalGithubAuth(reload = true)
-
-                    if (auth != null) {
-                        _state.update {
-                            it.copy(
-                                githubUsername = auth.username,
-                                isGithubConnected = true
-                            )
-                        }
-
-                        fetchGithubRepositories(auth)
-                    } else {
-                        _state.update {
-                            it.copy(
-                                githubUsername = null,
-                                isGithubConnected = false,
-                                accounts = emptyList(),
-                                githubRepositories = emptyList()
-                            )
-                        }
-                    }
-                } catch (t: Throwable) {
-                    fail(
-                        "Could not connect to GitHub:\n" +
-                            t.readableMessage("Invalid or expired token")
-                    )
-                }
-            } finally {
-                _state.update {
-                    it.copy(isLoading = false)
-                }
-            }
-        }
-    }
-
-internal fun RexGitViewModel.__splitImpl_saveEditor() {
-        val path = _state.value.editorPath
-            ?: return
-
-        if (_state.value.isSaving) return
-
-        val content = editorBuffer
-
-        launchIO {
-            _state.update {
-                it.copy(isSaving = true)
-            }
-
-            try {
-                File(path).writeText(content)
-
-                val repo = _state.value.selectedRepository
-
-                val status =
-                    if (repo != null && repo.isGitRepository) {
-                        repositoryManager.status(repo)
-                    } else {
-                        null
-                    }
-
-                _state.update {
-                    it.copy(
-                        editorDirty = editorBuffer != content,
-                        gitStatus = status ?: it.gitStatus,
-                        readmeContent = if (File(path).name.equals("README.md", true)) content else it.readmeContent,
-                        message = "File saved"
-                    )
-                }
-            } finally {
-                _state.update {
-                    it.copy(isSaving = false)
-                }
-            }
-        }
-    }
-
-internal fun RexGitViewModel.__splitImpl_deleteEntry(file: RexGitFile) {
-        val repo = _state.value.selectedRepository
-            ?: return
-
-        launchIO {
-            _state.update {
-                it.copy(
-                    isRepoLoading = true,
-                    error = null
-                )
-            }
-
-            try {
-                val result = repositoryManager.delete(
-                    repo,
-                    file.path
-                )
-
-                reloadRepository(repo)
-
-                if (result.success) {
-                    _state.update {
-                        it.copy(message = result.message)
-                    }
-                } else {
-                    fail(result.message)
-                }
-            } finally {
-                _state.update {
-                    it.copy(isRepoLoading = false)
-                }
-            }
-        }
-    }
-
-internal fun RexGitViewModel.__splitImpl_refreshStatus() {
-        val repo = _state.value.selectedRepository
-            ?: return
-
-        launchIO {
-            _state.update {
-                it.copy(isRepoLoading = true)
-            }
-
-            try {
-                reloadRepository(repo)
-            } finally {
-                _state.update {
-                    it.copy(isRepoLoading = false)
-                }
-            }
-        }
-    }
-
+/** Start one lifecycle-owned polling loop. The screen calls stop when Actions is no longer visible. */
 internal fun RexGitViewModel.startPollingActions() {
-    launchIO {
-        _state.update { it.copy(isPollingActions = true) }
-        while(_state.value.isPollingActions) {
-            refreshActions()
-            kotlinx.coroutines.delay(5000)
+    if (actionsPollingJob?.isActive == true) return
+    _state.update { it.copy(isPollingActions = true) }
+    actionsPollingJob = viewModelScope.launch(Dispatchers.IO) {
+        while (isActive && _state.value.isPollingActions) {
+            val startedAt = System.currentTimeMillis()
+            var nextDelay = 5_000L
+            try {
+                actionsRefreshMutex.withLock {
+                    refreshActionsSnapshot()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (rateLimit: RexGitRateLimitException) {
+                nextDelay = rateLimit.retryAfterMillis.coerceAtLeast(5_000L)
+                _state.update { it.copy(actionsError = rateLimit.message) }
+            } catch (error: Throwable) {
+                _state.update { it.copy(actionsError = error.readableMessage("Could not refresh GitHub Actions")) }
+            }
+            val elapsed = System.currentTimeMillis() - startedAt
+            delay((nextDelay - elapsed).coerceAtLeast(750L))
         }
     }
 }
 
 internal fun RexGitViewModel.stopPollingActions() {
     _state.update { it.copy(isPollingActions = false) }
+    actionsPollingJob?.cancel()
+    actionsPollingJob = null
 }
 
+/** Called by the row selection. Jobs/steps come from GitHub's workflow-run jobs endpoint. */
+internal fun RexGitViewModel.__splitImpl_selectWorkflowRun(runId: Long) {
+    _state.update {
+        it.copy(
+            selectedWorkflowRunId = runId,
+            workflowJobs = emptyList(),
+            isWorkflowDetailsLoading = true,
+            actionsError = null
+        )
+    }
+    launchIO {
+        try {
+            actionsRefreshMutex.withLock { refreshActionsSnapshot() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            _state.update {
+                it.copy(
+                    isWorkflowDetailsLoading = false,
+                    actionsError = error.readableMessage("Could not load workflow details")
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Lightweight five-second refresh. Unlike the initial repository load, this does not refetch
+ * metadata, releases, tags or all artifact lists on every tick. It fetches run status and,
+ * when a run is open, that run's complete jobs/steps.
+ */
+private suspend fun RexGitViewModel.refreshActionsSnapshot() {
+    val repo = _state.value.selectedRepository ?: return
+    val slug = repositorySlug(repo) ?: return
+    // Public repositories can expose Actions data without authentication; private repos
+    // still surface GitHub's normal 403/404 response when the token is missing or limited.
+    val auth = externalGithubAuth()
+    val runs = github.listWorkflowRuns(auth?.token, slug.first, slug.second)
+    val current = _state.value
+    val selectedRunId = current.selectedWorkflowRunId
+        ?.takeIf { id -> runs.any { it.id == id } }
+        ?: current.selectedWorkflowRunId
+    val jobs = selectedRunId?.let {
+        github.listWorkflowJobs(auth?.token, slug.first, slug.second, it)
+    }.orEmpty()
+
+    _state.update { latest ->
+        if (latest.selectedRepository?.path != repo.path) latest else {
+            val selectionStillMatches = latest.selectedWorkflowRunId == selectedRunId
+            latest.copy(
+                workflowRuns = runs,
+                workflowJobs = if (selectionStillMatches) jobs else latest.workflowJobs,
+                isWorkflowDetailsLoading = if (selectionStillMatches) false else latest.isWorkflowDetailsLoading,
+                actionsLastUpdatedAt = System.currentTimeMillis(),
+                actionsError = null
+            )
+        }
+    }
+}
+
+/** Explicit refresh button; the same lightweight path is used to avoid redundant API calls. */
 internal fun RexGitViewModel.refreshActions() {
-    // Polling logic for GitHub Actions
+    launchIO {
+        try {
+            actionsRefreshMutex.withLock { refreshActionsSnapshot() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            _state.update {
+                it.copy(
+                    isWorkflowDetailsLoading = false,
+                    actionsError = error.readableMessage("Could not refresh GitHub Actions")
+                )
+            }
+        }
+    }
 }

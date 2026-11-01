@@ -14,6 +14,16 @@ data class RexMotionSettings(
     val effectIntensity: Int = 72
 )
 
+/** Process-wide observable motion preference consumed by the shell and shared visual components. */
+object RexMotionRuntime {
+    var settings by mutableStateOf(RexMotionSettings())
+        private set
+
+    fun update(value: RexMotionSettings) {
+        settings = value.copy(effectIntensity = value.effectIntensity.coerceIn(0, 100))
+    }
+}
+
 /** One process-wide source of truth. Subscribe for live theme updates; preview never persists until commit. */
 class RexThemeManager(context: Context) {
     private val appContext = context.applicationContext
@@ -25,6 +35,10 @@ class RexThemeManager(context: Context) {
         private set
     var motionSettings by mutableStateOf(loadMotion())
         private set
+
+    init {
+        RexMotionRuntime.update(motionSettings)
+    }
 
     fun getCurrentTheme(): RexDesignTokens = current
     fun getDefaultTheme(): RexDesignTokens = RexThemeRegistry.default
@@ -54,6 +68,7 @@ class RexThemeManager(context: Context) {
     }
     fun updateMotion(settings: RexMotionSettings) {
         motionSettings = settings
+        RexMotionRuntime.update(settings)
         prefs.edit().putString(KEY_LEVEL, settings.level.name)
             .putBoolean(KEY_REDUCE, settings.followSystemReduceMotion)
             .putInt(KEY_INTENSITY, settings.effectIntensity.coerceIn(0,100)).apply()

@@ -1,72 +1,80 @@
 package com.rexaps.rexgit
 
 import org.eclipse.jgit.lib.ProgressMonitor
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+
+/** Progress reported by JGit. Percent is null when JGit does not expose a useful total. */
+data class GitProgressState(
+    val taskTitle: String = "Preparing Git operation…",
+    val completedUnits: Int = 0,
+    val totalUnits: Int = 0,
+    val completedTasks: Int = 0,
+    val totalTasks: Int = 0,
+    val percent: Int? = null,
+    val finished: Boolean = false
+)
 
 /**
- * JGit progress adapter. It exposes real task progress to the UI without
- * depending on a notification implementation or Android UI classes.
- * A percentage is available only when JGit reports a positive totalWork.
+ * Converts JGit's task callbacks into a stable UI progress value.
+ * JGit reports work units rather than network bytes, so the percentage is an
+ * estimate across its tasks and is never presented as downloaded bytes.
  */
-data class GitProgressState(
-    val title: String = "",
-    val totalWork: Int = 0,
-    val completed: Int = 0,
-    val isDone: Boolean = false
-) {
-    val percentage: Int?
-        get() = if (totalWork > 0) {
-            ((completed.toLong() * 100L) / totalWork).toInt().coerceIn(0, 100)
-        } else null
-}
-
-class RexGitProgressMonitor : ProgressMonitor {
-    private val _progress = MutableStateFlow(GitProgressState())
-    val progress = _progress.asStateFlow()
-
-    private var currentWork = 0
-    @Volatile private var cancelled = false
+class RexGitProgressMonitor(
+    private val onProgress: (GitProgressState) -> Unit = {},
+    private val cancelled: () -> Boolean = { false }
+) : ProgressMonitor {
+    private var taskCount = 0
+    private var finishedTasks = 0
+    private var currentTitle = "Preparing Git operation…"
+    private var currentTotal = 0
+    private var currentCompleted = 0
 
     override fun start(totalTasks: Int) {
-        currentWork = 0
-        cancelled = false
-        _progress.value = GitProgressState(title = "Preparing Git operation")
+        taskCount = totalTasks.coerceAtLeast(0)
+        finishedTasks = 0
+        currentTitle = "Preparing Git operation…"
+        currentTotal = 0
+        currentCompleted = 0
+        publish()
     }
 
     override fun beginTask(title: String, totalWork: Int) {
-        currentWork = 0
-        _progress.value = GitProgressState(
-            title = title,
-            totalWork = totalWork.coerceAtLeast(0),
-            completed = 0,
-            isDone = false
-        )
+        currentTitle = title.ifBlank { "Working…" }
+        currentTotal = totalWork.coerceAtLeast(0)
+        currentCompleted = 0
+        publish()
     }
 
     override fun update(completed: Int) {
-        currentWork = (currentWork + completed.coerceAtLeast(0)).coerceAtLeast(0)
-        _progress.update { state ->
-            state.copy(
-                completed = if (state.totalWork > 0) currentWork.coerceAtMost(state.totalWork)
-                else currentWork
-            )
-        }
+        currentCompleted = (currentCompleted + completed.coerceAtLeast(0))
+            .let { if (currentTotal > 0) it.coerceAtMost(currentTotal) else it }
+        publish()
     }
 
     override fun endTask() {
-        _progress.update { state ->
-            state.copy(
-                completed = if (state.totalWork > 0) state.totalWork else state.completed,
-                isDone = true
-            )
-        }
+        finishedTasks = (finishedTasks + 1).coerceAtMost(taskCount)
+        currentCompleted = currentTotal
+        publish()
     }
 
-    override fun isCancelled(): Boolean = cancelled
+    override fun isCancelled(): Boolean = cancelled()
 
-    fun cancel() {
-        cancelled = true
+    private fun publish() {
+        val taskFraction = if (currentTotal > 0) {
+            (currentCompleted.toFloat() / currentTotal.toFloat()).coerceIn(0f, 1f)
+        } else 0f
+        val percent = if (taskCount > 0) {
+            (((finishedTasks + taskFraction) / taskCount.toFloat()) * 100f)
+                .toInt().coerceIn(0, 100)
+        } else null
+        onProgress(
+            GitProgressState(
+                taskTitle = currentTitle,
+                completedUnits = currentCompleted,
+                totalUnits = currentTotal,
+                completedTasks = finishedTasks,
+                totalTasks = taskCount,
+                percent = percent
+            )
+        )
     }
 }

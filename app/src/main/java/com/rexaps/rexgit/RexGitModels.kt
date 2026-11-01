@@ -97,6 +97,28 @@ data class RexGitWorkflowRun(
     val actor: String = ""
 )
 
+
+data class RexGitWorkflowStep(
+    val number: Int,
+    val name: String,
+    val status: String,
+    val conclusion: String?,
+    val startedAt: String,
+    val completedAt: String
+)
+
+data class RexGitWorkflowJob(
+    val id: Long,
+    val runId: Long,
+    val name: String,
+    val status: String,
+    val conclusion: String?,
+    val startedAt: String,
+    val completedAt: String,
+    val htmlUrl: String,
+    val steps: List<RexGitWorkflowStep> = emptyList()
+)
+
 data class RexGitArtifact(
     val id: Long,
     val name: String,
@@ -156,6 +178,10 @@ data class RexGitUiState(
     val workflows: List<RexGitWorkflow> = emptyList(),
     val workflowRuns: List<RexGitWorkflowRun> = emptyList(),
     val workflowArtifacts: List<RexGitArtifact> = emptyList(),
+    val selectedWorkflowRunId: Long? = null,
+    val workflowJobs: List<RexGitWorkflowJob> = emptyList(),
+    val isWorkflowDetailsLoading: Boolean = false,
+    val actionsLastUpdatedAt: Long? = null,
     val releases: List<RexGitRelease> = emptyList(),
     val repositoryMetadata: RexGitGithubRepository? = null,
     val repositoryTags: List<String> = emptyList(),
@@ -167,6 +193,9 @@ data class RexGitUiState(
     val downloadingArtifact: String? = null,
     val downloadedBytes: Long = 0L,
     val downloadTotalBytes: Long? = null,
+    val gitOperationTitle: String? = null,
+    val gitOperationKey: String? = null,
+    val gitOperationProgress: GitProgressState? = null,
 
     val editorPath: String? = null,
     val editorContent: String = "",

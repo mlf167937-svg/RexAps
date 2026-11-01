@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +32,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.rexaps.ui.theme.RexAnimationLevel
+import com.rexaps.ui.theme.RexMotionRuntime
 
 /** Minimal, purpose-drawn symbols for the home module tiles. Geometry stays stable across themes. */
 @Composable
@@ -67,19 +71,30 @@ internal fun ProModuleAmbientLayer(
     intensity: Float = 0.10f
 ) {
     val colors = MaterialTheme.colorScheme
-    val transition = rememberInfiniteTransition(label = "moduleAmbient-${moduleId}")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 5200 + (moduleId.fold(0) { total, character -> total + character.code } % 1700),
-                easing = LinearEasing
+    val motion = RexMotionRuntime.settings
+    val animated = motion.level != RexAnimationLevel.OFF
+    val baseDuration = 5200 + (moduleId.fold(0) { total, character -> total + character.code } % 1700)
+    val duration = when (motion.level) {
+        RexAnimationLevel.FULL -> (baseDuration * 0.82f).toInt()
+        RexAnimationLevel.BALANCED -> baseDuration
+        RexAnimationLevel.SAVER -> (baseDuration * 1.55f).toInt()
+        RexAnimationLevel.OFF -> 0
+    }
+    val phaseState = if (animated) {
+        rememberInfiniteTransition(label = "moduleAmbient-${moduleId}").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = duration.coerceAtLeast(1), easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
             ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "moduleGlow-${moduleId}"
-    )
+            label = "moduleGlow-${moduleId}"
+        )
+    } else {
+        remember { mutableFloatStateOf(0f) }
+    }
+    val phase by phaseState
+    val effectiveIntensity = intensity * motion.effectIntensity.coerceIn(0, 100) / 72f
 
     Canvas(modifier = modifier) {
         val radius = size.maxDimension * 0.74f
@@ -111,8 +126,8 @@ internal fun ProModuleAmbientLayer(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    colors.primary.copy(alpha = intensity),
-                    colors.tertiary.copy(alpha = intensity * 0.34f),
+                    colors.primary.copy(alpha = effectiveIntensity),
+                    colors.tertiary.copy(alpha = effectiveIntensity * 0.34f),
                     Color.Transparent
                 ),
                 center = center,

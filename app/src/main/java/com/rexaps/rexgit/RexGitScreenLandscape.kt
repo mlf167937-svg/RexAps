@@ -103,9 +103,11 @@ internal fun RepositoryScreenLandscape(
     onDownloadAsset: (String, String) -> Unit,
     onOpen: (RexGitFile) -> Unit,
     onNavigate: (String?) -> Unit,
-    onPull: () -> Unit
+    onPull: () -> Unit,
+    onSelectRun: (Long) -> Unit,
+    onCloseRunDetails: () -> Unit
 ) {
-        return __splitImpl_RepositoryScreenLandscape(state, host, onBack, onRefresh, onRefreshHub, onDownloadAsset, onOpen, onNavigate, onPull)
+        return __splitImpl_RepositoryScreenLandscape(state, host, onBack, onRefresh, onRefreshHub, onDownloadAsset, onOpen, onNavigate, onPull, onSelectRun, onCloseRunDetails)
     }
 
 // ============================================================

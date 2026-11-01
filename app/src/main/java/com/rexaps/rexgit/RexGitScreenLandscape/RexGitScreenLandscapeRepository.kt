@@ -4,6 +4,9 @@
 
 package com.rexaps.rexgit
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -30,14 +33,16 @@ internal fun __splitImpl_RepositoryScreenLandscape(
     onDownloadAsset: (String, String) -> Unit,
     onOpen: (RexGitFile) -> Unit,
     onNavigate: (String?) -> Unit,
-    onPull: () -> Unit
+    onPull: () -> Unit,
+    onSelectRun: (Long) -> Unit,
+    onCloseRunDetails: () -> Unit
 ) {
     val repo = state.selectedRepository ?: return
 
     var showChanges by host.showChanges
 
     val changes = state.gitStatus.changes
-    val busy = state.isPushing || state.isPulling || state.isRepoLoading
+    val busy = state.isPushing || state.isPulling || state.isCloning || state.isRepoLoading
 
     Row(
         Modifier
@@ -147,7 +152,15 @@ internal fun __splitImpl_RepositoryScreenLandscape(
                         onNew = { host.createMenu.value = true },
                         modifier = Modifier.fillMaxSize()
                     )
-                    2 -> RexGitActionsPanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, onChooseAccount = { host.githubDialog.value = true }, modifier = Modifier.fillMaxSize())
+                    2 -> RexGitActionsPanel(
+                        state = state,
+                        onRefresh = onRefreshHub,
+                        onDownload = onDownloadAsset,
+                        onChooseAccount = { host.githubDialog.value = true },
+                        onSelectRun = onSelectRun,
+                        onCloseRunDetails = onCloseRunDetails,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
                 }
             }
@@ -184,7 +197,12 @@ internal fun __splitImpl_RexGitScreenLandscape(
         ) {
             Crossfade(
                 targetState = screen,
-                animationSpec = tween(160)
+                animationSpec = tween(when (RexMotionRuntime.settings.level) {
+                    RexAnimationLevel.OFF -> 0
+                    RexAnimationLevel.SAVER -> 90
+                    RexAnimationLevel.BALANCED -> 160
+                    RexAnimationLevel.FULL -> 260
+                })
             ) { target ->
                 when (target) {
                     2 -> editor?.let {
@@ -212,7 +230,9 @@ internal fun __splitImpl_RexGitScreenLandscape(
                             if (path == null) viewModel.openRoot()
                             else viewModel.openDirectory(path)
                         },
-                        onPull = viewModel::pull
+                        onPull = viewModel::pull,
+                        onSelectRun = viewModel::selectWorkflowRun,
+                        onCloseRunDetails = viewModel::clearWorkflowRunSelection
                     )
 
                     else -> HomeScreenLandscape(

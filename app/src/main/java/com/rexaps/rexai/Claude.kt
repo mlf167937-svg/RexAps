@@ -3,9 +3,12 @@ package com.rexaps.rexai
 import androidx.compose.runtime.Composable
 
 @Composable
-internal fun ClaudeScreen(onBack: () -> Unit) {
+fun ClaudeScreen(holder: RexAIWebStateHolder, onBack: () -> Unit) {
     RexAIWebViewScreen(
-        provider = RexAIProvider.CLAUDE,
+        providerId = "claude",
+        title = "Claude",
+        startUrl = "https://claude.ai/",
+        holder = holder,
         onBack = onBack
     )
 }

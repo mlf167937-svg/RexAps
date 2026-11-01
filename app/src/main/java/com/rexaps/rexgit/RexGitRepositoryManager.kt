@@ -1,6 +1,7 @@
 package com.rexaps.rexgit
 
 import java.io.File
+import org.eclipse.jgit.lib.ProgressMonitor
 
 /** Returns an error message when the name is not allowed, or null when it is valid. */
 internal fun validateEntryName(raw: String): String? {
@@ -235,9 +236,10 @@ class RexGitRepositoryManager {
     fun pull(
         repository: RexGitRepository,
         username: String? = null,
-        token: String? = null
+        token: String? = null,
+        progressMonitor: ProgressMonitor? = null
     ): RexGitNativeResult {
-        return native.pull(repository, username, token)
+        return native.pull(repository, username, token, progressMonitor)
     }
 
     fun clone(
@@ -246,7 +248,8 @@ class RexGitRepositoryManager {
         username: String? = null,
         token: String? = null,
         accountNickname: String? = username,
-        globalOwner: String? = null
+        globalOwner: String? = null,
+        progressMonitor: ProgressMonitor? = null
     ): RexGitNativeResult {
         val destination = if (!globalOwner.isNullOrBlank()) {
             RexGitStorage.globalRepository(globalOwner, name)
@@ -257,7 +260,8 @@ class RexGitRepositoryManager {
             url = url,
             destination = destination,
             username = username,
-            token = token
+            token = token,
+            progressMonitor = progressMonitor
         )
     }
 }

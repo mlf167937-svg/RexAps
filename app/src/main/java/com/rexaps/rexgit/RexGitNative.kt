@@ -1,5 +1,6 @@
 package com.rexaps.rexgit
 
+import org.eclipse.jgit.lib.ProgressMonitor
 import android.content.Context
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.storage.file.WindowCacheConfig
@@ -67,7 +68,8 @@ class RexGitNative {
         url: String,
         destination: File,
         username: String? = null,
-        token: String? = null
+        token: String? = null,
+        progressMonitor: ProgressMonitor? = null
     ): RexGitNativeResult {
 
         if (destination.exists()) {
@@ -84,6 +86,7 @@ class RexGitNative {
                 .setURI(url)
                 .setDirectory(destination)
 
+            progressMonitor?.let(command::setProgressMonitor)
             credentials(username, token)?.let {
                 command.setCredentialsProvider(it)
             }
@@ -230,11 +233,13 @@ class RexGitNative {
     fun pull(
         repository: RexGitRepository,
         username: String? = null,
-        token: String? = null
+        token: String? = null,
+        progressMonitor: ProgressMonitor? = null
     ): RexGitNativeResult {
         return try {
             Git.open(File(repository.path)).use { git ->
                 val command = git.pull()
+                progressMonitor?.let(command::setProgressMonitor)
 
                 credentials(username, token)?.let {
                     command.setCredentialsProvider(it)

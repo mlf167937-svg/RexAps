@@ -121,56 +121,84 @@ internal fun RexGitViewModel.__splitImpl_push(
     }
 
 internal fun RexGitViewModel.__splitImpl_pull() {
-        val repo = _state.value.selectedRepository
-            ?: return
+    val repo = _state.value.selectedRepository ?: return
+    val current = _state.value
+    if (!repo.isGitRepository || current.isPulling || current.isPushing || current.isCloning) return
 
-        val current = _state.value
-
-        if (
-            !repo.isGitRepository ||
-            current.isPulling ||
-            current.isPushing
-        ) {
-            return
+    launchIO {
+        val title = "Pull ${repo.name}"
+        val key = "pull:${repo.path}"
+        var lastNotificationPercent: Int? = null
+        var lastIndeterminateNotificationAt = 0L
+        _state.update {
+            it.copy(
+                isPulling = true,
+                gitOperationTitle = title,
+                gitOperationKey = key,
+                gitOperationProgress = GitProgressState(taskTitle = "Connecting to remote…"),
+                error = null,
+                message = null
+            )
         }
+        RexGitOperationNotifications.progress(getApplication(), key, title, "Connecting to remote…", null)
 
-        launchIO {
-            _state.update {
-                it.copy(
-                    isPulling = true,
-                    error = null,
-                    message = null
+        try {
+            val auth = externalGithubAuth() ?: throw missingAuthError()
+            val monitor = RexGitProgressMonitor(onProgress = { progress ->
+                _state.update { cur ->
+                    if (cur.gitOperationKey != key) cur else cur.copy(gitOperationProgress = progress)
+                }
+                val percent = progress.percent
+                val now = System.currentTimeMillis()
+                val shouldNotify = when {
+                    percent == null -> now - lastIndeterminateNotificationAt >= 1_200L
+                    percent != lastNotificationPercent && (percent == 0 || percent == 100 || percent % 5 == 0) -> true
+                    else -> false
+                }
+                if (shouldNotify) {
+                    if (percent == null) lastIndeterminateNotificationAt = now
+                    lastNotificationPercent = percent
+                    RexGitOperationNotifications.progress(
+                        getApplication(), key, title,
+                        progress.taskTitle.ifBlank { "Pulling changes…" }, percent
+                    )
+                }
+            })
+            val result = repositoryManager.pull(repo, auth.username, auth.token, monitor)
+            reloadRepository(repo)
+            _state.update { cur ->
+                cur.copy(
+                    message = result.message.takeIf { result.success },
+                    error = result.message.takeUnless { result.success },
+                    gitOperationProgress = (cur.gitOperationProgress ?: GitProgressState()).copy(
+                        taskTitle = if (result.success) "Pull complete" else "Pull failed",
+                        percent = if (result.success) 100 else cur.gitOperationProgress?.percent,
+                        finished = true
+                    )
                 )
             }
-
-            try {
-                val auth = externalGithubAuth()
-                    ?: throw missingAuthError()
-
-                val result = repositoryManager.pull(
-                    repo,
-                    auth.username,
-                    auth.token
+            if (result.success) RexGitOperationNotifications.completed(getApplication(), key, title, result.message)
+            else RexGitOperationNotifications.failed(getApplication(), key, title, result.message)
+        } catch (cancelled: CancellationException) {
+            RexGitOperationNotifications.failed(getApplication(), key, title, "Pull cancelled")
+            throw cancelled
+        } catch (t: Throwable) {
+            val message = t.readableMessage("Pull failed")
+            fail(message)
+            RexGitOperationNotifications.failed(getApplication(), key, title, message)
+        } finally {
+            kotlinx.coroutines.delay(1_000)
+            _state.update { cur ->
+                if (cur.gitOperationKey != key) cur else cur.copy(
+                    isPulling = false,
+                    gitOperationTitle = null,
+                    gitOperationKey = null,
+                    gitOperationProgress = null
                 )
-
-                reloadRepository(repo)
-
-                if (result.success) {
-                    _state.update {
-                        it.copy(message = result.message)
-                    }
-                } else {
-                    _state.update {
-                        it.copy(error = result.message)
-                    }
-                }
-            } finally {
-                _state.update {
-                    it.copy(isPulling = false)
-                }
             }
         }
     }
+}
 
 internal fun RexGitViewModel.__splitImpl_loadInitial() {
         launchIO {

@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.view.WindowCompat
 import com.rexaps.rexlife.RexLifeScreen
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
 import com.rexaps.rexai.RexAIScreen
 import com.rexaps.rexcoder.RexCoderScreen
 import com.rexaps.rexfox.RexFoxScreen
@@ -39,6 +41,13 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
 
     val themeStore = remember { RexThemeStore(activity) }
     var themeOption by remember { mutableStateOf(themeStore.load()) }
+    val motionSettings = RexMotionRuntime.settings
+    val routeMotionMillis = when (motionSettings.level) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> 120
+        RexAnimationLevel.BALANCED -> 220
+        RexAnimationLevel.FULL -> 360
+    }
 
     var themeApplying by remember { mutableStateOf(false) }
     var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
@@ -85,7 +94,7 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
                     ProAmbientBackdrop(Modifier.fillMaxSize())
                     Crossfade(
                         targetState = routeLoading,
-                        animationSpec = tween(320),
+                        animationSpec = tween(routeMotionMillis),
                         label = "routeTransition"
                     ) { isLoading ->
                         if (isLoading) {
@@ -148,12 +157,12 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
                                 RexRoute.REXSPACEX ->
                                     RexSpaceXScreen(onExit = { route = RexRoute.NONE })
 
+                                RexRoute.REXAI -> RexAIScreen(onExit = { route = RexRoute.NONE })
+
                                 RexRoute.REXWARP ->
                                     com.rexaps.rexwarp.RexWarpScreen(
                                         onExit = { route = RexRoute.NONE }
                                     )
-
-                                RexRoute.REXAI -> RexAIScreen()
 
                                 RexRoute.NONE -> Unit
                             }
@@ -207,8 +216,8 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
 
                 AnimatedVisibility(
                     visible = themeApplying,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(150))
+                    enter = fadeIn(tween(if (routeMotionMillis == 0) 0 else 150)),
+                    exit = fadeOut(tween(if (routeMotionMillis == 0) 0 else 150))
                 ) {
                     pendingTheme?.let { target ->
                         RexThemeLoadingOverlay(

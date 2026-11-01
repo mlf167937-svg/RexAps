@@ -1,6 +1,9 @@
 // RexAppsScreenLandscape.kt
 package com.rexaps.ui
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -44,7 +47,12 @@ internal fun RexAppsScreenLandscape(shell: RexShell) {
             Crossfade(
                 targetState = shell.selectedTab,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-                animationSpec = tween(320),
+                animationSpec = tween(when (RexMotionRuntime.settings.level) {
+                RexAnimationLevel.OFF -> 0
+                RexAnimationLevel.SAVER -> 110
+                RexAnimationLevel.BALANCED -> 220
+                RexAnimationLevel.FULL -> 340
+            }),
                 label = "tabLandscape"
             ) { tab ->
                 val noPadding = PaddingValues(0.dp)

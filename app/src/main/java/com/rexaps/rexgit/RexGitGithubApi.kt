@@ -8,6 +8,11 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 
+class RexGitRateLimitException(
+    message: String,
+    val retryAfterMillis: Long
+) : IllegalStateException(message)
+
 class RexGitGithubApi {
 
     fun getUser(token: String): String = JSONObject(request("/user", token)).getString("login")
@@ -118,6 +123,78 @@ class RexGitGithubApi {
         }
         return RexGitActionsSnapshot(workflows, runs, artifacts)
     }
+
+    /** Lightweight polling endpoint: one request for the latest workflow runs. */
+    fun listWorkflowRuns(token: String?, owner: String, repository: String): List<RexGitWorkflowRun> {
+        val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}"
+        val payload = request("$slug/actions/runs?per_page=20", token.orEmpty())
+        val json = responseArray(payload, "workflow_runs", "Actions workflow runs")
+        return (0 until json.length()).mapNotNull { index ->
+            json.optJSONObject(index)?.let(::parseWorkflowRun)
+        }
+    }
+
+    /** Returns the actual jobs and step statuses for a selected workflow run. */
+    fun listWorkflowJobs(
+        token: String?,
+        owner: String,
+        repository: String,
+        runId: Long
+    ): List<RexGitWorkflowJob> {
+        val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}"
+        val allJobs = mutableListOf<RexGitWorkflowJob>()
+        var page = 1
+        while (page <= 10) {
+            val payload = request("$slug/actions/runs/$runId/jobs?per_page=100&page=$page", token.orEmpty())
+            val jobs = responseArray(payload, "jobs", "Actions workflow jobs")
+            for (index in 0 until jobs.length()) {
+                val item = jobs.optJSONObject(index) ?: continue
+                val stepsJson = item.optJSONArray("steps") ?: JSONArray()
+                val steps = (0 until stepsJson.length()).mapNotNull { stepIndex ->
+                    val step = stepsJson.optJSONObject(stepIndex) ?: return@mapNotNull null
+                    RexGitWorkflowStep(
+                        number = step.optInt("number"),
+                        name = step.optString("name", "Step ${stepIndex + 1}"),
+                        status = step.optString("status", "unknown"),
+                        conclusion = step.optString("conclusion").takeIf { it.isNotBlank() && it != "null" },
+                        startedAt = step.optString("started_at"),
+                        completedAt = step.optString("completed_at")
+                    )
+                }
+                allJobs += RexGitWorkflowJob(
+                    id = item.optLong("id"),
+                    runId = runId,
+                    name = item.optString("name", "Job"),
+                    status = item.optString("status", "unknown"),
+                    conclusion = item.optString("conclusion").takeIf { it.isNotBlank() && it != "null" },
+                    startedAt = item.optString("started_at"),
+                    completedAt = item.optString("completed_at"),
+                    htmlUrl = item.optString("html_url"),
+                    steps = steps
+                )
+            }
+            if (jobs.length() < 100) break
+            page++
+        }
+        return allJobs
+    }
+
+    private fun parseWorkflowRun(item: JSONObject): RexGitWorkflowRun = RexGitWorkflowRun(
+        id = item.optLong("id"),
+        name = item.optString("name", "Workflow"),
+        title = item.optString("display_title", item.optString("name", "Workflow run")),
+        event = item.optString("event", "unknown"),
+        status = item.optString("status", "unknown"),
+        conclusion = item.optString("conclusion").takeIf { it.isNotBlank() && it != "null" },
+        createdAt = item.optString("created_at"),
+        updatedAt = item.optString("updated_at"),
+        htmlUrl = item.optString("html_url"),
+        runNumber = item.optInt("run_number"),
+        branch = item.optString("head_branch"),
+        headSha = item.optString("head_sha"),
+        commitMessage = item.optJSONObject("head_commit")?.optString("message").orEmpty(),
+        actor = item.optJSONObject("actor")?.optString("login").orEmpty()
+    )
 
     fun listReleases(token: String?, owner: String, repository: String): List<RexGitRelease> {
         val slug = "/repos/${pathPart(owner)}/${pathPart(repository)}/releases?per_page=50"
@@ -268,11 +345,24 @@ class RexGitGithubApi {
             val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
             if (code !in 200..299) {
                 val reason = try { JSONObject(body).optString("message") } catch (_: Throwable) { "" }
+                val rateLimited = reason.contains("rate limit", ignoreCase = true) ||
+                    connection.getHeaderField("X-RateLimit-Remaining") == "0" ||
+                    !connection.getHeaderField("Retry-After").isNullOrBlank()
+                if (code == 429 || (code == 403 && rateLimited)) {
+                    val retryHeader = connection.getHeaderField("Retry-After")?.toLongOrNull()
+                    val resetEpoch = connection.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+                    val resetDelay = resetEpoch?.let { (it * 1000L - System.currentTimeMillis()).coerceAtLeast(0L) }
+                    val retryMillis = (retryHeader?.times(1000L) ?: resetDelay ?: 30_000L).coerceAtLeast(5_000L)
+                    throw RexGitRateLimitException(
+                        "GitHub rate limit reached. Automatic refresh will retry after ${retryMillis / 1000L}s.",
+                        retryMillis
+                    )
+                }
                 throw IllegalStateException(
                     when (code) {
                         401 -> "Invalid or expired token (401)"
-                        403 -> "Access denied or rate limited (403). For private repositories, check that the selected token can access this repository and has Actions: read permission. $reason"
-                        404 -> "Repository, workflow, or release not found (404). GitHub may also return 404 for a private repository the selected token cannot access; verify the owner/repository and token repository access."
+                        403 -> "Access denied (403). For private repositories, check that the selected token can access this repository and has Actions: read permission. $reason"
+                        404 -> "Repository, workflow, or release not found (404). GitHub may also return 404 for a private repository the selected token cannot access; verify the owner/repository and token access."
                         else -> "GitHub API $code. $reason"
                     }.trim()
                 )

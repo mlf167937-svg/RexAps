@@ -6,7 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.rexaps.ui.theme.RexAnimationLevel
+import com.rexaps.ui.theme.RexThemeManager
+
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -83,6 +92,10 @@ fun RexSettingsScreen(
 ) {
     val colors = MaterialTheme.colorScheme
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val motionManager = remember(context) { RexThemeManager(context) }
+    val motionSettings = motionManager.motionSettings
+    val animationEnabled = motionSettings.level != RexAnimationLevel.OFF
 
     Column(
         modifier = Modifier
@@ -224,6 +237,87 @@ fun RexSettingsScreen(
                     )
                 }
                 Text("›", style = MaterialTheme.typography.headlineMedium, color = colors.primary)
+            }
+        }
+
+        /* ── Animation & performance ── */
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsSectionTitle(
+                title = "Animation & Performance",
+                subtitle = "Atur gerakan visual agar sesuai dengan kemampuan perangkat"
+            )
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = colors.surfaceVariant.copy(alpha = .58f),
+                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = .65f))
+            ) {
+                Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(colors.primary.copy(alpha = .14f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = colors.primary)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Animation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (animationEnabled) "Aktif · ${when (motionSettings.level) { RexAnimationLevel.SAVER -> "Low"; RexAnimationLevel.BALANCED -> "Medium"; RexAnimationLevel.FULL -> "High"; RexAnimationLevel.OFF -> "Off" }}"
+                                else "Nonaktif · mode hemat animasi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = animationEnabled,
+                            onCheckedChange = { enabled ->
+                                val nextLevel = if (enabled) {
+                                    if (motionSettings.level == RexAnimationLevel.OFF) RexAnimationLevel.BALANCED else motionSettings.level
+                                } else RexAnimationLevel.OFF
+                                motionManager.updateMotion(motionSettings.copy(level = nextLevel))
+                            }
+                        )
+                    }
+                    if (animationEnabled) {
+                        Text("ADVANCED ANIMATION", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                RexAnimationLevel.SAVER to "LOW",
+                                RexAnimationLevel.BALANCED to "MEDIUM",
+                                RexAnimationLevel.FULL to "HIGH"
+                            ).forEach { (level, label) ->
+                                FilterChip(
+                                    selected = motionSettings.level == level,
+                                    onClick = { motionManager.updateMotion(motionSettings.copy(level = level)) },
+                                    label = { Text(label, fontWeight = FontWeight.SemiBold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = colors.primaryContainer,
+                                        selectedLabelColor = colors.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                        Text(
+                            when (motionSettings.level) {
+                                RexAnimationLevel.SAVER -> "Low: animasi ringan dan jumlah efek visual dikurangi."
+                                RexAnimationLevel.BALANCED -> "Medium: transisi halus dengan efek visual seimbang."
+                                RexAnimationLevel.FULL -> "High: efek visual lebih kaya; penggunaan resource bisa meningkat."
+                                RexAnimationLevel.OFF -> "Animasi nonaktif."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            "Animasi dekoratif dan gerakan background dihentikan. Indikator proses penting tetap ditampilkan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 

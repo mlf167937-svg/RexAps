@@ -5,8 +5,18 @@ import kotlinx.coroutines.flow.update
 
 internal fun RexGitViewModel.__splitImpl_downloadGithubAsset(url: String, rawName: String) {
         if (_state.value.selectedRepository == null) return
-        val name = rawName.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifBlank { "github-download.zip" }
+        val sanitizedName = rawName.substringAfterLast('/')
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(120)
+        val name = sanitizedName.takeUnless { it.isBlank() || it == "." || it == ".." }
+            ?: "github-download.zip"
         launchIO {
+            val notificationKey = "artifact:$name:${System.currentTimeMillis()}"
+            var lastNotificationPercent: Int? = null
+            var lastNotificationAt = 0L
+            RexGitOperationNotifications.progress(
+                getApplication(), notificationKey, "GitHub download: $name", "Preparing download…", null
+            )
             _state.update {
                 it.copy(
                     downloadingArtifact = name,
@@ -35,10 +45,37 @@ internal fun RexGitViewModel.__splitImpl_downloadGithubAsset(url: String, rawNam
                             downloadTotalBytes = total
                         )
                     }
+                    val percent = total?.takeIf { it > 0L }
+                        ?.let { ((received * 100L) / it).toInt().coerceIn(0, 100) }
+                    val now = System.currentTimeMillis()
+                    if (percent != null && percent != lastNotificationPercent &&
+                        (percent == 0 || percent == 100 || percent % 5 == 0)
+                    ) {
+                        lastNotificationPercent = percent
+                        lastNotificationAt = now
+                        RexGitOperationNotifications.progress(
+                            getApplication(), notificationKey, "GitHub download: $name",
+                            "${formatDownloadBytes(received)} / ${total?.let(::formatDownloadBytes) ?: "?"}", percent
+                        )
+                    } else if (now - lastNotificationAt >= 1_500L) {
+                        lastNotificationAt = now
+                        RexGitOperationNotifications.progress(
+                            getApplication(), notificationKey, "GitHub download: $name",
+                            formatDownloadBytes(received), percent
+                        )
+                    }
                 }
                 _state.update { it.copy(message = "Downloaded $name to ${output.parentFile?.absolutePath}") }
+                RexGitOperationNotifications.completed(
+                    getApplication(), notificationKey, "GitHub download complete: $name",
+                    "Saved to Download/RexAps/Github/Artefak/"
+                )
             } catch (t: Throwable) {
-                _state.update { it.copy(downloadError = t.readableMessage("Download failed")) }
+                val message = t.readableMessage("Download failed")
+                _state.update { it.copy(downloadError = message) }
+                RexGitOperationNotifications.failed(
+                    getApplication(), notificationKey, "GitHub download failed: $name", message
+                )
             } finally {
                 _state.update {
                     it.copy(
@@ -50,3 +87,9 @@ internal fun RexGitViewModel.__splitImpl_downloadGithubAsset(url: String, rawNam
             }
         }
     }
+
+private fun formatDownloadBytes(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+    else -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+}

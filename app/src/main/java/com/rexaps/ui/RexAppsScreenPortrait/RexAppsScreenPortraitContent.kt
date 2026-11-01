@@ -1,5 +1,8 @@
 package com.rexaps.ui
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -35,7 +38,12 @@ internal fun __splitImpl_ProFeaturedCard(
     val shape = RoundedCornerShape(32.dp)
     val glow by animateFloatAsState(
         targetValue = if (app.available) 1f else 0.45f,
-        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        animationSpec = tween(when (RexMotionRuntime.settings.level) {
+            RexAnimationLevel.OFF -> 0
+            RexAnimationLevel.SAVER -> 180
+            RexAnimationLevel.BALANCED -> 360
+            RexAnimationLevel.FULL -> 520
+        }, easing = FastOutSlowInEasing),
         label = "featuredModuleGlow"
     )
 
@@ -180,19 +188,49 @@ internal fun __splitImpl_ProFeaturedCard(
 @Composable
 internal fun __splitImpl_ProAmbientBackdrop(modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
-    val inf = rememberInfiniteTransition(label = "rexPremiumAmbient")
-    val drift by inf.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(18500, easing = LinearEasing), RepeatMode.Reverse),
-        label = "ambientDrift"
-    )
-    val sweep by inf.animateFloat(
-        initialValue = -0.25f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(tween(14500, easing = LinearEasing), RepeatMode.Reverse),
-        label = "ambientSweep"
-    )
+    val motion = RexMotionRuntime.settings
+    val animationsEnabled = motion.level != RexAnimationLevel.OFF
+    val duration = when (motion.level) {
+        RexAnimationLevel.FULL -> 10_000
+        RexAnimationLevel.BALANCED -> 18_500
+        RexAnimationLevel.SAVER -> 30_000
+        RexAnimationLevel.OFF -> 0
+    }
+    val driftState = if (animationsEnabled) {
+        rememberInfiniteTransition(label = "rexPremiumAmbientDrift").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(duration, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ambientDrift"
+        )
+    } else {
+        remember { mutableFloatStateOf(0f) }
+    }
+    val drift by driftState
+    val sweepState = if (animationsEnabled) {
+        rememberInfiniteTransition(label = "rexPremiumAmbientSweep").animateFloat(
+            initialValue = -0.25f,
+            targetValue = 1.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween((duration * .78f).toInt().coerceAtLeast(1), easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ambientSweep"
+        )
+    } else {
+        remember { mutableFloatStateOf(-0.25f) }
+    }
+    val sweep by sweepState
+    val dustCount = when (motion.level) {
+        RexAnimationLevel.FULL -> 30
+        RexAnimationLevel.BALANCED -> 18
+        RexAnimationLevel.SAVER -> 7
+        RexAnimationLevel.OFF -> 0
+    }
+    val intensity = motion.effectIntensity / 72f
     Box(modifier.drawBehind {
         val w = size.width
         val h = size.height
@@ -202,22 +240,22 @@ internal fun __splitImpl_ProAmbientBackdrop(modifier: Modifier = Modifier) {
         // Three large, low-contrast color fields produce a living aurora without
         // bitmap blur, off-screen layers, or per-frame layout work.
         drawRect(Brush.radialGradient(
-            colors = listOf(c.primary.copy(alpha = 0.23f), c.primary.copy(alpha = 0.045f), Color.Transparent),
+            colors = listOf(c.primary.copy(alpha = 0.23f * intensity), c.primary.copy(alpha = 0.045f * intensity), Color.Transparent),
             center = Offset(w * (0.12f + 0.58f * drift), h * (0.10f + 0.08f * drift)),
             radius = min * 1.12f
         ))
         drawRect(Brush.radialGradient(
-            colors = listOf(c.tertiary.copy(alpha = 0.17f), c.tertiary.copy(alpha = 0.035f), Color.Transparent),
+            colors = listOf(c.tertiary.copy(alpha = 0.17f * intensity), c.tertiary.copy(alpha = 0.035f * intensity), Color.Transparent),
             center = Offset(w * (0.92f - 0.47f * drift), h * (0.84f - 0.12f * drift)),
             radius = min * 0.94f
         ))
         drawRect(Brush.radialGradient(
-            colors = listOf(c.secondary.copy(alpha = 0.10f), Color.Transparent),
+            colors = listOf(c.secondary.copy(alpha = 0.10f * intensity), Color.Transparent),
             center = Offset(w * (0.82f - 0.2f * drift), h * (0.40f + 0.1f * drift)),
             radius = min * 0.62f
         ))
         drawRect(Brush.linearGradient(
-            colors = listOf(Color.Transparent, c.primary.copy(alpha = 0.055f), c.tertiary.copy(alpha = 0.035f), Color.Transparent),
+            colors = listOf(Color.Transparent, c.primary.copy(alpha = if (animationsEnabled) 0.055f * intensity else 0f), c.tertiary.copy(alpha = if (animationsEnabled) 0.035f * intensity else 0f), Color.Transparent),
             start = Offset(w * (sweep - 0.45f), 0f),
             end = Offset(w * (sweep + 0.45f), h)
         ))
@@ -229,7 +267,7 @@ internal fun __splitImpl_ProAmbientBackdrop(modifier: Modifier = Modifier) {
         drawCircle(c.outlineVariant.copy(alpha = 0.045f), radius = min * 0.34f, center = orbitCenter, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f))
 
         // Deterministic floating dust: cheap Canvas circles, no allocations outside draw.
-        repeat(30) { i ->
+        repeat(dustCount) { i ->
             val direction = if (i % 2 == 0) 0.12f else -0.075f
             val x = ((i * 71f + sweep * w * direction) % w + w) % w
             val y = ((i * 67f + drift * h * (if (i % 3 == 0) 0.035f else -0.018f)) % h + h) % h

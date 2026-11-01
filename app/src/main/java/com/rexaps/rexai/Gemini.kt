@@ -3,9 +3,12 @@ package com.rexaps.rexai
 import androidx.compose.runtime.Composable
 
 @Composable
-internal fun GeminiScreen(onBack: () -> Unit) {
+fun GeminiScreen(holder: RexAIWebStateHolder, onBack: () -> Unit) {
     RexAIWebViewScreen(
-        provider = RexAIProvider.GEMINI,
+        providerId = "gemini",
+        title = "Gemini",
+        startUrl = "https://gemini.google.com/",
+        holder = holder,
         onBack = onBack
     )
 }

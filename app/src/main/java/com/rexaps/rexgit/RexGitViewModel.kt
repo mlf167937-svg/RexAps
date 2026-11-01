@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
 import java.io.File
 
 class RexGitViewModel(
@@ -21,6 +23,8 @@ class RexGitViewModel(
     internal val github = RexGitGithubApi()
     internal val authStore = RexGitAuthStore(application)
     internal val gitDevStore = RexGitGitDevStore(application)
+    internal val actionsRefreshMutex = Mutex()
+    @Volatile internal var actionsPollingJob: Job? = null
     internal val accountPrefs = application
         .getSharedPreferences("rexgit_accounts", android.content.Context.MODE_PRIVATE)
 
@@ -238,6 +242,15 @@ class RexGitViewModel(
         _state.update { it.copy(isRepoHubLoading = true, repoHubError = null, actionsError = null, releasesError = null) }
         loadRepositoryGithubData(repo)
     }
+
+    fun selectWorkflowRun(runId: Long) = this.__splitImpl_selectWorkflowRun(runId)
+
+    fun clearWorkflowRunSelection() {
+        _state.update { it.copy(selectedWorkflowRunId = null, workflowJobs = emptyList(), isWorkflowDetailsLoading = false) }
+    }
+
+    fun startActionsPolling() = this.startPollingActions()
+    fun stopActionsPolling() = this.stopPollingActions()
 
     fun downloadGithubAsset(url: String, rawName: String) {
         return this.__splitImpl_downloadGithubAsset(url, rawName)

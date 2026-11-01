@@ -5,6 +5,11 @@
 
 package com.rexaps.rexgit
 
+import kotlinx.coroutines.awaitCancellation
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.zIndex
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -12,6 +17,12 @@ import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -123,7 +134,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -215,20 +225,72 @@ fun RexGitScreen(
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    if (isLandscape) {
-        RexGitScreenLandscape(
-            state = state,
-            host = host,
-            editor = editor,
-            viewModel = viewModel
-        )
-    } else {
-        RexGitScreenPortrait(
-            state = state,
-            host = host,
-            editor = editor,
-            viewModel = viewModel
-        )
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    var notificationPermissionAsked by rememberSaveable { mutableStateOf(false) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Git operations continue even when notifications are declined. */ }
+    val gitOperationActive = state.isCloning || state.isPulling || state.downloadingArtifact != null
+
+    // Ask only after the user starts a Git operation; the operation itself never waits on permission.
+    LaunchedEffect(gitOperationActive) {
+        if (!gitOperationActive) {
+            notificationPermissionAsked = false
+        } else if (
+            Build.VERSION.SDK_INT >= 33 &&
+            !notificationPermissionAsked &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionAsked = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Poll only while the Actions tab is visible and the host activity is resumed.
+    LaunchedEffect(state.selectedRepository?.path, host.repoTab.value, lifecycleOwner) {
+        if (state.selectedRepository != null && host.repoTab.value == 2) {
+            try {
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    viewModel.startActionsPolling()
+                    awaitCancellation()
+                }
+            } finally {
+                viewModel.stopActionsPolling()
+            }
+        } else {
+            viewModel.stopActionsPolling()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        if (isLandscape) {
+            RexGitScreenLandscape(
+                state = state,
+                host = host,
+                editor = editor,
+                viewModel = viewModel
+            )
+        } else {
+            RexGitScreenPortrait(
+                state = state,
+                host = host,
+                editor = editor,
+                viewModel = viewModel
+            )
+        }
+
+        state.gitOperationProgress?.let { progress ->
+            GitOperationProgressCard(
+                title = state.gitOperationTitle ?: "Git operation",
+                progress = progress,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 12.dp)
+                    .statusBarsPadding()
+                    .zIndex(20f)
+            )
+        }
     }
 
     RexGitScreenController(

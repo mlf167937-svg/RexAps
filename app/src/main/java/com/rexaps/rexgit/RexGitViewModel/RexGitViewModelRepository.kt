@@ -5,6 +5,7 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 
 internal fun RexGitViewModel.__splitImpl_selectRepository(repository: RexGitRepository) {
@@ -77,6 +78,10 @@ internal fun RexGitViewModel.__splitImpl_selectRepository(repository: RexGitRepo
                         workflows = emptyList(),
                         workflowRuns = emptyList(),
                         workflowArtifacts = emptyList(),
+                        selectedWorkflowRunId = null,
+                        workflowJobs = emptyList(),
+                        isWorkflowDetailsLoading = false,
+                        actionsLastUpdatedAt = null,
                         releases = emptyList(),
                         repositoryMetadata = null,
                         repositoryTags = emptyList(),
@@ -101,6 +106,7 @@ internal fun RexGitViewModel.__splitImpl_selectRepository(repository: RexGitRepo
 
 internal fun RexGitViewModel.__splitImpl_loadRepositoryGithubData(repo: RexGitRepository) {
         viewModelScope.launch(Dispatchers.IO) {
+        actionsRefreshMutex.withLock {
             try {
                 val slug = repositorySlug(repo)
                 if (slug == null) {
@@ -138,58 +144,108 @@ internal fun RexGitViewModel.__splitImpl_loadRepositoryGithubData(repo: RexGitRe
                         releasesError = releasesError
                     )
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (t: Throwable) {
                 _state.update { cur -> if (cur.selectedRepository?.path != repo.path) cur else cur.copy(isRepoHubLoading = false, repoHubError = t.readableMessage("Could not load GitHub details")) }
             }
         }
     }
+}
 
 internal fun RexGitViewModel.__splitImpl_cloneRepository(
-        repository: RexGitGithubRepository
-    ) {
-        if (_state.value.isCloning) return
+    repository: RexGitGithubRepository
+) {
+    if (_state.value.isCloning || _state.value.isPulling || _state.value.isPushing) return
 
-        launchIO {
-            _state.update {
-                it.copy(
-                    cloningName = repository.name,
-                    error = null
+    launchIO {
+        val title = "Clone ${repository.fullName}"
+        val key = "clone:${repository.fullName}"
+        var lastNotificationPercent: Int? = null
+        var lastIndeterminateNotificationAt = 0L
+        _state.update {
+            it.copy(
+                cloningName = repository.name,
+                gitOperationTitle = title,
+                gitOperationKey = key,
+                gitOperationProgress = GitProgressState(taskTitle = "Connecting to remote…"),
+                error = null
+            )
+        }
+        RexGitOperationNotifications.progress(
+            getApplication(), key, title, "Connecting to GitHub…", null
+        )
+
+        try {
+            val auth = externalGithubAuth() ?: throw missingAuthError()
+            val upstreamOwner = repository.fullName.substringBefore('/')
+            val monitor = RexGitProgressMonitor(onProgress = { progress ->
+                _state.update { cur ->
+                    if (cur.gitOperationKey != key) cur else cur.copy(gitOperationProgress = progress)
+                }
+                val percent = progress.percent
+                val now = System.currentTimeMillis()
+                val shouldNotify = when {
+                    percent == null -> now - lastIndeterminateNotificationAt >= 1_200L
+                    percent != lastNotificationPercent && (percent == 0 || percent == 100 || percent % 5 == 0) -> true
+                    else -> false
+                }
+                if (shouldNotify) {
+                    if (percent == null) lastIndeterminateNotificationAt = now
+                    lastNotificationPercent = percent
+                    RexGitOperationNotifications.progress(
+                        getApplication(), key, title,
+                        progress.taskTitle.ifBlank { "Cloning repository…" }, percent
+                    )
+                }
+            })
+            val result = repositoryManager.clone(
+                url = repository.cloneUrl,
+                name = repository.name,
+                username = auth.username,
+                token = auth.token,
+                accountNickname = auth.username,
+                globalOwner = upstreamOwner.takeIf { !it.equals(auth.username, ignoreCase = true) },
+                progressMonitor = monitor
+            )
+
+            _state.update { cur ->
+                if (cur.gitOperationKey != key) cur else cur.copy(
+                    gitOperationProgress = (cur.gitOperationProgress ?: GitProgressState()).copy(
+                        taskTitle = if (result.success) "Clone complete" else "Clone failed",
+                        percent = if (result.success) 100 else cur.gitOperationProgress?.percent,
+                        finished = true
+                    )
                 )
             }
-
-            try {
-                val auth = externalGithubAuth()
-                    ?: throw missingAuthError()
-
-                val upstreamOwner = repository.fullName.substringBefore('/')
-                val result = repositoryManager.clone(
-                    url = repository.cloneUrl,
-                    name = repository.name,
-                    username = auth.username,
-                    token = auth.token,
-                    accountNickname = auth.username,
-                    globalOwner = upstreamOwner.takeIf { !it.equals(auth.username, ignoreCase = true) }
+            if (result.success) {
+                val repos = repositoryManager.scan()
+                _state.update { it.copy(repositories = repos, message = result.message) }
+                RexGitOperationNotifications.completed(getApplication(), key, title, result.message)
+            } else {
+                fail(result.message)
+                RexGitOperationNotifications.failed(getApplication(), key, title, result.message)
+            }
+        } catch (cancelled: CancellationException) {
+            RexGitOperationNotifications.failed(getApplication(), key, title, "Clone cancelled")
+            throw cancelled
+        } catch (t: Throwable) {
+            val message = t.readableMessage("Clone failed")
+            fail(message)
+            RexGitOperationNotifications.failed(getApplication(), key, title, message)
+        } finally {
+            kotlinx.coroutines.delay(1_000)
+            _state.update { cur ->
+                if (cur.gitOperationKey != key) cur else cur.copy(
+                    cloningName = null,
+                    gitOperationTitle = null,
+                    gitOperationKey = null,
+                    gitOperationProgress = null
                 )
-
-                if (!result.success) {
-                    fail(result.message)
-                } else {
-                    val repos = repositoryManager.scan()
-
-                    _state.update {
-                        it.copy(
-                            repositories = repos,
-                            message = result.message
-                        )
-                    }
-                }
-            } finally {
-                _state.update {
-                    it.copy(cloningName = null)
-                }
             }
         }
     }
+}
 
 internal fun RexGitViewModel.__splitImpl_searchGithubRepositories(query: String) {
         val clean = query.trim()

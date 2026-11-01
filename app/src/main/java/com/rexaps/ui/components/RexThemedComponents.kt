@@ -1,6 +1,9 @@
 
 package com.rexaps.ui.components
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.*
@@ -16,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -40,18 +44,22 @@ fun RexButton(
     val pressed by source.collectIsPressedAsState()
     val hovered by source.collectIsHoveredAsState()
     val focused by source.collectIsFocusedAsState()
-
+    val motionLevel = RexMotionRuntime.settings.level
+    val motionDuration = when (motionLevel) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> (tokens.motionFast * 1.45f).toInt().coerceAtLeast(1)
+        RexAnimationLevel.BALANCED -> tokens.motionFast
+        RexAnimationLevel.FULL -> (tokens.motionFast * 0.72f).toInt().coerceAtLeast(1)
+    }
     val scale by animateFloatAsState(
         targetValue = when {
-            pressed -> .955f
-            hovered -> 1.018f
-            focused -> 1.008f
+            motionLevel == RexAnimationLevel.OFF -> 1f
+            pressed -> if (motionLevel == RexAnimationLevel.FULL) .94f else .975f
+            hovered -> if (motionLevel == RexAnimationLevel.FULL) 1.028f else 1.006f
+            focused -> 1.004f
             else -> 1f
         },
-        animationSpec = spring(
-            dampingRatio = .64f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
+        animationSpec = tween(durationMillis = motionDuration),
         label = "rex-button-scale"
     )
 
@@ -62,9 +70,7 @@ fun RexButton(
             hovered || focused -> tokens.shadowLg.dp
             else -> tokens.shadowMd.dp
         },
-        animationSpec = tween(
-            durationMillis = tokens.motionFast
-        ),
+        animationSpec = tween(durationMillis = motionDuration),
         label = "rex-button-elevation"
     )
 
@@ -77,9 +83,7 @@ fun RexButton(
 
     val container by animateColorAsState(
         targetValue = Color(targetColor),
-        animationSpec = tween(
-            durationMillis = tokens.motionFast
-        ),
+        animationSpec = tween(durationMillis = motionDuration),
         label = "rex-button-color"
     )
 
@@ -93,7 +97,7 @@ fun RexButton(
             .heightIn(min = 44.dp)
             .shadow(elevation, shape)
             .scale(scale)
-            .animateContentSize(),
+            .animateContentSize(animationSpec = tween(durationMillis = motionDuration)),
         shape = shape,
         border = if (focused) {
             BorderStroke(
@@ -132,13 +136,16 @@ fun RexCard(
     val glass = visual.material == RexThemeMaterial.GLASS
     val shape = RoundedCornerShape((tokens.radiusLg + visual.radiusBias).coerceIn(16, 36).dp)
     val baseSurface = Color(tokens.surface)
+    val cardMotionDuration = when (RexMotionRuntime.settings.level) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> (tokens.motionNormal * 1.35f).toInt().coerceAtLeast(1)
+        RexAnimationLevel.BALANCED -> tokens.motionNormal
+        RexAnimationLevel.FULL -> (tokens.motionNormal * 0.78f).toInt().coerceAtLeast(1)
+    }
 
     Card(
         modifier = modifier.animateContentSize(
-            animationSpec = spring(
-                dampingRatio = .86f,
-                stiffness = Spring.StiffnessLow
-            )
+            animationSpec = tween(durationMillis = cardMotionDuration)
         ),
         shape = shape,
         colors = CardDefaults.cardColors(
@@ -179,27 +186,32 @@ fun RexSkeleton(
     height: Int = 16,
     animate: Boolean = true
 ) {
-    val transition = rememberInfiniteTransition(
-        label = "rex-skeleton-shimmer"
-    )
-
-    val sweep by transition.animateFloat(
-        initialValue = if (animate) -320f else 0f,
-        targetValue = if (animate) 520f else 0f,
-        animationSpec = infiniteRepeatable<Float>(
-            animation = tween<Float>(
-                durationMillis =
-                    (tokens.motionSlower * 2).coerceAtLeast(1),
-                easing = LinearEasing
+    val motion = RexMotionRuntime.settings
+    val shouldAnimate = animate && motion.level != RexAnimationLevel.OFF
+    val duration = when (motion.level) {
+        RexAnimationLevel.FULL -> tokens.motionSlower
+        RexAnimationLevel.BALANCED -> tokens.motionSlower * 2
+        RexAnimationLevel.SAVER -> tokens.motionSlower * 3
+        RexAnimationLevel.OFF -> 0
+    }.coerceAtLeast(1)
+    val sweepState = if (shouldAnimate) {
+        rememberInfiniteTransition(label = "rex-skeleton-shimmer").animateFloat(
+            initialValue = -320f,
+            targetValue = 520f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = duration, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
             ),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rex-skeleton-sweep"
-    )
+            label = "rex-skeleton-sweep"
+        )
+    } else {
+        remember { mutableFloatStateOf(0f) }
+    }
+    val sweep by sweepState
 
     val shape = RoundedCornerShape(tokens.radiusSm.dp)
 
-    val shimmer = if (animate) {
+    val shimmer = if (shouldAnimate) {
         Brush.linearGradient(
             colors = listOf(
                 Color(tokens.surfaceHover),

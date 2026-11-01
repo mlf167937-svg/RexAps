@@ -94,9 +94,11 @@ internal fun RexGitActionsPanel(
     onRefresh: () -> Unit,
     onDownload: (String, String) -> Unit,
     onChooseAccount: () -> Unit = {},
+    onSelectRun: (Long) -> Unit = {},
+    onCloseRunDetails: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-        return __splitImpl_RexGitActionsPanel(state, onRefresh, onDownload, onChooseAccount, modifier)
+        return __splitImpl_RexGitActionsPanel(state, onRefresh, onDownload, onChooseAccount, onSelectRun, onCloseRunDetails, modifier)
     }
 
 @Composable
