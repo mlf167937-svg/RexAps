@@ -49,9 +49,9 @@ internal fun __splitImpl_RexThemeSettings(manager: RexThemeManager, modifier: Mo
     var category by remember { mutableStateOf("Semua") }
     var selectedId by remember { mutableStateOf(manager.getCurrentTheme().id) }
     var showDetail by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(manager.motionSettings) }
+    val motionSettings = RexMotionRuntime.settings
     val theme = manager.getCurrentTheme()
-    val animationsEnabled = settings.level != RexAnimationLevel.OFF
+    val animationsEnabled = motionSettings.level != RexAnimationLevel.OFF
     val backgroundTop by animateColorAsState(Color(theme.background), tween(if (animationsEnabled) theme.motionNormal else 0), label = "theme-settings-bg-top")
     val backgroundBottom by animateColorAsState(Color(theme.backgroundAlt), tween(if (animationsEnabled) theme.motionSlow else 0), label = "theme-settings-bg-bottom")
     val categories = listOf("Semua", "Glass", "Dark", "Light", "Neon", "Cosmic", "Elemental")
@@ -277,49 +277,27 @@ internal fun __splitImpl_RexThemeSettings(manager: RexThemeManager, modifier: Mo
             }
         }
         Spacer(Modifier.height(10.dp))
-        Text("Tingkat animasi", color = Color(theme.text), fontWeight = rexFontWeight(theme.weightSemibold), fontSize = theme.fontHeading.sp, fontFamily = rexFontFamily(theme.fontFamilyUI))
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
-            RexAnimationLevel.values().forEach { level ->
-                FilterChip(
-                    selected = settings.level == level,
-                    onClick = { settings = settings.copy(level = level); manager.updateMotion(settings) },
-                    label = {
-                        Text(when (level) {
-                            RexAnimationLevel.FULL -> "Penuh"
-                            RexAnimationLevel.BALANCED -> "Seimbang"
-                            RexAnimationLevel.SAVER -> "Hemat"
-                            RexAnimationLevel.OFF -> "Mati"
-                        }, fontSize = theme.fontCaption.sp, fontFamily = rexFontFamily(theme.fontFamilyUI))
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color(theme.surface), labelColor = Color(theme.textMuted),
-                        selectedContainerColor = Color(theme.selection), selectedLabelColor = Color(theme.text)
-                    )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(theme.surface).copy(alpha = .72f),
+            shape = RoundedCornerShape(theme.radiusMd.dp),
+            border = BorderStroke(theme.borderThin.dp, Color(theme.border))
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Kontrol animasi terpusat",
+                    color = Color(theme.text),
+                    fontWeight = rexFontWeight(theme.weightSemibold),
+                    fontSize = theme.fontBody.sp,
+                    fontFamily = rexFontFamily(theme.fontFamilyUI)
+                )
+                Text(
+                    "Atur Animation ON/OFF dan tingkat LOW, MEDIUM, atau HIGH dari tab Pengaturan utama → Animation & Performance.",
+                    color = Color(theme.textMuted),
+                    fontSize = theme.fontCaption.sp,
+                    fontFamily = rexFontFamily(theme.fontFamilyUI)
                 )
             }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text("Intensitas efek: ${settings.effectIntensity}%", color = Color(theme.text), fontSize = theme.fontBody.sp, fontFamily = rexFontFamily(theme.fontFamilyUI))
-        Slider(
-            value = settings.effectIntensity.toFloat(),
-            onValueChange = { settings = settings.copy(effectIntensity = it.toInt()); manager.updateMotion(settings) },
-            valueRange = 0f..100f,
-            colors = SliderDefaults.colors(
-                thumbColor = Color(theme.primary), activeTrackColor = Color(theme.primary),
-                inactiveTrackColor = Color(theme.border), activeTickColor = Color(theme.accent),
-                inactiveTickColor = Color(theme.textMuted)
-            )
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Ikuti reduce motion sistem", modifier = Modifier.weight(1f), color = Color(theme.text), fontSize = theme.fontBody.sp, fontFamily = rexFontFamily(theme.fontFamilyUI))
-            Switch(
-                checked = settings.followSystemReduceMotion,
-                onCheckedChange = { settings = settings.copy(followSystemReduceMotion = it); manager.updateMotion(settings) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(theme.onPrimary), checkedTrackColor = Color(theme.primary),
-                    uncheckedThumbColor = Color(theme.textMuted), uncheckedTrackColor = Color(theme.surfaceElevated)
-                )
-            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
@@ -337,8 +315,6 @@ internal fun __splitImpl_RexThemeSettings(manager: RexThemeManager, modifier: Mo
                 onClick = {
                     manager.setTheme(RexThemeRegistry.default.id)
                     selectedId = RexThemeRegistry.default.id
-                    settings = RexMotionSettings()
-                    manager.updateMotion(settings)
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = Color(theme.primary))
             ) { Text("Reset", fontFamily = rexFontFamily(theme.fontFamilyUI)) }

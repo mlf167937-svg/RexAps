@@ -244,7 +244,7 @@ fun RexSettingsScreen(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingsSectionTitle(
                 title = "Animation & Performance",
-                subtitle = "Atur gerakan visual agar sesuai dengan kemampuan perangkat"
+                subtitle = "Pengaturan global untuk seluruh RexAps dan semua modul"
             )
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -252,6 +252,11 @@ fun RexSettingsScreen(
                 border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = .65f))
             ) {
                 Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                    Text(
+                        "Berlaku untuk UI utama dan seluruh modul RexAps.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(
                             Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(colors.primary.copy(alpha = .14f)),

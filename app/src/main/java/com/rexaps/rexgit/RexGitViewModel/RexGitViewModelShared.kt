@@ -1,6 +1,7 @@
 package com.rexaps.rexgit
 
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 
 internal fun RexGitViewModel.__splitImpl_push(
