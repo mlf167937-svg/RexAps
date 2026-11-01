@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.view.WindowCompat
 import com.rexaps.rexlife.RexLifeScreen
+import com.rexaps.rexai.RexAIScreen
 import com.rexaps.rexcoder.RexCoderScreen
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexgit.RexGit
@@ -33,8 +34,8 @@ import com.rexaps.rextools.navigation.RexNavGraph
 @Composable
 internal fun __splitImpl_RexApsApp(activity: Activity) {
 
-    var route by remember { mutableStateOf(RexRoute.NONE) }
-    var routeLoading by remember { mutableStateOf(false) }
+    var route by rememberSaveable { mutableStateOf(RexRoute.NONE) }
+    var routeLoading by rememberSaveable { mutableStateOf(false) }
 
     val themeStore = remember { RexThemeStore(activity) }
     var themeOption by remember { mutableStateOf(themeStore.load()) }
@@ -151,6 +152,8 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
                                     com.rexaps.rexwarp.RexWarpScreen(
                                         onExit = { route = RexRoute.NONE }
                                     )
+
+                                RexRoute.REXAI -> RexAIScreen()
 
                                 RexRoute.NONE -> Unit
                             }

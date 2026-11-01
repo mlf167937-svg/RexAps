@@ -133,7 +133,7 @@ object RexAppRegistry {
         RexModule(
             id = "rexai",
             name = "RexAI",
-            description = "AI tools & generator",
+            description = "AI workspace — ChatGPT, Claude & Gemini",
             available = true
         )
     )

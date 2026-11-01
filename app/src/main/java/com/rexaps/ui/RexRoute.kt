@@ -69,6 +69,11 @@ enum class RexRoute(
     REXSPACEX(
         "rexspacex",
         "RexSpaceX"
+    ),
+
+    REXAI(
+        "rexai",
+        "RexAI"
     );
 
     companion object {
