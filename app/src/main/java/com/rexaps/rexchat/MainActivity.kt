@@ -45,20 +45,11 @@ fun openRexChatSession(
     session: SessionManager.Session,
     method: String = ""
 ) {
-    val modern = SessionManager.profilesSupported()
-
-    val intent = Intent(
-        context,
-        if (modern) WaActivity::class.java else WaLegacyActivity::class.java
-    )
-        .putExtra(WaActivity.EXTRA_SESSION_ID, session.id)
-        .putExtra(WaActivity.EXTRA_METHOD, method)
-
-    if (modern) {
-        // Setiap session = task sendiri di Recents
-        intent.data = Uri.parse("rexchat://session/${session.id}")
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-    }
+    val intent = Intent(context, com.rexaps.rexchat.v1.RexChatActivity::class.java)
+        .putExtra(com.rexaps.rexchat.v1.RexChatActivity.EXTRA_SESSION_ID, session.id)
+        .putExtra(com.rexaps.rexchat.v1.RexChatActivity.EXTRA_METHOD, method)
+        .setData(Uri.parse("rexchat://session/${session.id}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
 
     // Aman dipanggil dari Context non-Activity
     if (context !is android.app.Activity) {

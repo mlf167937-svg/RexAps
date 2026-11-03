@@ -20,6 +20,28 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Download Node.js Mobile Libraries
+        run: |
+          set -euo pipefail
+
+          NODEJS_URL="https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v18.20.4/nodejs-mobile-v18.20.4-android.zip"
+
+          mkdir -p nodejs-mobile-temp
+          curl -fL --retry 3 --retry-delay 2 "$NODEJS_URL" -o nodejs-mobile-android.zip
+          unzip -q nodejs-mobile-android.zip -d nodejs-mobile-temp
+
+          test -s nodejs-mobile-temp/Nodejs/bin/arm64-v8a/libnode.so
+          test -s nodejs-mobile-temp/Nodejs/bin/armeabi-v7a/libnode.so
+
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          mkdir -p app/src/main/jniLibs/armeabi-v7a
+
+          cp nodejs-mobile-temp/Nodejs/bin/arm64-v8a/libnode.so app/src/main/jniLibs/arm64-v8a/libnode.so
+          cp nodejs-mobile-temp/Nodejs/bin/armeabi-v7a/libnode.so app/src/main/jniLibs/armeabi-v7a/libnode.so
+
+          ls -lh app/src/main/jniLibs/arm64-v8a/libnode.so
+          ls -lh app/src/main/jniLibs/armeabi-v7a/libnode.so
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 

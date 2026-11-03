@@ -170,15 +170,8 @@
 
         <!-- ============================ REX CHAT =========================== -->
         <activity
-            android:name="com.rexaps.rexchat.WaActivity"
+            android:name="com.rexaps.rexchat.v1.RexChatActivity"
             android:exported="false"
-            android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
-
-        <activity
-            android:name="com.rexaps.rexchat.WaLegacyActivity"
-            android:exported="false"
-            android:process=":rexchat_webview"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 

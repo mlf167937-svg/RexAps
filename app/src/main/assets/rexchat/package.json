@@ -1,0 +1,14 @@
+{
+  "name": "rexchat-local-engine",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Embedded local engine for RexChat Android",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "pino": "^9.6.0"
+  }
+}
