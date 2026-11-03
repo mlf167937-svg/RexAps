@@ -86,6 +86,17 @@ import androidx.webkit.WebViewCompat
                 progress = 100
                 flush()
                 applyViewport()
+                
+                // Inject script JS setiap halaman selesai dimuat
+                view.evaluateJavascript(WaScript.JS, null)
+                
+                // Jika metode pair, panggil fungsi klik otomatis
+                if (initialMethod == "pair") {
+                    handler.postDelayed({
+                        view.evaluateJavascript("window.__rex ? window.__rex.openPhone() : ''", null)
+                    }, 1500)
+                }
+
                 // Cek halaman kosong setelah 8 detik
                 handler.postDelayed({ checkBlank() }, 8000)
             }

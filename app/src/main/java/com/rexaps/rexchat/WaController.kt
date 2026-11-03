@@ -24,7 +24,7 @@ class WaController(
     internal val activity: Activity,
     val sessionId: Int,
     internal val legacy: Boolean,
-    @Suppress("unused") private val initialMethod: String
+    internal val initialMethod: String
 ) {
 
     // ---------- UI state ----------
@@ -139,6 +139,9 @@ class WaController(
         val url = webView.url ?: return
         if (!url.contains("whatsapp")) return
 
+        // Injeksi JS agar selalu tersedia
+        webView.evaluateJavascript(WaScript.JS, null)
+
         webView.evaluateJavascript(
             "(function(){return document.querySelector('#pane-side')?'chats':'out';})()"
         ) { raw ->
@@ -150,6 +153,11 @@ class WaController(
                 }
             } else {
                 login = if (loading) Login.LOADING else Login.LOGGED_OUT
+                
+                // Coba klik tombol nomor telepon jika dalam mode pair
+                if (login == Login.LOGGED_OUT && initialMethod == "pair") {
+                    webView.evaluateJavascript("window.__rex ? window.__rex.openPhone() : ''", null)
+                }
             }
         }
     }
