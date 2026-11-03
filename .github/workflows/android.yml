@@ -21,26 +21,101 @@ jobs:
           java-version: '17'
 
       - name: Download Node.js Mobile Libraries
+        id: nodejs_download
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
-          NODEJS_URL="https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v18.20.4/nodejs-mobile-v18.20.4-android.zip"
+          LOG_FILE="$GITHUB_WORKSPACE/nodejs-download.log"
+          : > "$LOG_FILE"
+          exec > >(tee -a "$LOG_FILE") 2>&1
 
-          mkdir -p nodejs-mobile-temp
-          curl -fL --retry 3 --retry-delay 2 "$NODEJS_URL" -o nodejs-mobile-android.zip
-          unzip -q nodejs-mobile-android.zip -d nodejs-mobile-temp
+          RELEASE_REPO="nodejs-mobile/nodejs-mobile"
+          RELEASE_TAG="v18.20.4"
+          ASSET_NAME="nodejs-mobile-v18.20.4-android.zip"
+          DOWNLOAD_DIR="$RUNNER_TEMP/nodejs-mobile"
+          ZIP_FILE="$DOWNLOAD_DIR/$ASSET_NAME"
 
-          test -s nodejs-mobile-temp/Nodejs/bin/arm64-v8a/libnode.so
-          test -s nodejs-mobile-temp/Nodejs/bin/armeabi-v7a/libnode.so
+          mkdir -p "$DOWNLOAD_DIR"
 
-          mkdir -p app/src/main/jniLibs/arm64-v8a
-          mkdir -p app/src/main/jniLibs/armeabi-v7a
+          echo "Repository: $RELEASE_REPO"
+          echo "Release: $RELEASE_TAG"
+          echo "Expected asset: $ASSET_NAME"
+          echo "Available release assets:"
+          gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" --json assets --jq '.assets[] | "\(.name) | \(.size) bytes"'
 
-          cp nodejs-mobile-temp/Nodejs/bin/arm64-v8a/libnode.so app/src/main/jniLibs/arm64-v8a/libnode.so
-          cp nodejs-mobile-temp/Nodejs/bin/armeabi-v7a/libnode.so app/src/main/jniLibs/armeabi-v7a/libnode.so
+          echo "Downloading release asset..."
+          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
 
-          ls -lh app/src/main/jniLibs/arm64-v8a/libnode.so
-          ls -lh app/src/main/jniLibs/armeabi-v7a/libnode.so
+          if [[ ! -s "$ZIP_FILE" ]]; then
+            echo "ERROR: ZIP download completed without producing the expected file: $ZIP_FILE"
+            find "$DOWNLOAD_DIR" -maxdepth 2 -type f -printf '%p (%s bytes)\n' || true
+            exit 1
+          fi
+
+          echo "Downloaded archive:"
+          ls -lh "$ZIP_FILE"
+          echo "Checking ZIP integrity..."
+          unzip -tq "$ZIP_FILE"
+
+          echo "Searching the archive for both libnode.so files..."
+          mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
+
+          ARM64_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/arm64-v8a\/libnode\.so$/ { print; exit }')"
+          ARMV7_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/armeabi-v7a\/libnode\.so$/ { print; exit }')"
+
+          if [[ -z "$ARM64_ENTRY" || -z "$ARMV7_ENTRY" ]]; then
+            echo "ERROR: One or both expected library paths were not found."
+            echo "Archive entries containing libnode.so:"
+            printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | grep -Ei 'libnode\.so$' || true
+            exit 1
+          fi
+
+          REQUESTED_DIR="app/src/main/JniLibs"
+          ANDROID_DEFAULT_DIR="app/src/main/jniLibs"
+
+          mkdir -p "$REQUESTED_DIR/arm64-v8a" "$REQUESTED_DIR/armeabi-v7a"
+          mkdir -p "$ANDROID_DEFAULT_DIR/arm64-v8a" "$ANDROID_DEFAULT_DIR/armeabi-v7a"
+
+          unzip -p "$ZIP_FILE" "$ARM64_ENTRY" > "$REQUESTED_DIR/arm64-v8a/libnode.so"
+          unzip -p "$ZIP_FILE" "$ARMV7_ENTRY" > "$REQUESTED_DIR/armeabi-v7a/libnode.so"
+
+          cp "$REQUESTED_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so"
+          cp "$REQUESTED_DIR/armeabi-v7a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
+
+          echo "Checking ELF architectures..."
+          ARM64_MACHINE="$(readelf -h "$REQUESTED_DIR/arm64-v8a/libnode.so" | awk -F: '/Machine:/ {sub(/^[ \t]+/, "", $2); print $2}')"
+          ARMV7_MACHINE="$(readelf -h "$REQUESTED_DIR/armeabi-v7a/libnode.so" | awk -F: '/Machine:/ {sub(/^[ \t]+/, "", $2); print $2}')"
+
+          echo "arm64-v8a: $ARM64_MACHINE"
+          echo "armeabi-v7a: $ARMV7_MACHINE"
+
+          [[ "$ARM64_MACHINE" == *AArch64* ]]
+          [[ "$ARMV7_MACHINE" == *ARM* ]]
+          [[ -s "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" ]]
+          [[ -s "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so" ]]
+
+          echo "Final library files:"
+          ls -lh "$REQUESTED_DIR/arm64-v8a/libnode.so" "$REQUESTED_DIR/armeabi-v7a/libnode.so"
+          echo "Android Gradle Plugin source files:"
+          ls -lh "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
+          sha256sum "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
+
+      - name: Upload Node.js Download Diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodejs-download-diagnostics
+          path: nodejs-download.log
+          if-no-files-found: warn
+
+      - name: Stop if Node.js Download Failed
+        if: steps.nodejs_download.outcome == 'failure'
+        run: |
+          echo "Node.js Mobile download or library validation failed. Download the nodejs-download-diagnostics artifact to inspect the cause."
+          exit 1
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
