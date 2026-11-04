@@ -13,12 +13,27 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
         roomName = room.trim().ifBlank { "RexSyncRoom1" }
         roomStartedElapsedMs = SystemClock.elapsedRealtime()
         roomPassword = password
-        val hostName = RexLocalProfileBridge.read().name.trim().ifBlank { "Rex User" }
-        _state.value = _state.value.copy(hosting = true, connected = true, room = roomName,
-            password = password, ip = ip, name = hostName, status = "Membuka room…", error = null,
-            members = listOf(SyncMember("host", hostName)))
+        autoRefreshJob?.cancel()
+        val hostProfile = RexLocalProfileBridge.read()
+        val hostName = hostProfile.name.trim().ifBlank { "Rex User" }
+        val initialVolume = appContextRef?.let { readAndroidMusicVolume(it) }?.takeIf { it >= 0f } ?: 1f
+        appContextRef?.let { context ->
+            RexPlayerController.init(context)
+            RexPlayerController.setSyncVolume(1f)
+        }
+        _state.value = _state.value.copy(
+            hosting = true, connected = true, room = roomName, password = password,
+            ip = ip, name = hostName, status = "Membuka room…", error = null,
+            hostVolume = initialVolume, autoRefreshEnabled = false, resyncing = false,
+            members = listOf(SyncMember("host", hostName, username = hostProfile.username, bio = hostProfile.bio))
+        )
         roomJob = scope.launch {
             try {
+                val assets = appContextRef?.let { withContext(Dispatchers.IO) { createRexSyncProfileAssets(it, hostProfile) } } ?: RexSyncProfileAssets()
+                _state.value = _state.value.copy(members = listOf(SyncMember(
+                    id = "host", name = hostName, username = hostProfile.username, bio = hostProfile.bio,
+                    profilePictureBase64 = assets.pictureBase64, bannerBase64 = assets.bannerBase64
+                )))
                 val ss = ServerSocket(SYNC_PORT, 32, InetAddress.getByName("0.0.0.0"))
                 server = ss
                 _state.value = _state.value.copy(status = "Room aktif · menunggu anggota")

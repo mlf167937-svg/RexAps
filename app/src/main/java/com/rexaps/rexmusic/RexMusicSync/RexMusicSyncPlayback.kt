@@ -2,15 +2,20 @@ package com.rexaps.rexmusic
 
 import android.os.SystemClock
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
 import kotlinx.coroutines.*
@@ -20,60 +25,113 @@ internal fun __splitImpl_SyncPlaybackCard(
     state: SyncUiState,
     onHostVolumeChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onRefresh: () -> Unit,
+    onAutoRefreshChange: (Boolean) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    val playerState by RexPlayerController.state.collectAsState()
+    val activeTrack = playerState.nowPlaying
+    val duration = playerState.durationMs.coerceAtLeast(0L)
+    val position = if (activeTrack?.id == state.trackId) playerState.positionMs else state.positionMs
+    val progress = if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = scheme.primaryContainer)
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surface)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp)
         ) {
-            SyncSectionHeading("Playback synchronization", "Shared playback status for this room", scheme.onPrimaryContainer, scheme.onPrimaryContainer.copy(alpha = 0.8f))
-            Text(
-                state.trackTitle.ifBlank { "Belum ada lagu" },
-                style = MaterialTheme.typography.titleLarge,
-                color = scheme.onPrimaryContainer,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = scheme.primary.copy(alpha = 0.12f)
-                ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("ROOM PLAYER", style = MaterialTheme.typography.labelSmall, color = scheme.primary, fontWeight = FontWeight.Bold)
+                    Text("Sinkronisasi audio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+                Surface(shape = RoundedCornerShape(50), color = if (state.resyncing) scheme.tertiaryContainer else scheme.primaryContainer) {
                     Text(
-                        if (state.playing) "PLAYING" else "PAUSED",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        when { state.resyncing -> "SYNCING"; state.playing -> "LIVE"; else -> "PAUSED" },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onPrimaryContainer
+                        color = if (state.resyncing) scheme.onTertiaryContainer else scheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    if (state.roomElapsedMs > 0L) formatRoomTime(state.roomElapsedMs) else "Room timer ready",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
-                )
             }
-            if (state.hosting) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Host volume", style = MaterialTheme.typography.labelMedium, color = scheme.onPrimaryContainer, modifier = Modifier.weight(1f))
-                    Text("${(state.hostVolume.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.onPrimaryContainer)
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                Box(
+                    Modifier.size(82.dp).clip(RoundedCornerShape(18.dp)).background(scheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!activeTrack?.cover.isNullOrBlank()) {
+                        coil.compose.AsyncImage(
+                            model = activeTrack?.cover,
+                            contentDescription = "Cover ${state.trackTitle}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.MusicNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(34.dp),
+                            tint = scheme.primary
+                        )
+                    }
                 }
-                Slider(
-                    value = state.hostVolume.coerceIn(0f, 1f),
-                    onValueChange = onHostVolumeChange,
-                    valueRange = 0f..1f
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        state.trackTitle.ifBlank { "Belum ada lagu" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        activeTrack?.artist?.takeIf { it.isNotBlank() } ?: "Shared room track",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        if (state.resyncing) "Menyamakan posisi semua perangkat" else if (state.playing) "Diputar bersama" else "Menunggu host",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (state.resyncing) scheme.tertiary else scheme.primary
+                    )
+                }
+            }
+
+            Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(50)).background(scheme.surfaceVariant)) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(50)).background(scheme.primary))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("MUSIC", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    Text(formatSyncClock(position), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("ROOM TIME", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    Text(formatSyncClock(state.roomElapsedMs), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            if (state.hosting) {
+                Divider(color = scheme.outlineVariant.copy(alpha = 0.55f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Volume media perangkat host", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    Text("${(state.hostVolume.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.primary)
+                }
+                Slider(value = state.hostVolume.coerceIn(0f, 1f), onValueChange = onHostVolumeChange, valueRange = 0f..1f)
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     Button(
                         onClick = onTogglePlayback,
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(13.dp)
+                        enabled = !state.resyncing,
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         androidx.compose.material3.Icon(
                             if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -85,21 +143,60 @@ internal fun __splitImpl_SyncPlaybackCard(
                     OutlinedButton(
                         onClick = onStop,
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(13.dp)
+                        enabled = !state.resyncing,
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         androidx.compose.material3.Icon(Icons.Default.Stop, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
                         Text("Stop")
                     }
                 }
+                FilledTonalButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    enabled = state.trackId.isNotBlank() && state.playing && !state.resyncing,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (state.resyncing) {
+                        CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                    } else {
+                        androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (state.resyncing) "Menyelaraskan…" else "Refresh Sync · mulai ulang dalam 1 detik")
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(scheme.surfaceVariant.copy(alpha = 0.55f)).padding(horizontal = 13.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Auto refresh", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text("Sinkronisasi ulang otomatis setiap 5 menit saat musik diputar", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    }
+                    Switch(checked = state.autoRefreshEnabled, onCheckedChange = onAutoRefreshChange)
+                }
             } else {
                 Text(
-                    "Playback is controlled by the host device.",
+                    if (state.resyncing) "Host sedang menyelaraskan ulang semua perangkat…" else "Kontrol musik dan refresh hanya tersedia untuk host.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    color = scheme.onSurfaceVariant
                 )
             }
+            if (state.status.isNotBlank()) {
+                Text(state.status, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            }
         }
+    }
+}
+
+private fun formatSyncClock(ms: Long): String {
+    val totalSeconds = (ms.coerceAtLeast(0L) / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes >= 60L) {
+        String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", minutes / 60L, minutes % 60L, seconds)
+    } else {
+        String.format(java.util.Locale.ROOT, "%02d:%02d", minutes, seconds)
     }
 }
 

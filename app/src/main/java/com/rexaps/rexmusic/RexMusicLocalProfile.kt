@@ -41,28 +41,53 @@ internal data class RexLocalProfileSnapshot(
     val username: String = "@rexuser",
     val bio: String = "Halo! Aku menggunakan RexAps.",
     val picturePath: String = "",
-    val pictureVideo: String = ""
+    val pictureVideo: String = "",
+    val bannerPath: String = ""
 )
 
 internal object RexLocalProfileBridge {
-    private fun configFile(): File = File(
-        File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "RexAps/.config"
-        ),
-        "account.json"
+    private fun configDir(): File = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        "RexAps/.config"
     )
+
+    private fun configFile(): File = File(configDir(), "account.json")
+
+    private fun assetPath(json: JSONObject, keys: List<String>, fallbacks: List<String>): String {
+        keys.forEach { key ->
+            val raw = json.optString(key, "").trim()
+            if (raw.isBlank()) return@forEach
+            if (raw.startsWith("content://") || raw.startsWith("file://") || raw.startsWith("https://") || raw.startsWith("http://")) return raw
+            val direct = File(raw)
+            if (direct.isFile) return direct.absolutePath
+            val relative = File(configDir(), raw)
+            if (relative.isFile) return relative.absolutePath
+        }
+        return fallbacks.map { File(configDir(), it) }.firstOrNull { it.isFile }?.absolutePath.orEmpty()
+    }
 
     fun read(): RexLocalProfileSnapshot = runCatching {
         val file = configFile()
-        if (!file.isFile) return@runCatching RexLocalProfileSnapshot()
+        if (!file.isFile) return@runCatching RexLocalProfileSnapshot(
+            picturePath = assetPath(JSONObject(), emptyList(), listOf("profile-pictures.png", "profile-pictures.jpg", "profile-pictures.jpeg", "profile-picture.png", "profile-picture.jpg")),
+            bannerPath = assetPath(JSONObject(), emptyList(), listOf("banner.png", "banner.jpg", "banner.jpeg", "profile-banner.png", "profile-banner.jpg"))
+        )
         val json = JSONObject(file.readText())
         RexLocalProfileSnapshot(
             name = json.optString("name", "Rex User").trim().ifBlank { "Rex User" },
             username = json.optString("username", "@rexuser").trim().ifBlank { "@rexuser" },
             bio = json.optString("bio", "").trim(),
-            picturePath = json.optString("profilePicture", "").trim(),
-            pictureVideo = json.optString("profileVideo", "").trim()
+            picturePath = assetPath(
+                json,
+                listOf("profilePicture", "profilePicturePath", "avatar", "photo"),
+                listOf("profile-pictures.png", "profile-pictures.jpg", "profile-pictures.jpeg", "profile-picture.png", "profile-picture.jpg")
+            ),
+            pictureVideo = json.optString("profileVideo", "").trim(),
+            bannerPath = assetPath(
+                json,
+                listOf("banner", "bannerImage", "bannerPath", "profileBanner", "bannerPicture", "coverPhoto"),
+                listOf("banner.png", "banner.jpg", "banner.jpeg", "profile-banner.png", "profile-banner.jpg")
+            )
         )
     }.getOrDefault(RexLocalProfileSnapshot())
 }

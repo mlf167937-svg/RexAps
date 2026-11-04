@@ -114,18 +114,33 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_distributeLocalTrack(track: 
 internal fun RexMusicSyncEngine.__splitImpl_setMemberVolume(id: String, value: Float) {
         val v = value.coerceIn(0f, 1f)
         if (!_state.value.hosting) return
-        peers.firstOrNull { it.id == id }?.let { p -> p.volume = v; runCatching { send(p.writer, JSONObject().put("type", "volume").put("value", v)) } }
-        _state.value = _state.value.copy(volumes = _state.value.volumes + (id to v), members = _state.value.members.map { if (it.id == id) it.copy(volume = v) else it })
+        peers.firstOrNull { it.id == id }?.let { peer ->
+            peer.volume = v
+            peer.volumeControlled = true
+            runCatching { send(peer.writer, JSONObject().put("type", "volume").put("value", v)) }
+        }
+        _state.value = _state.value.copy(
+            volumes = _state.value.volumes + (id to v),
+            members = _state.value.members.map { if (it.id == id) it.copy(volume = v) else it }
+        )
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_trackFromJson(o: JSONObject?): RexTrack? = o?.let { RexTrack(it.optString("id"), it.optString("title"), it.optString("artist"), it.optString("album", "Single"), it.optString("cover"), spotifyUrl = it.optString("spotifyUrl"), durationText = it.optString("durationText")) }?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
 
 internal fun RexMusicSyncEngine.__splitImpl_setHostVolume(value: Float) {
         val v = value.coerceIn(0f, 1f)
-        _state.value = _state.value.copy(hostVolume = v)
         appContextRef?.let { context ->
+            val actual = setAndroidMusicVolume(context, v)
             RexPlayerController.init(context)
-            RexPlayerController.setSyncVolume(v)
+            // MediaPlayer gain stays at unity; the slider now controls Android STREAM_MUSIC.
+            RexPlayerController.setSyncVolume(1f)
+            _state.value = if (actual >= 0f) {
+                _state.value.copy(hostVolume = actual, error = null)
+            } else {
+                _state.value.copy(error = "Volume Android tidak bisa diubah. Periksa MODIFY_AUDIO_SETTINGS pada AndroidManifest.")
+            }
+        } ?: run {
+            _state.value = _state.value.copy(error = "AudioManager belum siap. Coba masuk ulang ke room.")
         }
     }
 

@@ -35,6 +35,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -116,7 +118,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.padding(end = 16.dp)
+                            modifier = Modifier.padding(end = 9.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
@@ -128,6 +130,8 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                    RexMusicProfileAvatarButton()
+                    Spacer(Modifier.width(12.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
@@ -190,6 +194,8 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                     onHostVolume = { RexMusicSyncEngine.setHostVolume(it) },
                     onTogglePlayback = { RexMusicSyncEngine.togglePlayback() },
                     onStop = { RexMusicSyncEngine.stopAll() },
+                    onRefresh = { RexMusicSyncEngine.refreshPlaybackSync() },
+                    onAutoRefreshChange = { RexMusicSyncEngine.setAutoRefresh(it) },
                     onDisconnect = {
                         RexMusicSyncEngine.disconnect()
                         mode = null
@@ -321,6 +327,7 @@ private fun SyncSetupScreen(
     onStart: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    var showPassword by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
@@ -345,22 +352,16 @@ private fun SyncSetupScreen(
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                         trailingIcon = { TextButton(onClick = onAutoIp) { Text("AUTO") } }
                     )
-                    OutlinedTextField(value = password, onValueChange = onPasswordChange, label = { Text("Password room") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp))
-                            .background(scheme.surfaceVariant.copy(alpha = 0.70f))
-                            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.70f), RoundedCornerShape(17.dp))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RexLocalProfilePhoto(profile, Modifier.size(42.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(profile.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Nama mengikuti RexLocal Account", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Identitas dari Local Account", tint = scheme.primary, modifier = Modifier.size(19.dp))
-                    }
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = onPasswordChange,
+                        label = { Text("Password room") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = { TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "HIDE" else "SHOW") } }
+                    )
+                    SyncSetupProfilePreview(profile)
                     if (mode == SyncEntryMode.HOST) {
                         Text("Setelah room aktif, bagikan IP dan password kepada teman.", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
@@ -415,6 +416,8 @@ private fun SyncRoomDashboard(
     onHostVolume: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
+    onRefresh: () -> Unit,
+    onAutoRefreshChange: (Boolean) -> Unit,
     onDisconnect: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -449,7 +452,14 @@ private fun SyncRoomDashboard(
         }
         item {
             SyncSectionHeading("Sedang diputar", state.trackTitle.ifBlank { "Tambahkan lagu dari library di bawah" })
-            SyncPlaybackCard(state, onHostVolumeChange = onHostVolume, onTogglePlayback = onTogglePlayback, onStop = onStop)
+            SyncPlaybackCard(
+                state,
+                onHostVolumeChange = onHostVolume,
+                onTogglePlayback = onTogglePlayback,
+                onStop = onStop,
+                onRefresh = onRefresh,
+                onAutoRefreshChange = onAutoRefreshChange
+            )
         }
         item { SyncMembersHeader(state.members.distinctBy { it.id }.size) }
         items(state.members.distinctBy { it.id }, key = { "member-${it.id}" }) { member ->
@@ -495,6 +505,45 @@ private fun SyncRoomDashboard(
         item {
             OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) {
                 Text(if (state.hosting) "Tutup room" else "Keluar dari room")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncSetupProfilePreview(profile: RexLocalProfileSnapshot) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceVariant)
+    ) {
+        Box(Modifier.fillMaxWidth().height(138.dp)) {
+            if (profile.bannerPath.isNotBlank()) {
+                AsyncImage(
+                    model = profile.bannerPath,
+                    contentDescription = "Banner profil",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(scheme.primary.copy(alpha = 0.42f), scheme.tertiary.copy(alpha = 0.30f), scheme.surfaceVariant))))
+            }
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.64f)))))
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(Modifier.size(58.dp).clip(CircleShape).border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape)) {
+                    RexLocalProfilePhoto(profile, Modifier.fillMaxSize())
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(profile.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(profile.username, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.86f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Identitas RexAps Local Account", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.78f))
+                }
+                Icon(Icons.Default.CheckCircle, contentDescription = "Profil lokal", tint = Color.White)
             }
         }
     }

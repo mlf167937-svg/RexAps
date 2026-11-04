@@ -28,7 +28,17 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
             "members" -> {
                 val a = m.optJSONArray("members")
                 val list = mutableListOf<SyncMember>()
-                if (a != null) for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; list += SyncMember(o.optString("id"), o.optString("name"), volume = o.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f), deviceVolume = o.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f)) }
+                if (a != null) for (i in 0 until a.length()) {
+                    val o = a.optJSONObject(i) ?: continue
+                    list += SyncMember(
+                        id = o.optString("id"), name = o.optString("name"),
+                        volume = o.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f),
+                        deviceVolume = o.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f),
+                        username = o.optString("username", ""), bio = o.optString("bio", ""),
+                        profilePictureBase64 = o.optString("profilePicture", "").take(260_000),
+                        bannerBase64 = o.optString("banner", "").take(360_000)
+                    )
+                }
                 _state.value = _state.value.copy(members = list)
             }
             "sync" -> {
@@ -79,7 +89,35 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
                 _state.value = _state.value.copy(queue = list)
             }
             "queue_item" -> trackFromJson(m.optJSONObject("track"))?.let { t -> if (_state.value.queue.none { it.id == t.id }) _state.value = _state.value.copy(queue = _state.value.queue + t) }
-            "volume" -> { val v = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f); scope.launch(Dispatchers.Main) { RexPlayerController.setSyncVolume(v) } }
+            "refresh_sync" -> {
+                val id = m.optString("trackId")
+                val position = m.optLong("position", 0L).coerceAtLeast(0L)
+                val startAt = m.optLong("startAt", 0L)
+                val roomElapsed = m.optLong("roomElapsedMs", _state.value.roomElapsedMs).coerceAtLeast(0L)
+                if (id.isNotBlank() && startAt > 0L) {
+                    playbackJob?.cancel()
+                    _state.value = _state.value.copy(
+                        playing = false, positionMs = position, roomElapsedMs = roomElapsed,
+                        resyncing = true, lastResyncAtMs = SystemClock.elapsedRealtime(),
+                        status = "Menunggu start serentak…", error = null
+                    )
+                    playbackJob = scope.launch { applyRemoteRefresh(id, position, startAt, roomElapsed) }
+                }
+            }
+            "volume" -> {
+                val v = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f)
+                scope.launch(Dispatchers.Main) {
+                    val context = appContextRef
+                    val actual = context?.let { setAndroidMusicVolume(it, v) } ?: -1f
+                    // Do not multiply system volume by a second in-app gain factor.
+                    RexPlayerController.setSyncVolume(1f)
+                    if (actual < 0f) {
+                        _state.value = _state.value.copy(error = "Volume Android tidak dapat diubah pada perangkat ini.")
+                    } else {
+                        _state.value = _state.value.copy(error = null)
+                    }
+                }
+            }
             "reject" -> _state.value = _state.value.copy(error = m.optString("reason"), status = "Akses ditolak")
         }
     }

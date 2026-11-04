@@ -25,6 +25,10 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
             }
             p.id = join.optString("id").ifBlank { java.util.UUID.randomUUID().toString() }
             p.name = join.optString("name").trim().ifBlank { "User" }
+            p.username = join.optString("username", "").trim().take(80)
+            p.bio = join.optString("bio", "").trim().take(240)
+            p.profilePictureBase64 = join.optString("profilePicture", "").take(260_000)
+            p.bannerBase64 = join.optString("banner", "").take(360_000)
             p.lastSeen = SystemClock.elapsedRealtime()
             peers.add(p)
             send(p.writer, JSONObject().put("type", "welcome").put("id", p.id).put("room", roomName))
@@ -37,14 +41,18 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
                     "ping" -> {
                         p.lastSeen = SystemClock.elapsedRealtime()
                         p.deviceVolume = msg.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f)
-                        _state.value = _state.value.copy(members = _state.value.members.map { if (it.id == p.id) it.copy(deviceVolume = p.deviceVolume) else it })
+                        if (!p.volumeControlled && p.deviceVolume >= 0f) p.volume = p.deviceVolume
+                        _state.value = _state.value.copy(
+                            volumes = _state.value.volumes + (p.id to p.volume),
+                            members = _state.value.members.map { if (it.id == p.id) it.copy(deviceVolume = p.deviceVolume, volume = p.volume) else it }
+                        )
                         val hostSend = SystemClock.elapsedRealtime()
                         p.clockSynced = true
                         send(p.writer, JSONObject().put("type", "pong")
                             .put("clientElapsed", msg.optLong("clientElapsed", 0L))
                             .put("hostReceiveElapsed", hostSend)
                             .put("hostSendElapsed", SystemClock.elapsedRealtime()))
-                        if (hostTrack != null) sendState(p)
+                        if (hostTrack != null && !hostPreparing) sendState(p)
                     }
                     "ready" -> { p.lastSeen = SystemClock.elapsedRealtime() }
                     "request_track" -> { p.lastSeen = SystemClock.elapsedRealtime(); if (hostTrack != null) sendState(p) }
@@ -55,7 +63,11 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
                         _state.value = _state.value.copy(cacheStatus = "Menerima ${t?.title ?: "lagu"} dari ${p.name}…")
                     }
                     "queue_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); sendQueue(p) }
-                    "volume" -> { p.lastSeen = SystemClock.elapsedRealtime(); p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f) }
+                    "volume" -> {
+                        p.lastSeen = SystemClock.elapsedRealtime()
+                        p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f)
+                        p.volumeControlled = true
+                    }
                     "play_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); val id = msg.optString("trackId"); sharedQueue.firstOrNull { it.id == id }?.let { queued -> val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }; if (local != null) { sharedQueue.removeAll { it.id == id }; publishQueue(); playTrack(local.track) } } }
                 }
             }
@@ -85,7 +97,19 @@ internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, ip: String, p
                 val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
                 client = s; clientWriter = writer
                 val id = java.util.UUID.randomUUID().toString()
-                send(writer, JSONObject().put("type", "join").put("id", id).put("room", room.trim()).put("name", profileName).put("password", password))
+                val profile = RexLocalProfileBridge.read()
+                appContextRef?.let { context ->
+                    withContext(Dispatchers.Main) {
+                        RexPlayerController.init(context)
+                        RexPlayerController.setSyncVolume(1f)
+                    }
+                }
+                val assets = appContextRef?.let { createRexSyncProfileAssets(it, profile) } ?: RexSyncProfileAssets()
+                send(writer, JSONObject()
+                    .put("type", "join").put("id", id).put("room", room.trim())
+                    .put("name", profileName).put("username", profile.username).put("bio", profile.bio)
+                    .put("profilePicture", assets.pictureBase64).put("banner", assets.bannerBase64)
+                    .put("password", password))
                 val first = reader.readLine() ?: error("Host menutup koneksi")
                 val welcome = JSONObject(first)
                 if (welcome.optString("type") != "welcome") error(welcome.optString("reason", "Ditolak host"))

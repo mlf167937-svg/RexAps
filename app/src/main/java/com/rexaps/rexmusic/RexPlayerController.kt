@@ -39,6 +39,8 @@ object RexPlayerController {
     internal var player: MediaPlayer? = null
     internal var syncVolume: Float = 1f
     internal var syncPrepareTrackId: String? = null
+    internal var syncSeekPending = false
+    internal var syncSeekTargetMs = -1L
     internal var prepared = false
     internal var progressJob: Job? = null
     internal var seekJob: Job? = null
@@ -409,6 +411,11 @@ object RexPlayerController {
     /** Immediate seek for sync correction; unlike the UI drag path, this is not debounced. */
     fun seekToPositionImmediate(positionMs: Long) {
         return this.__splitImpl_seekToPositionImmediate(positionMs)
+    }
+
+    /** Pre-seeks while paused and lets startSyncPlayback wait for the seek-complete callback. */
+    fun prepareSyncSeek(positionMs: Long) {
+        return this.__splitImpl_prepareSyncSeek(positionMs)
     }
 
     /** Start the already-prepared player at the requested sync position. Must be called on main. */

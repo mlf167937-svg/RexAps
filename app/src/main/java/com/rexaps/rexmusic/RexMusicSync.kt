@@ -21,15 +21,29 @@ internal const val TRANSFER_PORT = 38742
 internal const val HEARTBEAT_MS = 800L
 internal const val CLIENT_TIMEOUT_MS = 3500L
 internal const val START_LEAD_MS = 3000L
-internal const val DRIFT_CORRECTION_MS = 250L
+internal const val DRIFT_CORRECTION_MS = 180L
+internal const val MANUAL_RESYNC_LEAD_MS = 1000L
+internal const val AUTO_RESYNC_INTERVAL_MS = 5 * 60 * 1000L
 
-internal data class SyncMember(val id: String, val name: String, val connectedAt: Long = SystemClock.elapsedRealtime(), val ip: String = "", val volume: Float = 1f, val deviceVolume: Float = -1f)
+internal data class SyncMember(
+    val id: String,
+    val name: String,
+    val connectedAt: Long = SystemClock.elapsedRealtime(),
+    val ip: String = "",
+    val volume: Float = 1f,
+    val deviceVolume: Float = -1f,
+    val username: String = "",
+    val bio: String = "",
+    val profilePictureBase64: String = "",
+    val bannerBase64: String = ""
+)
 internal data class SyncUiState(
     val hosting: Boolean = false, val connected: Boolean = false, val room: String = "RexSyncRoom1",
     val ip: String = "", val password: String = "rexsync", val name: String = "User",
     val status: String = "Belum terhubung", val members: List<SyncMember> = emptyList(),
     val trackId: String = "", val trackTitle: String = "Belum ada lagu", val positionMs: Long = 0L,
-    val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap(), val hostVolume: Float = 1f, val roomElapsedMs: Long = 0L
+    val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap(), val hostVolume: Float = 1f, val roomElapsedMs: Long = 0L,
+    val autoRefreshEnabled: Boolean = false, val resyncing: Boolean = false, val lastResyncAtMs: Long = 0L
 )
 
 /** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
@@ -50,6 +64,7 @@ internal object RexMusicSyncEngine {
     internal var clientWriter: BufferedWriter? = null
     internal var heartbeat: Job? = null
     internal var playbackJob: Job? = null
+    internal var autoRefreshJob: Job? = null
     internal var roomPassword = "rexsync"
     internal var roomName = "RexSyncRoom1"
     internal var hostTrack: RexTrack? = null
@@ -62,8 +77,23 @@ internal object RexMusicSyncEngine {
     internal var hostPreparing = false
     internal var resumeWhenMemberReturns = false
 
-    internal data class Peer(val socket: Socket, val reader: BufferedReader, val writer: BufferedWriter,
-                            var id: String = "", var name: String = "", @Volatile var lastSeen: Long = SystemClock.elapsedRealtime(), val ip: String = socket.inetAddress?.hostAddress.orEmpty(), @Volatile var volume: Float = 1f, @Volatile var deviceVolume: Float = -1f, @Volatile var clockSynced: Boolean = false)
+    internal data class Peer(
+        val socket: Socket,
+        val reader: BufferedReader,
+        val writer: BufferedWriter,
+        var id: String = "",
+        var name: String = "",
+        @Volatile var lastSeen: Long = SystemClock.elapsedRealtime(),
+        val ip: String = socket.inetAddress?.hostAddress.orEmpty(),
+        @Volatile var volume: Float = 1f,
+        @Volatile var deviceVolume: Float = -1f,
+        @Volatile var clockSynced: Boolean = false,
+        var username: String = "",
+        var bio: String = "",
+        var profilePictureBase64: String = "",
+        var bannerBase64: String = "",
+        @Volatile var volumeControlled: Boolean = false
+    )
 
     fun detectIp(context: Context): String = this.__splitImpl_detectIp(context)
 
@@ -93,6 +123,10 @@ internal object RexMusicSyncEngine {
 
     internal suspend fun reconcileLocalTrack(id: String, targetPosition: Long, shouldPlay: Boolean) {
         return this.__splitImpl_reconcileLocalTrack(id, targetPosition, shouldPlay)
+    }
+
+    internal suspend fun applyRemoteRefresh(trackId: String, positionMs: Long, hostStartAtMs: Long, roomElapsedMs: Long) {
+        return this.__splitImpl_applyRemoteRefresh(trackId, positionMs, hostStartAtMs, roomElapsedMs)
     }
 
     internal var appContextRef: Context? = null
@@ -140,6 +174,14 @@ internal object RexMusicSyncEngine {
 
     fun setMemberVolume(id: String, value: Float) {
         return this.__splitImpl_setMemberVolume(id, value)
+    }
+
+    fun refreshPlaybackSync() {
+        return this.__splitImpl_refreshPlaybackSync()
+    }
+
+    fun setAutoRefresh(enabled: Boolean) {
+        return this.__splitImpl_setAutoRefresh(enabled)
     }
 
     internal fun trackJson(t: RexTrack) = this.__splitImpl_trackJson(t)
@@ -241,9 +283,11 @@ internal fun SyncPlaybackCard(
     state: SyncUiState,
     onHostVolumeChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onRefresh: () -> Unit,
+    onAutoRefreshChange: (Boolean) -> Unit
 ) {
-        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop)
+        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop, onRefresh, onAutoRefreshChange)
     }
 
 @Composable

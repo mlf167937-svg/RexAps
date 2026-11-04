@@ -1,10 +1,18 @@
 package com.rexaps.rexmusic
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,67 +27,118 @@ internal fun __splitImpl_SyncMemberCard(
     onVolumeChange: (Float) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    val bannerBitmap = remember(member.bannerBase64) { decodeRexSyncProfileImage(member.bannerBase64) }
+    val avatarBitmap = remember(member.profilePictureBase64) { decodeRexSyncProfileImage(member.profilePictureBase64) }
+    val isHost = member.id == "host"
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = scheme.surface)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.55f))
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(104.dp)
+                    .background(Brush.linearGradient(listOf(scheme.primary.copy(alpha = 0.62f), scheme.tertiary.copy(alpha = 0.36f), scheme.surfaceVariant)))
+            ) {
+                if (bannerBitmap != null) {
+                    coil.compose.AsyncImage(
+                        model = bannerBitmap,
+                        contentDescription = "Banner ${member.name}",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                }
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f)))))
                 Surface(
-                    shape = RoundedCornerShape(13.dp),
-                    color = scheme.secondaryContainer
+                    modifier = Modifier.align(Alignment.TopEnd).padding(11.dp),
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.48f)
                 ) {
-                    androidx.compose.material3.Icon(
-                        Icons.Default.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.padding(10.dp),
-                        tint = scheme.onSecondaryContainer
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(member.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                     Text(
-                        if (member.id == "host") "Host device" else "Connected · ${member.ip}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1
+                        if (isHost) "HOST" else "CONNECTED",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
                     )
-                }
-                if (member.id == "host") {
-                    Text("YOU", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
                 }
             }
-            if (state.hosting && member.id != "host") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("RexSync gain", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    Modifier.size(58.dp).clip(CircleShape)
+                        .background(scheme.secondaryContainer)
+                        .border(2.dp, scheme.surface, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avatarBitmap != null) {
+                        coil.compose.AsyncImage(
+                            model = avatarBitmap,
+                            contentDescription = "Foto profil ${member.name}",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(29.dp),
+                            tint = scheme.onSecondaryContainer
+                        )
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(member.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     Text(
-                        "${((state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f) * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = scheme.primary
+                        member.username.ifBlank { if (isHost) "Host device" else "${member.ip}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.primary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    if (member.bio.isNotBlank()) {
+                        Text(member.bio, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                if (isHost) {
+                    Surface(shape = RoundedCornerShape(10.dp), color = scheme.primaryContainer) {
+                        Text("YOU", modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = scheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (state.hosting && !isHost) {
+                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Volume perangkat Android", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            "${((state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f) * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = scheme.primary
+                        )
+                    }
+                    Slider(
+                        value = (state.volumes[member.id] ?: member.deviceVolume.takeIf { it >= 0f } ?: member.volume).coerceIn(0f, 1f),
+                        onValueChange = onVolumeChange,
+                        valueRange = 0f..1f
+                    )
+                    Text(
+                        if (member.deviceVolume >= 0f) "Volume media aktual: ${(member.deviceVolume * 100).toInt()}% · diubah langsung pada perangkat anggota"
+                        else "Menunggu informasi volume media perangkat…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
                     )
                 }
-                Slider(
-                    value = (state.volumes[member.id] ?: member.volume).coerceIn(0f, 1f),
-                    onValueChange = onVolumeChange,
-                    valueRange = 0f..1f
-                )
+            } else if (!isHost && member.deviceVolume >= 0f) {
                 Text(
-                    if (member.deviceVolume >= 0f) {
-                        "Media volume: ${(member.deviceVolume * 100).toInt()}% · app gain is separate"
-                    } else {
-                        "Waiting for this device to report media volume…"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant
-                )
-            } else if (member.id != "host" && member.deviceVolume >= 0f) {
-                Text(
-                    "Media volume: ${(member.deviceVolume * 100).toInt()}%",
+                    "Volume media Android: ${(member.deviceVolume * 100).toInt()}%",
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant
                 )

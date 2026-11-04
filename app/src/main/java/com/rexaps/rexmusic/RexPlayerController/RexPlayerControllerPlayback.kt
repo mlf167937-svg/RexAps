@@ -97,6 +97,38 @@ import kotlinx.coroutines.launch
         }
     }
 
+/** Seek in advance while paused. The completion flag prevents a scheduled start from racing a pending seek. */
+    internal fun RexPlayerController.__splitImpl_prepareSyncSeek(positionMs: Long) {
+        val mp = player ?: return
+        val d = _state.value.durationMs
+        if (!prepared || d <= 0L) return
+        val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val targetLong = target.toLong()
+        seekJob?.cancel()
+        seekPending = false
+        syncSeekTargetMs = targetLong
+        if (kotlin.math.abs(_state.value.positionMs - targetLong) <= 25L) {
+            syncSeekPending = false
+            _state.update { it.copy(positionMs = targetLong, seekVersion = it.seekVersion + 1) }
+            return
+        }
+        syncSeekPending = true
+        _state.update { it.copy(positionMs = targetLong, seekVersion = it.seekVersion + 1) }
+        runCatching {
+            mp.setOnSeekCompleteListener { completed ->
+                if (player === completed && syncSeekTargetMs == targetLong) {
+                    syncSeekPending = false
+                    _state.update { it.copy(positionMs = targetLong) }
+                    completed.setOnSeekCompleteListener(null)
+                }
+            }
+            mp.seekTo(target)
+        }.onFailure {
+            syncSeekPending = false
+            runCatching { mp.setOnSeekCompleteListener(null) }
+        }
+    }
+
 /** Start the already-prepared player at the requested sync position. Must be called on main. */
     internal fun RexPlayerController.__splitImpl_startSyncPlayback(positionMs: Long) {
         val mp = player ?: return
@@ -105,6 +137,17 @@ import kotlinx.coroutines.launch
         val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         seekJob?.cancel()
         seekPending = false
+        if (syncSeekPending && syncSeekTargetMs == target.toLong()) {
+            mp.setOnSeekCompleteListener { completed ->
+                if (player === completed && syncSeekTargetMs == target.toLong()) {
+                    syncSeekPending = false
+                    runCatching { if (!completed.isPlaying) completed.start() }
+                    _state.update { it.copy(positionMs = target.toLong(), isPlaying = true) }
+                    completed.setOnSeekCompleteListener(null)
+                }
+            }
+            return
+        }
         if (kotlin.math.abs(_state.value.positionMs - target.toLong()) <= 25L) {
             runCatching { if (!mp.isPlaying) mp.start() }
             _state.update { it.copy(isPlaying = true) }
@@ -167,6 +210,8 @@ import kotlinx.coroutines.launch
 /** Immediate seek for sync correction; unlike the UI drag path, this is not debounced. */
     internal fun RexPlayerController.__splitImpl_seekToPositionImmediate(positionMs: Long) {
         val mp = player ?: return
+        syncSeekPending = false
+        syncSeekTargetMs = -1L
         val d = _state.value.durationMs
         if (!prepared || d <= 0L) return
         val target = positionMs.coerceIn(0L, d).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
@@ -193,6 +238,8 @@ internal fun RexPlayerController.__splitImpl_stopPlayer() {
         progressJob?.cancel()
         seekJob?.cancel()
         seekPending = false
+        syncSeekPending = false
+        syncSeekTargetMs = -1L
         prepared = false
         preparing = false
         buffering = false

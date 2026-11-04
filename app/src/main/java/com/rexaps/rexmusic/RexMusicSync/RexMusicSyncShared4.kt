@@ -9,22 +9,42 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 
 internal fun RexMusicSyncEngine.__splitImpl_broadcastMembers() {
-        val a = org.json.JSONArray().put(JSONObject().put("id", "host").put("name", "Host"))
-        peers.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name).put("volume", it.volume).put("deviceVolume", it.deviceVolume)) }
-        _state.value = _state.value.copy(members = listOf(SyncMember("host", "Host")) + peers.map { SyncMember(it.id, it.name, ip = it.ip, volume = it.volume, deviceVolume = it.deviceVolume) }, volumes = peers.associate { it.id to it.volume })
-        val msg = JSONObject().put("type", "members").put("members", a)
-        peers.forEach { send(it.writer, msg) }
+        val host = _state.value.members.firstOrNull { it.id == "host" }
+            ?: SyncMember("host", _state.value.name.ifBlank { "Host" })
+        val members = listOf(host) + peers.map { peer ->
+            SyncMember(
+                id = peer.id, name = peer.name, ip = peer.ip,
+                volume = peer.volume, deviceVolume = peer.deviceVolume,
+                username = peer.username, bio = peer.bio,
+                profilePictureBase64 = peer.profilePictureBase64,
+                bannerBase64 = peer.bannerBase64
+            )
+        }
+        val array = org.json.JSONArray()
+        members.forEach { member ->
+            array.put(JSONObject()
+                .put("id", member.id).put("name", member.name).put("username", member.username)
+                .put("bio", member.bio).put("profilePicture", member.profilePictureBase64)
+                .put("banner", member.bannerBase64).put("volume", member.volume)
+                .put("deviceVolume", member.deviceVolume))
+        }
+        _state.value = _state.value.copy(
+            members = members,
+            volumes = peers.associate { it.id to it.volume }
+        )
+        val message = JSONObject().put("type", "members").put("members", array)
+        peers.forEach { send(it.writer, message) }
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_closeAll() {
         hostPreparing = false; hostPlaying = false; roomStartedElapsedMs = 0L; clockOffsetMs = 0L; lastClockRttMs = -1L
-        heartbeat?.cancel(); playbackJob?.cancel(); roomJob?.cancel(); roomJob = null
+        heartbeat?.cancel(); playbackJob?.cancel(); autoRefreshJob?.cancel(); autoRefreshJob = null; roomJob?.cancel(); roomJob = null
         sharedQueue.clear()
         peers.forEach { runCatching { it.socket.close() } }; peers.clear()
         runCatching { client?.close() }; client = null; clientWriter = null
         runCatching { server?.close() }; server = null
         if (_state.value.hosting) stopLocalPlayback()
-        _state.value = _state.value.copy(queue = emptyList())
+        _state.value = _state.value.copy(queue = emptyList(), autoRefreshEnabled = false, resyncing = false)
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_stopAll(reason: String = "Host menghentikan pemutaran") {
