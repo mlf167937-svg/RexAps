@@ -63,8 +63,10 @@ jobs:
           echo "Searching the archive for both libnode.so files..."
           mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
 
-          ARM64_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/arm64-v8a\/libnode\.so$/ { print; exit }')"
-          ARMV7_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/armeabi-v7a\/libnode\.so$/ { print; exit }')"
+          # PERBAIKAN: Menghapus perintah 'exit' agar tidak terjadi 'Broken pipe'
+          # awk akan membaca semua baris sampai selesai dan mencetak yang cocok (hanya ada 1 yang cocok)
+          ARM64_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/arm64-v8a\/libnode\.so$/ && !seen { print; seen=1 }')"
+          ARMV7_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/armeabi-v7a\/libnode\.so$/ && !seen { print; seen=1 }')"
 
           if [[ -z "$ARM64_ENTRY" || -z "$ARMV7_ENTRY" ]]; then
             echo "ERROR: One or both expected library paths were not found."
