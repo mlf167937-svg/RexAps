@@ -18,12 +18,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2727
-        versionName = "27.27"
-
-        ndk {
-            abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a"))
-        }
+        versionCode = 2726
+        versionName = "27.26"
 
         externalNativeBuild {
             cmake {
