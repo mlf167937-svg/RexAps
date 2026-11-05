@@ -130,32 +130,59 @@ jobs:
           ./gradlew assembleDebug --stacktrace --refresh-dependencies 2>&1 | tee build.log
           exit ${PIPESTATUS[0]}
 
-      - name: Prepare APK
+      - name: Prepare Split APKs
         if: steps.build.outcome == 'success'
         run: |
-          mkdir -p artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/RexAps.apk
-          cp build.log artifacts/build.log
+          set -Eeuo pipefail
 
-      - name: Prepare Build Log (Build Failed)
-        if: steps.build.outcome == 'failure'
-        run: |
-          mkdir -p artifacts
-          cp build.log artifacts/build.log
+          OUTPUT_DIR="app/build/outputs/apk/debug"
+          ARTIFACT_DIR="artifacts"
+          mkdir -p "$ARTIFACT_DIR/arm64-v8a" "$ARTIFACT_DIR/armeabi-v7a"
 
-      - name: Upload APK and Log
-        if: always() && steps.build.outcome == 'success'
+          ARM64_APK="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*arm64-v8a*debug.apk' -print -quit)"
+          ARMV7_APK="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*armeabi-v7a*debug.apk' -print -quit)"
+
+          if [[ -z "$ARM64_APK" || ! -s "$ARM64_APK" ]]; then
+            echo "ERROR: APK split arm64-v8a tidak ditemukan di $OUTPUT_DIR"
+            find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%p (%s bytes)\n' || true
+            exit 1
+          fi
+
+          if [[ -z "$ARMV7_APK" || ! -s "$ARMV7_APK" ]]; then
+            echo "ERROR: APK split armeabi-v7a tidak ditemukan di $OUTPUT_DIR"
+            find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%p (%s bytes)\n' || true
+            exit 1
+          fi
+
+          cp "$ARM64_APK" "$ARTIFACT_DIR/arm64-v8a/RexAps-arm64-v8a.apk"
+          cp "$ARMV7_APK" "$ARTIFACT_DIR/armeabi-v7a/RexAps-armeabi-v7a.apk"
+
+          echo "APK hasil split:"
+          ls -lh "$ARTIFACT_DIR/arm64-v8a/RexAps-arm64-v8a.apk" "$ARTIFACT_DIR/armeabi-v7a/RexAps-armeabi-v7a.apk"
+
+      - name: Upload ARM64 APK
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: RexAps-debug
-          path: artifacts/
+          name: RexAps-arm64-v8a
+          path: artifacts/arm64-v8a/RexAps-arm64-v8a.apk
+          if-no-files-found: error
 
-      - name: Upload Log Only (Build Failed)
-        if: always() && steps.build.outcome == 'failure'
+      - name: Upload ARMv7 APK
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-armeabi-v7a
+          path: artifacts/armeabi-v7a/RexAps-armeabi-v7a.apk
+          if-no-files-found: error
+
+      - name: Upload Build Log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RexAps-build-log
-          path: artifacts/build.log
+          path: build.log
+          if-no-files-found: warn
 
       - name: Fail Workflow If Build Failed
         if: steps.build.outcome == 'failure'

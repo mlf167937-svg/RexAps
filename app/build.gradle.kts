@@ -18,8 +18,8 @@ android {
         applicationId = "com.rexaps"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2726
-        versionName = "27.26"
+        versionCode = 2727
+        versionName = "27.27"
 
         ndk {
             abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a"))
@@ -29,6 +29,16 @@ android {
             cmake {
                 arguments += "-DANDROID_STL=c++_shared"
             }
+        }
+    }
+
+    // Buat APK terpisah untuk setiap arsitektur CPU.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
 
