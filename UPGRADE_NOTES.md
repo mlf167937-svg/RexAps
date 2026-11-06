@@ -29,3 +29,18 @@ Use Android Studio with Android SDK 35 installed, or run `./gradlew :app:assembl
 - Shortcut menggunakan Android pinned-shortcut API. Launcher akan meminta konfirmasi; beberapa launcher/ROM dapat menolak fitur pinned shortcut.
 - Intent shortcut membawa module ID ke `MainActivity` dan membuka route modul terkait secara langsung. Semua 14 modul yang tersedia saat perubahan ini memiliki route yang valid.
 
+
+## RexMusic Sync — drift correction and live profile media
+
+- Playback start is prepared with a shared monotonic host deadline (5 seconds ahead). Each member preloads the local track and pre-seeks while waiting; it no longer starts by seeking at the exact play deadline.
+- Every member sends a JSON playback/clock report every 2 seconds. The host broadcasts its own passive room snapshot at the same interval and compares each fresh member position against the host timeline.
+- A room position spread of **1,000 ms or more** triggers one coordinated correction: the host captures a common target 1 second behind its current position, pauses/pre-seeks all ready devices, and schedules their restart on one shared deadline (4 seconds ahead). A 12-second cooldown prevents correction loops.
+- The previous 5-minute automatic refresh is removed. There is no periodic forced seek/pause; **Refresh Sync · manual** remains available to the host. Normal 2-second telemetry updates the UI only and never pauses, seeks, or restarts a player.
+- Members joining an active room receive a position projected to the scheduled start time, so the preparation window does not put them several seconds behind. A joining device waits briefly for a transferred audio cache to become indexed before attempting playback.
+- Sync member banners use the full card width with a 16:9 crop. Volume controls are laid out below the banner/profile row so they cannot squeeze the banner.
+- Local profile banner videos and profile-picture videos are transferred to room members (up to 6 MB each), cached locally, and played muted in a loop on the member cards. Static image fallbacks remain supported.
+
+## Validation for this update
+
+- Kotlin parser check reported no syntax/declaration parse errors in the RexMusic Sync source files. Standalone `kotlinc` checks cannot resolve Android/Compose project dependencies, so they are not a full compile.
+- `./gradlew :app:compileDebugKotlin --offline` could not start compilation because the Gradle 8.11.1 wrapper distribution is not cached and this environment cannot resolve `services.gradle.org`. Run a full Android Studio/Gradle build on a machine with the required Gradle distribution and Android SDK before releasing an APK.

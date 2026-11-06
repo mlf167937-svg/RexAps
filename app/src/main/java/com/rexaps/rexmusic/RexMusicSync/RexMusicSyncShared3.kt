@@ -54,50 +54,55 @@ internal fun RexMusicSyncEngine.__splitImpl_receiveBundle(socket: Socket) {
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_broadcastTick() {
-        val now = SystemClock.elapsedRealtime()
-        val roomElapsed = (now - roomStartedElapsedMs).coerceAtLeast(0L)
-        _state.value = _state.value.copy(roomElapsedMs = roomElapsed)
-        val roomMessage = JSONObject().put("type", "room_time").put("roomElapsedMs", roomElapsed)
-        peers.filter { it.clockSynced }.forEach { runCatching { send(it.writer, roomMessage) } }
-        if (hostPreparing) return
-        val track = hostTrack ?: return
-        val current = RexPlayerController.state.value
-        // The room, not the local autoplay queue, owns what happens after the final play.
-        // Wait beyond the shared start deadline so a still-preparing player is not mistaken
-        // for a completed track.
-        if (hostPlaying && now > playAnchorWallMs + 2500L && current.nowPlaying?.id == track.id &&
-            current.durationMs > 0L && current.positionMs >= current.durationMs - 1500L && !current.isPlaying) {
-            hostPlaying = false
-            _state.value = _state.value.copy(playing = false, positionMs = current.durationMs)
-            val next = sharedQueue.firstOrNull()
-            if (next != null) { playQueued(next); return }
-            stopAll("Lagu selesai · antrean bersama kosong")
-            return
-        }
-        // Defensive fallback for a player transition outside the sync-aware completion path.
-        if (hostPlaying && now > playAnchorWallMs + 2500L && current.isPlaying &&
-            current.nowPlaying?.id != null && current.nowPlaying?.id != track.id) {
-            val next = sharedQueue.firstOrNull()
-            if (next != null) { playQueued(next); return }
-            stopAll("Lagu selesai · antrean bersama kosong")
-            return
-        }
-        if (current.repeatTotal != _state.value.repeatTotal || current.repeatLeft != _state.value.repeatLeft) {
-            _state.value = _state.value.copy(repeatTotal = current.repeatTotal, repeatLeft = current.repeatLeft)
-            val repeatMessage = JSONObject().put("type", "repeat")
-                .put("total", current.repeatTotal).put("left", current.repeatLeft)
-            peers.filter { it.clockSynced }.forEach { send(it.writer, repeatMessage) }
-        }
-        val position = if (hostPlaying) {
-            if (current.nowPlaying?.id == track.id && current.positionMs > 0L) current.positionMs
-            else playAnchorPositionMs + max(0L, SystemClock.elapsedRealtime() - playAnchorWallMs)
-        } else current.positionMs
-        val hostReference = if (hostPlaying) max(now, playAnchorWallMs) else now
-        val msg = JSONObject().put("type", "sync").put("trackId", track.id).put("title", track.title)
-            .put("position", position).put("playing", hostPlaying).put("hostElapsed", hostReference).put("roomElapsedMs", (now - roomStartedElapsedMs).coerceAtLeast(0L))
-        peers.filter { it.clockSynced }.forEach { send(it.writer, msg) }
-        _state.value = _state.value.copy(positionMs = position, playing = hostPlaying, roomElapsedMs = (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(0L))
+    val now = SystemClock.elapsedRealtime()
+    val roomElapsed = (now - roomStartedElapsedMs).coerceAtLeast(0L)
+    _state.value = _state.value.copy(roomElapsedMs = roomElapsed)
+    if (hostPreparing) return
+
+    val track = hostTrack
+    val player = RexPlayerController.state.value
+    if (track == null) {
+        val emptySnapshot = JSONObject().put("type", "room_sync").put("trackId", "")
+            .put("playing", false).put("position", 0L).put("hostElapsed", now)
+            .put("roomElapsedMs", roomElapsed).put("revision", roomPlaybackRevision)
+        peers.filter { it.clockSynced }.forEach { send(it.writer, emptySnapshot) }
+        return
     }
+
+    // Use the host's actual MediaPlayer position as the authority. The clients only
+    // report telemetry; these periodic snapshots never pause, seek or restart them.
+    val position = if (player.nowPlaying?.id == track.id && player.durationMs > 0L) {
+        player.positionMs.coerceAtLeast(0L)
+    } else if (hostPlaying) {
+        playAnchorPositionMs + maxOf(0L, now - playAnchorWallMs)
+    } else player.positionMs.coerceAtLeast(0L)
+
+    if (hostPlaying && player.nowPlaying?.id == track.id && player.durationMs > 0L &&
+        position >= player.durationMs - 1200L && !player.isPlaying && now > playAnchorWallMs + 2500L) {
+        hostPlaying = false
+        _state.value = _state.value.copy(playing = false, positionMs = player.durationMs)
+        val next = sharedQueue.firstOrNull()
+        if (next != null) { playQueued(next); return }
+        stopAll("Lagu selesai · antrean bersama kosong")
+        return
+    }
+
+    if (player.repeatTotal != _state.value.repeatTotal || player.repeatLeft != _state.value.repeatLeft) {
+        _state.value = _state.value.copy(repeatTotal = player.repeatTotal, repeatLeft = player.repeatLeft)
+        val repeatMessage = JSONObject().put("type", "repeat")
+            .put("total", player.repeatTotal).put("left", player.repeatLeft)
+        peers.filter { it.clockSynced }.forEach { send(it.writer, repeatMessage) }
+    }
+
+    val snapshot = JSONObject().put("type", "room_sync").put("trackId", track.id)
+        .put("title", track.title).put("position", position).put("playing", hostPlaying)
+        .put("hostElapsed", now).put("roomElapsedMs", roomElapsed)
+        .put("revision", roomPlaybackRevision)
+        .put("repeatTotal", player.repeatTotal).put("repeatLeft", player.repeatLeft)
+    peers.filter { it.clockSynced }.forEach { send(it.writer, snapshot) }
+    _state.value = _state.value.copy(trackId = track.id, trackTitle = track.title,
+        positionMs = position, playing = hostPlaying, roomElapsedMs = roomElapsed)
+}
 
 internal suspend fun RexMusicSyncEngine.__splitImpl_sendBundle(host: String, track: RexTrack): Boolean = withContext(Dispatchers.IO) {
         try {

@@ -42,7 +42,8 @@ internal data class RexLocalProfileSnapshot(
     val bio: String = "Halo! Aku menggunakan RexAps.",
     val picturePath: String = "",
     val pictureVideo: String = "",
-    val bannerPath: String = ""
+    val bannerPath: String = "",
+    val bannerVideo: String = ""
 )
 
 internal object RexLocalProfileBridge {
@@ -82,12 +83,13 @@ internal object RexLocalProfileBridge {
                 listOf("profilePicture", "profilePicturePath", "avatar", "photo"),
                 listOf("profile-pictures.png", "profile-pictures.jpg", "profile-pictures.jpeg", "profile-picture.png", "profile-picture.jpg")
             ),
-            pictureVideo = json.optString("profileVideo", "").trim(),
+            pictureVideo = assetPath(json, listOf("profileVideo"), emptyList()),
             bannerPath = assetPath(
                 json,
                 listOf("banner", "bannerImage", "bannerPath", "profileBanner", "bannerPicture", "coverPhoto"),
                 listOf("banner.png", "banner.jpg", "banner.jpeg", "profile-banner.png", "profile-banner.jpg")
-            )
+            ),
+            bannerVideo = assetPath(json, listOf("bannerVideo"), emptyList())
         )
     }.getOrDefault(RexLocalProfileSnapshot())
 }

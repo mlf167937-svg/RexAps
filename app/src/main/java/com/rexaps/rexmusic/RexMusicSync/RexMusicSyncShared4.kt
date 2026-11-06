@@ -17,7 +17,9 @@ internal fun RexMusicSyncEngine.__splitImpl_broadcastMembers() {
                 volume = peer.volume, deviceVolume = peer.deviceVolume,
                 username = peer.username, bio = peer.bio,
                 profilePictureBase64 = peer.profilePictureBase64,
-                bannerBase64 = peer.bannerBase64
+                bannerBase64 = peer.bannerBase64,
+                profilePictureVideoBase64 = peer.profilePictureVideoBase64,
+                bannerVideoBase64 = peer.bannerVideoBase64
             )
         }
         val array = org.json.JSONArray()
@@ -25,8 +27,10 @@ internal fun RexMusicSyncEngine.__splitImpl_broadcastMembers() {
             array.put(JSONObject()
                 .put("id", member.id).put("name", member.name).put("username", member.username)
                 .put("bio", member.bio).put("profilePicture", member.profilePictureBase64)
-                .put("banner", member.bannerBase64).put("volume", member.volume)
-                .put("deviceVolume", member.deviceVolume))
+                .put("banner", member.bannerBase64)
+                .put("profilePictureVideo", member.profilePictureVideoBase64)
+                .put("bannerVideo", member.bannerVideoBase64)
+                .put("volume", member.volume).put("deviceVolume", member.deviceVolume))
         }
         _state.value = _state.value.copy(
             members = members,
@@ -37,8 +41,8 @@ internal fun RexMusicSyncEngine.__splitImpl_broadcastMembers() {
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_closeAll() {
-        hostPreparing = false; hostPlaying = false; roomStartedElapsedMs = 0L; clockOffsetMs = 0L; lastClockRttMs = -1L
-        heartbeat?.cancel(); playbackJob?.cancel(); autoRefreshJob?.cancel(); autoRefreshJob = null; roomJob?.cancel(); roomJob = null
+        hostPreparing = false; hostPlaying = false; roomStartedElapsedMs = 0L; clockOffsetMs = 0L; lastClockRttMs = -1L; lastAutoRoomResyncAtMs = 0L; roomPlaybackRevision = 0L
+        heartbeat?.cancel(); playbackJob?.cancel(); roomJob?.cancel(); roomJob = null
         sharedQueue.clear()
         peers.forEach { runCatching { it.socket.close() } }; peers.clear()
         runCatching { client?.close() }; client = null; clientWriter = null
@@ -46,7 +50,7 @@ internal fun RexMusicSyncEngine.__splitImpl_closeAll() {
         if (_state.value.hosting) stopLocalPlayback()
         RexPlayerController.setSynchronizedPlaybackMode(false)
         RexPlayerController.setRepeat(0)
-        _state.value = _state.value.copy(queue = emptyList(), autoRefreshEnabled = false, resyncing = false, repeatTotal = 0, repeatLeft = 0)
+        _state.value = _state.value.copy(queue = emptyList(), resyncing = false, syncDriftMs = 0L, repeatTotal = 0, repeatLeft = 0)
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_stopAll(reason: String = "Host menghentikan pemutaran") {

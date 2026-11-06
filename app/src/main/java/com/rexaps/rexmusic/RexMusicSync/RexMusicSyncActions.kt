@@ -12,9 +12,10 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
         closeAll()
         roomName = room.trim().ifBlank { "RexSyncRoom1" }
         roomStartedElapsedMs = SystemClock.elapsedRealtime()
+        lastAutoRoomResyncAtMs = 0L
+        roomPlaybackRevision = 0L
         roomPassword = password
         RexPlayerController.setSynchronizedPlaybackMode(true)
-        autoRefreshJob?.cancel()
         val hostProfile = RexLocalProfileBridge.read()
         val hostName = hostProfile.name.trim().ifBlank { "Rex User" }
         val initialVolume = appContextRef?.let { readAndroidMusicVolume(it) }?.takeIf { it >= 0f } ?: 1f
@@ -25,7 +26,7 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
         _state.value = _state.value.copy(
             hosting = true, connected = true, room = roomName, password = password,
             ip = ip, name = hostName, status = "Membuka room…", error = null,
-            hostVolume = initialVolume, autoRefreshEnabled = false, resyncing = false,
+            hostVolume = initialVolume, resyncing = false, syncDriftMs = 0L,
             members = listOf(SyncMember("host", hostName, username = hostProfile.username, bio = hostProfile.bio))
         )
         roomJob = scope.launch {
@@ -33,13 +34,14 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
                 val assets = appContextRef?.let { withContext(Dispatchers.IO) { createRexSyncProfileAssets(it, hostProfile) } } ?: RexSyncProfileAssets()
                 _state.value = _state.value.copy(members = listOf(SyncMember(
                     id = "host", name = hostName, username = hostProfile.username, bio = hostProfile.bio,
-                    profilePictureBase64 = assets.pictureBase64, bannerBase64 = assets.bannerBase64
+                    profilePictureBase64 = assets.pictureBase64, bannerBase64 = assets.bannerBase64,
+                    profilePictureVideoBase64 = assets.pictureVideoBase64, bannerVideoBase64 = assets.bannerVideoBase64
                 )))
                 val ss = ServerSocket(SYNC_PORT, 32, InetAddress.getByName("0.0.0.0"))
                 server = ss
                 _state.value = _state.value.copy(status = "Room aktif · menunggu anggota")
                 launch { monitorPeers() }
-                launch { while (isActive && _state.value.hosting) { broadcastTick(); delay(900L) } }
+                launch { while (isActive && _state.value.hosting) { broadcastTick(); delay(SYNC_REPORT_INTERVAL_MS) } }
                 while (!ss.isClosed) {
                     val socket = ss.accept().apply { soTimeout = 0; tcpNoDelay = true; keepAlive = true }
                     launch { acceptPeer(socket) }

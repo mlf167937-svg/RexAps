@@ -18,6 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import com.rexaps.ui.RexVideo
 import kotlinx.coroutines.*
 
 @Composable
@@ -27,8 +30,15 @@ internal fun __splitImpl_SyncMemberCard(
     onVolumeChange: (Float) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val bannerBitmap = remember(member.bannerBase64) { decodeRexSyncProfileImage(member.bannerBase64) }
     val avatarBitmap = remember(member.profilePictureBase64) { decodeRexSyncProfileImage(member.profilePictureBase64) }
+    val bannerVideoPath by produceState<String?>(null, member.id, member.bannerVideoBase64) {
+        value = withContext(Dispatchers.IO) { cacheRexSyncProfileVideo(context, member.bannerVideoBase64, member.id, "banner") }
+    }
+    val avatarVideoPath by produceState<String?>(null, member.id, member.profilePictureVideoBase64) {
+        value = withContext(Dispatchers.IO) { cacheRexSyncProfileVideo(context, member.profilePictureVideoBase64, member.id, "avatar") }
+    }
     val isHost = member.id == "host"
 
     Card(
@@ -39,15 +49,26 @@ internal fun __splitImpl_SyncMemberCard(
     ) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().height(104.dp)
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                     .background(Brush.linearGradient(listOf(scheme.primary.copy(alpha = 0.62f), scheme.tertiary.copy(alpha = 0.36f), scheme.surfaceVariant)))
             ) {
-                if (bannerBitmap != null) {
+                val liveBanner = bannerVideoPath?.takeIf { java.io.File(it).isFile }
+                if (liveBanner != null) {
+                    RexVideo(
+                        path = liveBanner,
+                        modifier = Modifier.fillMaxSize(),
+                        key = "${member.id}-banner-${member.bannerVideoBase64.hashCode()}",
+                        loop = true,
+                        muted = true,
+                        playing = true,
+                        fit = false
+                    )
+                } else if (bannerBitmap != null) {
                     coil.compose.AsyncImage(
                         model = bannerBitmap,
                         contentDescription = "Banner ${member.name}",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        contentScale = ContentScale.Crop
                     )
                 }
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f)))))
@@ -77,12 +98,23 @@ internal fun __splitImpl_SyncMemberCard(
                         .border(2.dp, scheme.surface, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (avatarBitmap != null) {
+                    val liveAvatar = avatarVideoPath?.takeIf { java.io.File(it).isFile }
+                    if (liveAvatar != null) {
+                        RexVideo(
+                            path = liveAvatar,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            key = "${member.id}-avatar-${member.profilePictureVideoBase64.hashCode()}",
+                            loop = true,
+                            muted = true,
+                            playing = true,
+                            fit = false
+                        )
+                    } else if (avatarBitmap != null) {
                         coil.compose.AsyncImage(
                             model = avatarBitmap,
                             contentDescription = "Foto profil ${member.name}",
                             modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            contentScale = ContentScale.Crop
                         )
                     } else {
                         androidx.compose.material3.Icon(
@@ -114,7 +146,8 @@ internal fun __splitImpl_SyncMemberCard(
             }
 
             if (state.hosting && !isHost) {
-                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Divider(modifier = Modifier.padding(horizontal = 16.dp), color = scheme.outlineVariant.copy(alpha = 0.45f))
+                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Volume perangkat Android", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                         Text(

@@ -28,7 +28,9 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
             p.username = join.optString("username", "").trim().take(80)
             p.bio = join.optString("bio", "").trim().take(240)
             p.profilePictureBase64 = join.optString("profilePicture", "").take(260_000)
-            p.bannerBase64 = join.optString("banner", "").take(360_000)
+            p.bannerBase64 = join.optString("banner", "").take(420_000)
+            p.profilePictureVideoBase64 = join.optString("profilePictureVideo", "").take(8_400_000)
+            p.bannerVideoBase64 = join.optString("bannerVideo", "").take(8_400_000)
             p.lastSeen = SystemClock.elapsedRealtime()
             peers.add(p)
             send(p.writer, JSONObject().put("type", "welcome").put("id", p.id).put("room", roomName))
@@ -43,6 +45,17 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
                         _state.value = _state.value.copy(cacheStatus = "Gagal mengirim ${track.title} ke anggota baru ${p.name}")
                     }
                 }
+                p.assetsReady = true
+                if (p.clockSynced && !p.initialStateSent && !hostPreparing) {
+                    p.initialStateSent = true
+                    sendState(p)
+                }
+            } else {
+                p.assetsReady = true
+                if (p.clockSynced && !p.initialStateSent && !hostPreparing) {
+                    p.initialStateSent = true
+                    sendState(p)
+                }
             }
             while (true) {
                 val line = withContext(Dispatchers.IO) { p.reader.readLine() } ?: break
@@ -56,13 +69,28 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
                             volumes = _state.value.volumes + (p.id to p.volume),
                             members = _state.value.members.map { if (it.id == p.id) it.copy(deviceVolume = p.deviceVolume, volume = p.volume) else it }
                         )
-                        val hostSend = SystemClock.elapsedRealtime()
-                        p.clockSynced = true
+                        val hostReceive = SystemClock.elapsedRealtime()
+                        p.clockSynced = msg.optBoolean("clockSynced", false)
                         send(p.writer, JSONObject().put("type", "pong")
                             .put("clientElapsed", msg.optLong("clientElapsed", 0L))
-                            .put("hostReceiveElapsed", hostSend)
+                            .put("hostReceiveElapsed", hostReceive)
                             .put("hostSendElapsed", SystemClock.elapsedRealtime()))
-                        if (hostTrack != null && !hostPreparing) sendState(p)
+                        if (p.clockSynced && p.assetsReady && !p.initialStateSent && !hostPreparing) {
+                            p.initialStateSent = true
+                            sendState(p)
+                        }
+
+                        // The same 2-second heartbeat carries the client's playback report.
+                        val reportTrack = msg.optString("trackId", "")
+                        if (reportTrack.isNotBlank()) {
+                            p.reportedTrackId = reportTrack
+                            p.reportedPositionMs = msg.optLong("position", 0L).coerceAtLeast(0L)
+                            p.reportedPlaying = msg.optBoolean("playing", false)
+                            p.reportedAtHostMs = hostReceive
+                            p.reportedClockOffsetMs = msg.optLong("clockOffsetMs", 0L)
+                            p.reportedSampleHostMs = msg.optLong("clientElapsed", 0L) + p.reportedClockOffsetMs
+                            evaluateRoomDrift(p)
+                        }
                     }
                     "ready" -> { p.lastSeen = SystemClock.elapsedRealtime() }
                     "request_track" -> { p.lastSeen = SystemClock.elapsedRealtime(); if (hostTrack != null) sendState(p) }
@@ -121,6 +149,7 @@ internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, ip: String, p
                     .put("type", "join").put("id", id).put("room", room.trim())
                     .put("name", profileName).put("username", profile.username).put("bio", profile.bio)
                     .put("profilePicture", assets.pictureBase64).put("banner", assets.bannerBase64)
+                    .put("profilePictureVideo", assets.pictureVideoBase64).put("bannerVideo", assets.bannerVideoBase64)
                     .put("password", password))
                 val first = reader.readLine() ?: error("Host menutup koneksi")
                 val welcome = JSONObject(first)
@@ -132,7 +161,14 @@ internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, ip: String, p
                         val maxVolume = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
                         val currentVolume = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                         val actual = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else -1f
-                        send(writer, JSONObject().put("type", "ping").put("clientElapsed", SystemClock.elapsedRealtime()).put("deviceVolume", actual))
+                        val clientElapsed = SystemClock.elapsedRealtime()
+                        val playback = RexPlayerController.state.value
+                        send(writer, JSONObject().put("type", "ping").put("clientElapsed", clientElapsed)
+                            .put("deviceVolume", actual).put("trackId", playback.nowPlaying?.id.orEmpty())
+                            .put("position", playback.positionMs).put("playing", playback.isPlaying)
+                            .put("duration", playback.durationMs).put("roomElapsedMs", _state.value.roomElapsedMs)
+                            .put("clockSynced", lastClockRttMs >= 0L)
+                            .put("clockOffsetMs", clockOffsetMs).put("clockRttMs", lastClockRttMs))
                     }; delay(HEARTBEAT_MS) } }
                 while (true) {
                     val line = reader.readLine() ?: break

@@ -18,12 +18,13 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 internal const val SYNC_PORT = 38741
 internal const val TRANSFER_PORT = 38742
-internal const val HEARTBEAT_MS = 800L
-internal const val CLIENT_TIMEOUT_MS = 6000L
-internal const val START_LEAD_MS = 3000L
-internal const val DRIFT_CORRECTION_MS = 180L
-internal const val MANUAL_RESYNC_LEAD_MS = 1000L
-internal const val AUTO_RESYNC_INTERVAL_MS = 5 * 60 * 1000L
+internal const val HEARTBEAT_MS = 2000L
+internal const val CLIENT_TIMEOUT_MS = 7000L
+internal const val START_LEAD_MS = 5000L
+internal const val ROOM_RESYNC_LEAD_MS = 4000L
+internal const val SYNC_REPORT_INTERVAL_MS = 2000L
+internal const val AUTO_ROOM_RESYNC_THRESHOLD_MS = 1000L
+internal const val AUTO_ROOM_RESYNC_COOLDOWN_MS = 12000L
 internal const val MAX_SYNC_REPEAT = 20
 
 internal data class SyncMember(
@@ -36,7 +37,9 @@ internal data class SyncMember(
     val username: String = "",
     val bio: String = "",
     val profilePictureBase64: String = "",
-    val bannerBase64: String = ""
+    val bannerBase64: String = "",
+    val profilePictureVideoBase64: String = "",
+    val bannerVideoBase64: String = ""
 )
 internal data class SyncUiState(
     val hosting: Boolean = false, val connected: Boolean = false, val room: String = "RexSyncRoom1",
@@ -44,7 +47,7 @@ internal data class SyncUiState(
     val status: String = "Belum terhubung", val members: List<SyncMember> = emptyList(),
     val trackId: String = "", val trackTitle: String = "Belum ada lagu", val positionMs: Long = 0L,
     val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap(), val hostVolume: Float = 1f, val roomElapsedMs: Long = 0L,
-    val autoRefreshEnabled: Boolean = false, val resyncing: Boolean = false, val lastResyncAtMs: Long = 0L,
+    val resyncing: Boolean = false, val lastResyncAtMs: Long = 0L, val syncDriftMs: Long = 0L,
     val repeatTotal: Int = 0, val repeatLeft: Int = 0
 )
 
@@ -66,7 +69,6 @@ internal object RexMusicSyncEngine {
     internal var clientWriter: BufferedWriter? = null
     internal var heartbeat: Job? = null
     internal var playbackJob: Job? = null
-    internal var autoRefreshJob: Job? = null
     internal var roomPassword = "rexsync"
     internal var roomName = "RexSyncRoom1"
     internal var hostTrack: RexTrack? = null
@@ -78,6 +80,8 @@ internal object RexMusicSyncEngine {
     internal var hostPlaying = false
     internal var hostPreparing = false
     internal var resumeWhenMemberReturns = false
+    internal var lastAutoRoomResyncAtMs = 0L
+    internal var roomPlaybackRevision = 0L
 
     internal data class Peer(
         val socket: Socket,
@@ -94,7 +98,18 @@ internal object RexMusicSyncEngine {
         var bio: String = "",
         var profilePictureBase64: String = "",
         var bannerBase64: String = "",
-        @Volatile var volumeControlled: Boolean = false
+        @Volatile var volumeControlled: Boolean = false,
+        @Volatile var assetsReady: Boolean = false,
+        @Volatile var initialStateSent: Boolean = false,
+        @Volatile var reportedTrackId: String = "",
+        @Volatile var reportedPositionMs: Long = 0L,
+        @Volatile var reportedPlaying: Boolean = false,
+        @Volatile var reportedAtHostMs: Long = 0L,
+        @Volatile var reportedSampleHostMs: Long = 0L,
+        @Volatile var reportedClockOffsetMs: Long = 0L,
+        @Volatile var driftMs: Long = 0L,
+        var profilePictureVideoBase64: String = "",
+        var bannerVideoBase64: String = ""
     )
 
     fun detectIp(context: Context): String = this.__splitImpl_detectIp(context)
@@ -155,7 +170,7 @@ internal object RexMusicSyncEngine {
     internal fun sendState(p: Peer) {
         return this.__splitImpl_sendState(p)
     }
-    internal fun broadcastState() { peers.filter { it.clockSynced }.forEach { sendState(it) } }
+    internal fun broadcastState() { peers.filter { it.clockSynced && it.assetsReady }.forEach { sendState(it) } }
     internal fun broadcastTick() {
         return this.__splitImpl_broadcastTick()
     }
@@ -180,10 +195,6 @@ internal object RexMusicSyncEngine {
 
     fun refreshPlaybackSync() {
         return this.__splitImpl_refreshPlaybackSync()
-    }
-
-    fun setAutoRefresh(enabled: Boolean) {
-        return this.__splitImpl_setAutoRefresh(enabled)
     }
 
     fun setRepeat(times: Int) {
@@ -295,10 +306,9 @@ internal fun SyncPlaybackCard(
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
     onRefresh: () -> Unit,
-    onAutoRefreshChange: (Boolean) -> Unit,
     onRepeatChange: (Int) -> Unit
 ) {
-        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop, onRefresh, onAutoRefreshChange, onRepeatChange)
+        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop, onRefresh, onRepeatChange)
     }
 
 @Composable

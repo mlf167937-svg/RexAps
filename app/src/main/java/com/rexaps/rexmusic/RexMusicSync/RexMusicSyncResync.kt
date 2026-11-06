@@ -45,13 +45,14 @@ internal fun RexMusicSyncEngine.__splitImpl_refreshPlaybackSync() {
     val now = SystemClock.elapsedRealtime()
     val capturedMusicPosition = playerState.positionMs.coerceIn(0L, playerState.durationMs)
     val capturedRoomTime = (now - roomStartedElapsedMs).coerceAtLeast(0L)
-    val sharedStartAt = now + MANUAL_RESYNC_LEAD_MS
+    val sharedStartAt = now + ROOM_RESYNC_LEAD_MS
 
     playbackJob?.cancel()
     hostPreparing = true // pauses periodic state/tick broadcasts during the refresh window
     hostPlaying = true
     playAnchorPositionMs = capturedMusicPosition
     playAnchorWallMs = sharedStartAt
+    roomPlaybackRevision += 1L
     _state.value = _state.value.copy(
         trackId = track.id,
         trackTitle = track.title,
@@ -65,13 +66,13 @@ internal fun RexMusicSyncEngine.__splitImpl_refreshPlaybackSync() {
     )
 
     val refreshMessage = JSONObject()
-        .put("type", "refresh_sync")
+        .put("type", "room_resync")
         .put("trackId", track.id)
         .put("title", track.title)
         .put("position", capturedMusicPosition)
         .put("startAt", sharedStartAt)
         .put("roomElapsedMs", capturedRoomTime)
-    peers.toList().forEach { peer -> runCatching { send(peer.writer, refreshMessage) } }
+    peers.filter { it.clockSynced && it.assetsReady }.forEach { peer -> runCatching { send(peer.writer, refreshMessage) } }
 
     playbackJob = scope.launch {
         withContext(Dispatchers.Main) {
@@ -91,27 +92,100 @@ internal fun RexMusicSyncEngine.__splitImpl_refreshPlaybackSync() {
             positionMs = capturedMusicPosition,
             roomElapsedMs = (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(capturedRoomTime),
             resyncing = false,
-            status = "Sinkronisasi diperbarui · semua perangkat berjalan"
+            status = "Refresh manual selesai · semua perangkat berjalan"
         )
-        broadcastState()
+        broadcastTick()
     }
 }
 
-/** Enables a host-only periodic refresh. It never interrupts a paused room. */
-internal fun RexMusicSyncEngine.__splitImpl_setAutoRefresh(enabled: Boolean) {
-    if (!_state.value.hosting) return
-    autoRefreshJob?.cancel()
-    autoRefreshJob = null
-    _state.value = _state.value.copy(autoRefreshEnabled = enabled)
-    if (!enabled) return
+/** Compare the host player with all recent member reports after translating each
+ * report into host elapsedRealtime. The two-second heartbeat is telemetry only. */
+internal fun RexMusicSyncEngine.evaluateRoomDrift(source: RexMusicSyncEngine.Peer) {
+    val now = SystemClock.elapsedRealtime()
+    val track = hostTrack ?: return
+    if (!_state.value.hosting || hostPreparing || _state.value.resyncing || !hostPlaying) return
+    if (source.reportedTrackId != track.id) return
+    if (now - playAnchorWallMs < START_LEAD_MS + 3500L) return
 
-    autoRefreshJob = scope.launch {
-        while (isActive && _state.value.hosting && _state.value.autoRefreshEnabled) {
-            delay(AUTO_RESYNC_INTERVAL_MS)
-            if (_state.value.hosting && hostPlaying && hostTrack != null && !hostPreparing && !_state.value.resyncing) {
-                refreshPlaybackSync()
+    val hostPlayer = RexPlayerController.state.value
+    if (hostPlayer.nowPlaying?.id != track.id || hostPlayer.durationMs <= 0L) return
+    val hostPosition = hostPlayer.positionMs.coerceAtLeast(0L)
+    val reports = peers.filter { peer ->
+        peer.reportedTrackId == track.id && peer.reportedAtHostMs > 0L &&
+            now - peer.reportedAtHostMs <= CLIENT_TIMEOUT_MS
+    }
+    if (reports.isEmpty()) return
+
+    val positions = ArrayList<Long>(reports.size + 1)
+    positions += hostPosition
+    reports.forEach { peer ->
+        val elapsedSinceSample = (now - peer.reportedSampleHostMs).coerceAtLeast(0L)
+        val projected = if (peer.reportedPlaying) peer.reportedPositionMs + elapsedSinceSample else peer.reportedPositionMs
+        peer.driftMs = kotlin.math.abs(projected - hostPosition)
+        positions += projected
+    }
+    val spread = (positions.maxOrNull() ?: hostPosition) - (positions.minOrNull() ?: hostPosition)
+    _state.value = _state.value.copy(syncDriftMs = spread)
+    if (spread >= AUTO_ROOM_RESYNC_THRESHOLD_MS) autoRoomResync(spread)
+}
+
+/** Automatic group correction is event-driven by 2-second member reports.
+ * A >1s spread rewinds the entire room by one second and gives every player
+ * one shared monotonic start deadline. Cooldown prevents correction loops. */
+internal fun RexMusicSyncEngine.autoRoomResync(driftMs: Long) {
+    val now = SystemClock.elapsedRealtime()
+    if (!_state.value.hosting || hostPreparing || _state.value.resyncing || !hostPlaying) return
+    if (driftMs < AUTO_ROOM_RESYNC_THRESHOLD_MS) return
+    if (lastAutoRoomResyncAtMs > 0L && now - lastAutoRoomResyncAtMs < AUTO_ROOM_RESYNC_COOLDOWN_MS) return
+    val track = hostTrack ?: return
+    val local = RexPlayerController.state.value
+    if (local.nowPlaying?.id != track.id || local.durationMs <= 0L) return
+
+    val target = (local.positionMs.coerceAtLeast(0L) - 1000L).coerceAtLeast(0L)
+        .coerceAtMost(local.durationMs)
+    val startAt = now + ROOM_RESYNC_LEAD_MS
+    val roomElapsed = (now - roomStartedElapsedMs).coerceAtLeast(0L)
+    lastAutoRoomResyncAtMs = now
+    roomPlaybackRevision += 1L
+    hostPreparing = true
+    hostPlaying = true
+    playAnchorPositionMs = target
+    playAnchorWallMs = startAt
+    playbackJob?.cancel()
+    _state.value = _state.value.copy(
+        playing = false, positionMs = target, roomElapsedMs = roomElapsed,
+        resyncing = true, lastResyncAtMs = now, syncDriftMs = driftMs,
+        status = "Selisih ${driftMs} ms · room mengulang 1 detik bersama…", error = null
+    )
+
+    val command = JSONObject().put("type", "room_resync")
+        .put("trackId", track.id).put("title", track.title)
+        .put("position", target).put("startAt", startAt)
+        .put("roomElapsedMs", roomElapsed).put("revision", roomPlaybackRevision)
+        .put("reason", "automatic_drift")
+    peers.filter { it.clockSynced && it.assetsReady }.forEach { send(it.writer, command) }
+
+    playbackJob = scope.launch {
+        withContext(Dispatchers.Main) {
+            RexPlayerController.pause()
+            RexPlayerController.prepareSyncSeek(target)
+        }
+        delay(max(0L, startAt - SystemClock.elapsedRealtime()))
+        val startPosition = target
+        withContext(Dispatchers.Main) {
+            if (RexPlayerController.state.value.nowPlaying?.id == track.id) {
+                RexPlayerController.startSyncPlayback(startPosition)
             }
         }
+        hostPreparing = false
+        hostPlaying = true
+        _state.value = _state.value.copy(
+            playing = true, positionMs = startPosition,
+            roomElapsedMs = (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(roomElapsed),
+            resyncing = false, syncDriftMs = 0L,
+            status = "Room kembali sinkron · rewind 1 detik selesai"
+        )
+        broadcastTick()
     }
 }
 
@@ -138,26 +212,26 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_applyRemoteRefresh(
         return
     }
 
+    val projectedTarget = (positionMs + (SystemClock.elapsedRealtime() + clockOffsetMs - hostStartAtMs).coerceAtLeast(0L))
+        .coerceAtMost(local.durationMs)
     withContext(Dispatchers.Main) {
         RexPlayerController.pause()
-        RexPlayerController.prepareSyncSeek(positionMs)
+        RexPlayerController.prepareSyncSeek(projectedTarget)
     }
 
     val localStartAt = hostStartAtMs - clockOffsetMs
     delay(max(0L, localStartAt - SystemClock.elapsedRealtime()))
-    val lateBy = max(0L, SystemClock.elapsedRealtime() + clockOffsetMs - hostStartAtMs)
     withContext(Dispatchers.Main) {
         if (RexPlayerController.state.value.nowPlaying?.id == trackId) {
-            // Keep the pre-seek target unchanged so startSyncPlayback can wait for its
-            // matching seek-complete callback instead of racing a second late seek.
-            RexPlayerController.startSyncPlayback(positionMs)
+            // Pre-seek during the lead-in; this only releases playback at the shared deadline.
+            RexPlayerController.startSyncPlayback(projectedTarget)
         }
     }
     _state.value = _state.value.copy(
-        positionMs = positionMs,
+        positionMs = projectedTarget,
         playing = true,
         roomElapsedMs = roomElapsedMs + max(0L, SystemClock.elapsedRealtime() + clockOffsetMs - hostStartAtMs),
         resyncing = false,
-        status = "Sinkronisasi room diperbarui"
+        status = "Room kembali berjalan bersama"
     )
 }

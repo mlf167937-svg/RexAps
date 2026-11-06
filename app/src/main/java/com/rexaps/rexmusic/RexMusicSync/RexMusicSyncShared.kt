@@ -42,54 +42,111 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
                         deviceVolume = o.optDouble("deviceVolume", -1.0).toFloat().coerceIn(-1f, 1f),
                         username = o.optString("username", ""), bio = o.optString("bio", ""),
                         profilePictureBase64 = o.optString("profilePicture", "").take(260_000),
-                        bannerBase64 = o.optString("banner", "").take(360_000)
+                        bannerBase64 = o.optString("banner", "").take(420_000),
+                        profilePictureVideoBase64 = o.optString("profilePictureVideo", "").take(8_400_000),
+                        bannerVideoBase64 = o.optString("bannerVideo", "").take(8_400_000)
                     )
                 }
                 _state.value = _state.value.copy(members = list)
             }
-            "sync" -> {
+            "play_prepare" -> {
                 val id = m.optString("trackId")
-                val pos = m.optLong("position", 0L)
-                val hostAt = m.optLong("hostElapsed", 0L)
-                val shouldPlay = m.optBoolean("playing", false)
-                val local = RexPlayerController.state.value
-                val projected = if (shouldPlay && hostAt > 0L) pos + (SystemClock.elapsedRealtime() + clockOffsetMs - hostAt).coerceAtLeast(0L) else pos
-                val drift = kotlin.math.abs(local.positionMs - projected)
-                val needsTrack = id.isNotBlank() && local.nowPlaying?.id != id
-                val needsPlayState = id.isNotBlank() && local.nowPlaying?.id == id && local.isPlaying != shouldPlay
-                if (needsTrack && playbackJob?.isActive != true) playbackJob = scope.launch { syncLocalTrack(id, pos, shouldPlay, m.optLong("startAt", 0L)) }
-                else if (needsPlayState && playbackJob?.isActive != true) playbackJob = scope.launch { reconcileLocalTrack(id, projected, shouldPlay) }
-                else if (shouldPlay && drift > DRIFT_CORRECTION_MS && playbackJob?.isActive != true) {
-                    playbackJob = scope.launch { withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(projected) } }
-                }
-                _state.value = _state.value.copy(trackId = id, trackTitle = m.optString("title", "Belum ada lagu"), positionMs = projected, playing = shouldPlay, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs))
-            }
-            "state" -> {
-                val track = m.optJSONObject("track")
-                val id = track?.optString("id").orEmpty()
-                val title = track?.optString("title").orEmpty().ifBlank { "Belum ada lagu" }
-                val pos = m.optLong("position", 0L)
-                val playing = m.optBoolean("playing", false)
+                val position = m.optLong("position", 0L).coerceAtLeast(0L)
                 val startAt = m.optLong("startAt", 0L)
-                val repeatTotal = m.optInt("repeatTotal", _state.value.repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
-                val repeatLeft = m.optInt("repeatLeft", repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
-                RexPlayerController.setSynchronizedRepeat(repeatTotal, repeatLeft)
-                _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs), status = "Sinkronisasi · $title", repeatTotal = repeatTotal, repeatLeft = repeatLeft)
-
-                // A state snapshot may arrive after the initial sync packet. Never restart
-                // preparation for a track that is already loaded, and don't cancel an
-                // in-flight preparation for the same track: doing so can keep members silent.
-                if (id.isNotBlank()) {
-                    val local = RexPlayerController.state.value
-                    val sameTrackLoaded = local.nowPlaying?.id == id && local.durationMs > 0L
-                    val preparationForSameTrack = playbackJob?.isActive == true && local.nowPlaying?.id == id
-                    if (!sameTrackLoaded && !preparationForSameTrack) {
-                        playbackJob?.cancel()
-                        playbackJob = scope.launch { syncLocalTrack(id, pos, playing, startAt) }
-                    } else if (sameTrackLoaded && local.isPlaying != playing && playbackJob?.isActive != true) {
-                        playbackJob = scope.launch { reconcileLocalTrack(id, pos, playing) }
+                val title = m.optString("title", "Belum ada lagu")
+                val total = m.optInt("repeatTotal", _state.value.repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
+                val left = m.optInt("repeatLeft", total).coerceIn(0, MAX_SYNC_REPEAT)
+                RexPlayerController.setSynchronizedRepeat(total, left)
+                if (id.isNotBlank() && startAt > 0L) {
+                    playbackJob?.cancel()
+                    _state.value = _state.value.copy(trackId = id, trackTitle = title,
+                        positionMs = position, playing = true,
+                        roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs),
+                        resyncing = true, status = "Menyiapkan waktu mulai bersama…", error = null,
+                        repeatTotal = total, repeatLeft = left)
+                    playbackJob = scope.launch { syncLocalTrack(id, position, true, startAt) }
+                }
+            }
+            "room_play" -> {
+                val id = m.optString("trackId")
+                val position = m.optLong("position", 0L).coerceAtLeast(0L)
+                val startAt = m.optLong("startAt", 0L)
+                val title = m.optString("title", _state.value.trackTitle)
+                if (id.isNotBlank() && startAt > 0L) {
+                    playbackJob?.cancel()
+                    _state.value = _state.value.copy(trackId = id, trackTitle = title,
+                        positionMs = position, playing = true,
+                        roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs),
+                        resyncing = true, status = "Resume serentak dijadwalkan…", error = null)
+                    playbackJob = scope.launch {
+                        val local = RexPlayerController.state.value
+                        if (local.nowPlaying?.id == id && local.durationMs > 0L) {
+                            val targetAtStart = (position + (SystemClock.elapsedRealtime() + clockOffsetMs - startAt).coerceAtLeast(0L))
+                                .coerceAtMost(local.durationMs)
+                            withContext(Dispatchers.Main) {
+                                RexPlayerController.pause()
+                                RexPlayerController.prepareSyncSeek(targetAtStart)
+                            }
+                            val deadline = startAt - clockOffsetMs
+                            delay((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+                            withContext(Dispatchers.Main) { RexPlayerController.startSyncPlayback(targetAtStart) }
+                        } else {
+                            syncLocalTrack(id, position, true, startAt)
+                        }
+                        _state.value = _state.value.copy(playing = true, resyncing = false, status = "Diputar bersama")
                     }
                 }
+            }
+            "room_pause" -> {
+                val id = m.optString("trackId")
+                val position = m.optLong("position", 0L).coerceAtLeast(0L)
+                if (id.isNotBlank() && RexPlayerController.state.value.nowPlaying?.id == id) {
+                    playbackJob?.cancel()
+                    scope.launch {
+                        withContext(Dispatchers.Main) {
+                            RexPlayerController.pause()
+                            RexPlayerController.seekToPositionImmediate(position)
+                        }
+                    }
+                }
+                _state.value = _state.value.copy(trackId = id, positionMs = position, playing = false,
+                    roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs),
+                    resyncing = false, status = "Dijeda host")
+            }
+            "room_snapshot" -> {
+                val id = m.optString("trackId")
+                val position = m.optLong("position", 0L).coerceAtLeast(0L)
+                val playing = m.optBoolean("playing", false)
+                val title = m.optString("title", "Belum ada lagu")
+                val total = m.optInt("repeatTotal", _state.value.repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
+                val left = m.optInt("repeatLeft", total).coerceIn(0, MAX_SYNC_REPEAT)
+                RexPlayerController.setSynchronizedRepeat(total, left)
+                _state.value = _state.value.copy(trackId = id, trackTitle = title,
+                    positionMs = position, playing = playing,
+                    roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs),
+                    repeatTotal = total, repeatLeft = left)
+                if (id.isNotBlank() && RexPlayerController.state.value.nowPlaying?.id != id && playbackJob?.isActive != true) {
+                    playbackJob = scope.launch { syncLocalTrack(id, position, false, 0L) }
+                } else if (!playing && id.isNotBlank() && RexPlayerController.state.value.nowPlaying?.id == id && RexPlayerController.state.value.isPlaying) {
+                    scope.launch { withContext(Dispatchers.Main) { RexPlayerController.pause(); RexPlayerController.seekToPositionImmediate(position) } }
+                }
+            }
+            "room_sync" -> {
+                val id = m.optString("trackId")
+                val title = m.optString("title", _state.value.trackTitle)
+                val pos = m.optLong("position", _state.value.positionMs).coerceAtLeast(0L)
+                val playing = m.optBoolean("playing", _state.value.playing)
+                val hostAt = m.optLong("hostElapsed", 0L)
+                val projected = if (playing && hostAt > 0L) pos + (SystemClock.elapsedRealtime() + clockOffsetMs - hostAt).coerceAtLeast(0L) else pos
+                val total = m.optInt("repeatTotal", _state.value.repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
+                val left = m.optInt("repeatLeft", total).coerceIn(0, MAX_SYNC_REPEAT)
+                RexPlayerController.setSynchronizedRepeat(total, left)
+                // Important: passive telemetry never invokes pause/play/seek. The host
+                // sends an explicit room_resync only when reported drift exceeds 1 second.
+                _state.value = _state.value.copy(trackId = id, trackTitle = title,
+                    positionMs = projected, playing = playing,
+                    roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs),
+                    repeatTotal = total, repeatLeft = left)
             }
             "stop" -> { playbackJob?.cancel(); stopLocalPlayback(); _state.value = _state.value.copy(playing = false, status = m.optString("reason", "Pemutaran dihentikan")) }
             "queue" -> {
@@ -98,7 +155,7 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
                 _state.value = _state.value.copy(queue = list)
             }
             "queue_item" -> trackFromJson(m.optJSONObject("track"))?.let { t -> if (_state.value.queue.none { it.id == t.id }) _state.value = _state.value.copy(queue = _state.value.queue + t) }
-            "refresh_sync" -> {
+            "room_resync" -> {
                 val id = m.optString("trackId")
                 val position = m.optLong("position", 0L).coerceAtLeast(0L)
                 val startAt = m.optLong("startAt", 0L)
@@ -108,7 +165,7 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
                     _state.value = _state.value.copy(
                         playing = false, positionMs = position, roomElapsedMs = roomElapsed,
                         resyncing = true, lastResyncAtMs = SystemClock.elapsedRealtime(),
-                        status = "Menunggu start serentak…", error = null
+                        status = if (m.optString("reason") == "automatic_drift") "Room sedang rewind 1 detik…" else "Menunggu refresh serentak…", error = null
                     )
                     playbackJob = scope.launch { applyRemoteRefresh(id, position, startAt, roomElapsed) }
                 }

@@ -28,7 +28,6 @@ internal fun __splitImpl_SyncPlaybackCard(
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
     onRefresh: () -> Unit,
-    onAutoRefreshChange: (Boolean) -> Unit,
     onRepeatChange: (Int) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -166,17 +165,7 @@ internal fun __splitImpl_SyncPlaybackCard(
                         androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
                     }
                     Spacer(Modifier.width(8.dp))
-                    Text(if (state.resyncing) "Menyelaraskan…" else "Refresh Sync · mulai ulang dalam 1 detik")
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(scheme.surfaceVariant.copy(alpha = 0.55f)).padding(horizontal = 13.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Auto refresh", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Sinkronisasi ulang otomatis setiap 5 menit saat musik diputar", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    }
-                    Switch(checked = state.autoRefreshEnabled, onCheckedChange = onAutoRefreshChange)
+                    Text(if (state.resyncing) "Menyelaraskan…" else "Refresh Sync · manual")
                 }
             } else {
                 Text(
@@ -197,6 +186,9 @@ internal fun __splitImpl_SyncPlaybackCard(
             }
             if (state.status.isNotBlank()) {
                 Text(state.status, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            }
+            if (state.syncDriftMs > 0L && state.syncDriftMs < AUTO_ROOM_RESYNC_THRESHOLD_MS) {
+                Text("Deviasi room: ${state.syncDriftMs} ms · diperiksa tiap 2 detik", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
         }
     }
@@ -257,8 +249,11 @@ internal fun RexMusicSyncEngine.__splitImpl_playTrack(track: RexTrack) {
             }
             hostPreparing = false
             hostPlaying = true
+            playAnchorPositionMs = 0L
             playAnchorWallMs = SystemClock.elapsedRealtime() + START_LEAD_MS
-            _state.value = _state.value.copy(playing = true, status = "Mulai serentak · room clock")
+            lastAutoRoomResyncAtMs = 0L
+            roomPlaybackRevision += 1L
+            _state.value = _state.value.copy(playing = true, positionMs = 0L, status = "Room menyiapkan waktu mulai bersama…")
             broadcastState()
             delay(max(0L, playAnchorWallMs - SystemClock.elapsedRealtime()))
             withContext(Dispatchers.Main) { RexPlayerController.startSyncPlayback(0L) }
@@ -268,32 +263,54 @@ internal fun RexMusicSyncEngine.__splitImpl_playTrack(track: RexTrack) {
 internal suspend fun RexMusicSyncEngine.__splitImpl_syncLocalTrack(id: String, pos: Long, playing: Boolean, startAt: Long) {
         RexPlayerController.init(appContextRef ?: return)
         RexPlayerController.setSynchronizedPlaybackMode(true)
-        val track = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }?.track
-        if (track == null) {
+        var track = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }?.track
+        // A transfer socket can finish a fraction earlier than the receiving library index;
+        // wait briefly for the completed cache to become visible before declaring failure.
+        val cacheDeadline = SystemClock.elapsedRealtime() + 15000L
+        while (track == null && SystemClock.elapsedRealtime() < cacheDeadline) {
+            delay(120L)
+            track = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }?.track
+        }
+        val readyTrack = track ?: run {
             _state.value = _state.value.copy(status = "Lagu belum ada di HP ini", error = "Lagu '$id' belum diterima atau belum terindeks di library offline; tunggu transfer cache selesai.")
             return
         }
-        withContext(Dispatchers.Main) { RexPlayerController.prepareFromOfflineForSync(track) }
-        val deadline = SystemClock.elapsedRealtime() + 12000
+        withContext(Dispatchers.Main) { RexPlayerController.prepareFromOfflineForSync(readyTrack) }
+        val deadline = SystemClock.elapsedRealtime() + 12000L
         while (SystemClock.elapsedRealtime() < deadline) {
             val s = RexPlayerController.state.value
             if (s.nowPlaying?.id == id && s.durationMs > 0L && s.phase == LoadPhase.Idle) break
-            delay(100)
+            delay(80L)
         }
         val actual = RexPlayerController.state.value
-        if (actual.nowPlaying?.id != id) return
-        // Preparing a new local player resets the normal repeat state; re-apply the
-        // authoritative room counters after preparation and before its scheduled start.
+        if (actual.nowPlaying?.id != id || actual.durationMs <= 0L) {
+            _state.value = _state.value.copy(status = "Lagu belum siap diputar", error = "Player belum selesai menyiapkan cache lagu.")
+            return
+        }
+
+        // The host's target position is the position at the shared start deadline.
+        // If the command arrived after that deadline, project forward by the same elapsed time.
+        val hostNow = SystemClock.elapsedRealtime() + clockOffsetMs
+        val targetHostElapsed = if (playing && startAt > 0L) startAt else hostNow
+        val targetPos = (pos + if (playing) (hostNow - targetHostElapsed).coerceAtLeast(0L) else 0L)
+            .coerceIn(0L, actual.durationMs)
         val syncRepeat = _state.value
         withContext(Dispatchers.Main) {
             RexPlayerController.setSynchronizedRepeat(syncRepeat.repeatTotal, syncRepeat.repeatLeft)
+            RexPlayerController.pause()
+            RexPlayerController.prepareSyncSeek(targetPos)
         }
-        val targetHostElapsed = if (startAt > 0L) startAt else SystemClock.elapsedRealtime() + clockOffsetMs
-        val targetLocalElapsed = targetHostElapsed - clockOffsetMs
-        delay(max(0L, targetLocalElapsed - SystemClock.elapsedRealtime()))
-        val targetPos = max(0L, pos + max(0L, SystemClock.elapsedRealtime() + clockOffsetMs - targetHostElapsed))
-        withContext(Dispatchers.Main) {
-            if (playing) RexPlayerController.startSyncPlayback(targetPos)
-            else { RexPlayerController.seekToPositionImmediate(pos); RexPlayerController.pause() }
+
+        if (playing) {
+            val targetLocalElapsed = targetHostElapsed - clockOffsetMs
+            delay(max(0L, targetLocalElapsed - SystemClock.elapsedRealtime()))
+            withContext(Dispatchers.Main) {
+                if (RexPlayerController.state.value.nowPlaying?.id == id) {
+                    // The seek has already run during the lead-in; this only releases playback.
+                    RexPlayerController.startSyncPlayback(targetPos)
+                }
+            }
+        } else {
+            _state.value = _state.value.copy(positionMs = targetPos, playing = false)
         }
     }

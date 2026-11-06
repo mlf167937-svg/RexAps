@@ -13,7 +13,9 @@ import kotlin.math.min
 /** Small LAN-safe profile images. Original account files are never modified. */
 internal data class RexSyncProfileAssets(
     val pictureBase64: String = "",
-    val bannerBase64: String = ""
+    val bannerBase64: String = "",
+    val pictureVideoBase64: String = "",
+    val bannerVideoBase64: String = ""
 )
 
 internal fun createRexSyncProfileAssets(
@@ -22,7 +24,9 @@ internal fun createRexSyncProfileAssets(
 ): RexSyncProfileAssets {
     return RexSyncProfileAssets(
         pictureBase64 = encodeProfileImage(context, profile.picturePath, 420, 420, 180_000),
-        bannerBase64 = encodeProfileImage(context, profile.bannerPath, 960, 420, 260_000)
+        bannerBase64 = encodeProfileImage(context, profile.bannerPath, 1440, 810, 420_000),
+        pictureVideoBase64 = encodeProfileVideo(context, profile.pictureVideo, 6 * 1024 * 1024),
+        bannerVideoBase64 = encodeProfileVideo(context, profile.bannerVideo, 6 * 1024 * 1024)
     )
 }
 
@@ -88,5 +92,38 @@ internal fun decodeRexSyncProfileImage(encoded: String): Bitmap? {
     return runCatching {
         val bytes = Base64.decode(encoded, Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }.getOrNull()
+}
+
+/** Profile live media is copied as a bounded short clip for room members. */
+private fun encodeProfileVideo(context: Context, path: String, maxBytes: Int): String {
+    if (path.isBlank() || path.startsWith("http://") || path.startsWith("https://")) return ""
+    return runCatching {
+        openProfileInput(context, path)?.use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(32 * 1024)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count <= 0) break
+                total += count
+                if (total > maxBytes) return ""
+                out.write(buffer, 0, count)
+            }
+            if (total == 0) "" else Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        } ?: ""
+    }.getOrDefault("")
+}
+
+internal fun cacheRexSyncProfileVideo(context: Context, encoded: String, memberId: String, kind: String): String? {
+    if (encoded.isBlank()) return null
+    return runCatching {
+        val bytes = Base64.decode(encoded, Base64.DEFAULT)
+        if (bytes.isEmpty() || bytes.size > 6 * 1024 * 1024) return null
+        val dir = File(context.cacheDir, "rexsync-profile-video").apply { mkdirs() }
+        val safeId = memberId.hashCode().toUInt().toString(16)
+        val file = File(dir, "${safeId}_${kind}_${bytes.contentHashCode().toUInt().toString(16)}.mp4")
+        if (!file.isFile || file.length() != bytes.size.toLong()) file.writeBytes(bytes)
+        file.absolutePath.takeIf { file.isFile && file.length() > 0L }
     }.getOrNull()
 }

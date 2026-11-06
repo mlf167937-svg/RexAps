@@ -198,7 +198,6 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                     onTogglePlayback = { RexMusicSyncEngine.togglePlayback() },
                     onStop = { RexMusicSyncEngine.stopAll() },
                     onRefresh = { RexMusicSyncEngine.refreshPlaybackSync() },
-                    onAutoRefreshChange = { RexMusicSyncEngine.setAutoRefresh(it) },
                     onDisconnect = {
                         RexMusicSyncEngine.disconnect()
                         mode = null
@@ -422,7 +421,6 @@ private fun SyncRoomDashboard(
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
     onRefresh: () -> Unit,
-    onAutoRefreshChange: (Boolean) -> Unit,
     onDisconnect: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -446,6 +444,7 @@ private fun SyncRoomDashboard(
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         SyncMetricPill("${state.members.distinctBy { it.id }.size}", "ANGGOTA", Modifier.weight(1f))
                         SyncMetricPill(state.room, "ROOM", Modifier.weight(1f))
+                        SyncMetricPill(if (state.syncDriftMs == 0L) "OK" else "${state.syncDriftMs} ms", "SELISIH", Modifier.weight(1f))
                     }
                     if (state.hosting) {
                         Text("IP host: ${state.ip}", style = MaterialTheme.typography.bodyMedium, color = scheme.primary, fontWeight = FontWeight.SemiBold)
@@ -466,7 +465,6 @@ private fun SyncRoomDashboard(
                 onTogglePlayback = onTogglePlayback,
                 onStop = onStop,
                 onRefresh = onRefresh,
-                onAutoRefreshChange = onAutoRefreshChange,
                 onRepeatChange = { RexMusicSyncEngine.setRepeat(it) }
             )
         }

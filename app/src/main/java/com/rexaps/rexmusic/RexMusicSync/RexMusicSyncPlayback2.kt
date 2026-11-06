@@ -35,7 +35,7 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_reconcileLocalTrack(id: Stri
         }
         val now = RexPlayerController.state.value
         if (now.nowPlaying?.id != id) return
-        if (kotlin.math.abs(now.positionMs - targetPosition) > DRIFT_CORRECTION_MS) withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(targetPosition) }
+        if (kotlin.math.abs(now.positionMs - targetPosition) >= AUTO_ROOM_RESYNC_THRESHOLD_MS) withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(targetPosition) }
         if (shouldPlay && !now.isPlaying) withContext(Dispatchers.Main) { RexPlayerController.play() }
         if (!shouldPlay && now.isPlaying) withContext(Dispatchers.Main) { RexPlayerController.pause() }
     }
@@ -74,19 +74,51 @@ internal fun __splitImpl_SyncOfflineTrackCard(
 }
 
 internal fun RexMusicSyncEngine.__splitImpl_togglePlayback() {
-        if (!_state.value.hosting) return
-        hostPlaying = !hostPlaying
-        if (hostPlaying) {
-            playAnchorPositionMs = RexPlayerController.state.value.positionMs
-            playAnchorWallMs = SystemClock.elapsedRealtime() + START_LEAD_MS
-            broadcastState()
-            playbackJob?.cancel(); playbackJob = scope.launch { delay(max(0L, playAnchorWallMs-SystemClock.elapsedRealtime())); withContext(Dispatchers.Main) { RexPlayerController.seekToPositionImmediate(playAnchorPositionMs); RexPlayerController.startSyncPlayback(playAnchorPositionMs) } }
-        } else {
-            scope.launch { withContextMain { RexPlayerController.pause() } }
-            _state.value = _state.value.copy(playing = false, positionMs = RexPlayerController.state.value.positionMs, status = "Dijeda host")
-            broadcastState()
+    if (!_state.value.hosting || hostPreparing || _state.value.resyncing) return
+    val track = hostTrack ?: return
+    val player = RexPlayerController.state.value
+    if (!hostPlaying) {
+        val position = player.positionMs.coerceAtLeast(0L)
+        val startAt = SystemClock.elapsedRealtime() + START_LEAD_MS
+        hostPlaying = true
+        playAnchorPositionMs = position
+        playAnchorWallMs = startAt
+        lastAutoRoomResyncAtMs = 0L
+        roomPlaybackRevision += 1L
+        _state.value = _state.value.copy(playing = true, positionMs = position,
+            status = "Room menyiapkan resume bersama…", error = null)
+        val command = JSONObject().put("type", "room_play").put("trackId", track.id)
+            .put("title", track.title).put("position", position).put("startAt", startAt)
+            .put("roomElapsedMs", (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(0L))
+            .put("revision", roomPlaybackRevision)
+        peers.filter { it.clockSynced && it.assetsReady }.forEach { send(it.writer, command) }
+        playbackJob?.cancel()
+        playbackJob = scope.launch {
+            withContext(Dispatchers.Main) {
+                RexPlayerController.pause()
+                RexPlayerController.prepareSyncSeek(position)
+            }
+            delay(max(0L, startAt - SystemClock.elapsedRealtime()))
+            withContext(Dispatchers.Main) { RexPlayerController.startSyncPlayback(position) }
+            _state.value = _state.value.copy(playing = true, positionMs = position, status = "Diputar bersama")
+            broadcastTick()
         }
+    } else {
+        val position = player.positionMs.coerceAtLeast(0L)
+        hostPlaying = false
+        playAnchorPositionMs = position
+        playAnchorWallMs = SystemClock.elapsedRealtime()
+        roomPlaybackRevision += 1L
+        playbackJob?.cancel()
+        scope.launch { withContextMain { RexPlayerController.pause() } }
+        val command = JSONObject().put("type", "room_pause").put("trackId", track.id)
+            .put("position", position).put("playing", false)
+            .put("roomElapsedMs", (SystemClock.elapsedRealtime() - roomStartedElapsedMs).coerceAtLeast(0L))
+            .put("revision", roomPlaybackRevision)
+        peers.filter { it.clockSynced }.forEach { send(it.writer, command) }
+        _state.value = _state.value.copy(playing = false, positionMs = position, status = "Dijeda host")
     }
+}
 
 @Composable
 internal fun __splitImpl_SyncPlaybackEmptyCard() {
