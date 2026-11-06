@@ -19,5 +19,6 @@ internal fun RexMusicSyncEngine.__splitImpl_sendState(p: RexMusicSyncEngine.Peer
             if (now < playAnchorWallMs) playAnchorPositionMs else currentPosition + max(0L, startAt - now)
         } else currentPosition
         send(p.writer, JSONObject().put("type", "state").put("track", track?.let { JSONObject().put("id", it.id).put("title", it.title).put("artist", it.artist) })
-            .put("position", pos).put("playing", hostPlaying).put("hostElapsed", now).put("roomElapsedMs", (now - roomStartedElapsedMs).coerceAtLeast(0L)).put("startAt", startAt))
+            .put("position", pos).put("playing", hostPlaying).put("hostElapsed", now).put("roomElapsedMs", (now - roomStartedElapsedMs).coerceAtLeast(0L)).put("startAt", startAt)
+            .put("repeatTotal", RexPlayerController.state.value.repeatTotal).put("repeatLeft", RexPlayerController.state.value.repeatLeft))
     }

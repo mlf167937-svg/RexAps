@@ -49,6 +49,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val state by RexMusicSyncEngine.state.collectAsState()
     val offlineState by RexOfflineManager.state.collectAsState()
+    val musicState by RexPlayerController.state.collectAsState()
 
     var mode by rememberSaveable { mutableStateOf<SyncEntryMode?>(null) }
     var room by rememberSaveable { mutableStateOf("RexSyncRoom1") }
@@ -180,6 +181,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                 else -> SyncRoomDashboard(
                     state = state,
                     offlineTracks = offlineState.entries.distinctBy { it.track.id }.filter { it.track.id.isNotBlank() }.map { it.track },
+                    playlists = musicState.playlists,
                     query = query,
                     onQueryChange = { query = it },
                     searching = searching,
@@ -190,6 +192,7 @@ internal fun __splitImpl_RexMusicSyncScreen(onBack: () -> Unit) {
                     onDownload = { RexOfflineManager.download(it) },
                     onQueue = { RexMusicSyncEngine.addToQueue(it) },
                     onPlayQueued = { RexMusicSyncEngine.playQueued(it) },
+                    onSharePlaylist = { RexMusicSyncEngine.addPlaylistToQueue(it) },
                     onMemberVolume = { member, value -> RexMusicSyncEngine.setMemberVolume(member.id, value) },
                     onHostVolume = { RexMusicSyncEngine.setHostVolume(it) },
                     onTogglePlayback = { RexMusicSyncEngine.togglePlayback() },
@@ -402,6 +405,7 @@ private fun SyncSetupScreen(
 private fun SyncRoomDashboard(
     state: SyncUiState,
     offlineTracks: List<RexTrack>,
+    playlists: List<RexPlaylist>,
     query: String,
     onQueryChange: (String) -> Unit,
     searching: Boolean,
@@ -412,6 +416,7 @@ private fun SyncRoomDashboard(
     onDownload: (RexTrack) -> Unit,
     onQueue: (RexTrack) -> Unit,
     onPlayQueued: (RexTrack) -> Unit,
+    onSharePlaylist: (RexPlaylist) -> Unit,
     onMemberVolume: (SyncMember, Float) -> Unit,
     onHostVolume: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -447,6 +452,9 @@ private fun SyncRoomDashboard(
                         Text("Bagikan IP dan password kepada teman yang ingin bergabung.", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
                     if (state.error != null) Text(state.error, color = scheme.error, style = MaterialTheme.typography.bodySmall)
+                    if (state.cacheStatus.isNotBlank()) {
+                        Text(state.cacheStatus, color = scheme.primary, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
@@ -458,12 +466,25 @@ private fun SyncRoomDashboard(
                 onTogglePlayback = onTogglePlayback,
                 onStop = onStop,
                 onRefresh = onRefresh,
-                onAutoRefreshChange = onAutoRefreshChange
+                onAutoRefreshChange = onAutoRefreshChange,
+                onRepeatChange = { RexMusicSyncEngine.setRepeat(it) }
             )
         }
         item { SyncMembersHeader(state.members.distinctBy { it.id }.size) }
         items(state.members.distinctBy { it.id }, key = { "member-${it.id}" }) { member ->
             SyncMemberCard(member, state, onVolumeChange = { onMemberVolume(member, it) })
+        }
+        item {
+            SyncSectionHeading("Playlist kamu", "Bagikan seluruh lagu yang sudah tersedia offline ke room")
+        }
+        if (playlists.isEmpty()) item { SyncEmptyPlaylistCard() }
+        items(playlists, key = { "playlist-${it.name}" }) { playlist ->
+            val cachedCount = playlist.tracks.distinctBy { it.id }.count { track -> offlineTracks.any { it.id == track.id } }
+            SyncPlaylistShareCard(
+                playlist = playlist,
+                availableCount = cachedCount,
+                onShare = { onSharePlaylist(playlist) }
+            )
         }
         item { SyncQueueHeader(state.queue.distinctBy { it.id }.size) }
         if (state.queue.distinctBy { it.id }.isEmpty()) item { SyncEmptyQueueCard() }

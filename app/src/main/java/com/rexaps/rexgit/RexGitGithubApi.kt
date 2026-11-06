@@ -222,8 +222,140 @@ class RexGitGithubApi {
                 htmlUrl = item.optString("html_url"),
                 draft = item.optBoolean("draft", false),
                 prerelease = item.optBoolean("prerelease", false),
-                assets = assets
+                assets = assets,
+                uploadUrl = item.optString("upload_url").orEmpty()
             )
+        }
+    }
+
+    /** Creates a GitHub Release for the selected repository. Requires Contents: write access. */
+    fun createRelease(
+        token: String,
+        owner: String,
+        repository: String,
+        tagName: String,
+        releaseName: String,
+        body: String,
+        draft: Boolean = false,
+        prerelease: Boolean = false,
+        targetCommitish: String = "main"
+    ): RexGitRelease {
+        val path = "/repos/${pathPart(owner)}/${pathPart(repository)}/releases"
+        val payload = JSONObject()
+            .put("tag_name", tagName.trim())
+            .put("target_commitish", targetCommitish.ifBlank { "main" })
+            .put("name", releaseName.trim().ifBlank { tagName.trim() })
+            .put("body", body)
+            .put("draft", draft)
+            .put("prerelease", prerelease)
+        val json = JSONObject(requestJson(path, token, "POST", payload))
+        val assetArray = json.optJSONArray("assets") ?: JSONArray()
+        val assets = (0 until assetArray.length()).mapNotNull { index ->
+            val asset = assetArray.optJSONObject(index) ?: return@mapNotNull null
+            RexGitReleaseAsset(
+                id = asset.optLong("id"),
+                name = asset.optString("name", "asset"),
+                sizeInBytes = asset.optLong("size"),
+                downloadUrl = asset.optString("url"),
+                contentType = asset.optString("content_type", "application/octet-stream")
+            )
+        }
+        return RexGitRelease(
+            id = json.optLong("id"),
+            tagName = json.optString("tag_name", tagName),
+            name = json.optString("name").ifBlank { tagName },
+            body = json.optString("body"),
+            publishedAt = json.optString("published_at").ifBlank { json.optString("created_at") },
+            htmlUrl = json.optString("html_url"),
+            draft = json.optBoolean("draft", draft),
+            prerelease = json.optBoolean("prerelease", prerelease),
+            assets = assets,
+            uploadUrl = json.optString("upload_url")
+        )
+    }
+
+    /** Streams a selected APK/asset directly to GitHub's release upload endpoint. */
+    fun uploadReleaseAsset(
+        token: String,
+        uploadUrlTemplate: String,
+        file: File,
+        fileName: String,
+        contentType: String = "application/octet-stream"
+    ): RexGitReleaseAsset {
+        require(file.isFile && file.length() > 0L) { "Release asset is empty or unavailable." }
+        val endpoint = uploadUrlTemplate.substringBefore("{?").trim()
+        val endpointUrl = URL(endpoint)
+        require(endpointUrl.protocol.equals("https", true) && endpointUrl.host.equals("uploads.github.com", true)) {
+            "GitHub returned an invalid release upload URL."
+        }
+        val separator = if (endpointUrl.query.isNullOrBlank()) "?" else "&"
+        val encodedName = URLEncoder.encode(fileName.ifBlank { file.name }, Charsets.UTF_8.name()).replace("+", "%20")
+        val connection = URL(endpoint + separator + "name=" + encodedName).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 20000
+            connection.readTimeout = 120000
+            connection.doOutput = true
+            connection.setFixedLengthStreamingMode(file.length())
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Accept", "application/vnd.github+json")
+            connection.setRequestProperty("Content-Type", contentType.ifBlank { "application/octet-stream" })
+            connection.setRequestProperty("User-Agent", "RexGit")
+            connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            file.inputStream().buffered().use { input ->
+                connection.outputStream.buffered().use { output -> input.copyTo(output, 64 * 1024) }
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val payload = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val reason = runCatching { JSONObject(payload).optString("message") }.getOrDefault(payload.take(180))
+                throw IllegalStateException("Release asset upload failed ($code): $reason")
+            }
+            val asset = JSONObject(payload)
+            return RexGitReleaseAsset(
+                id = asset.optLong("id"),
+                name = asset.optString("name", fileName),
+                sizeInBytes = asset.optLong("size", file.length()),
+                downloadUrl = asset.optString("url"),
+                contentType = asset.optString("content_type", contentType)
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun requestJson(path: String, token: String, method: String, payload: JSONObject): String {
+        val connection = URL("https://api.github.com$path").openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.connectTimeout = 20000
+            connection.readTimeout = 45000
+            connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Accept", "application/vnd.github+json")
+            connection.setRequestProperty("Content-Type", "application/vnd.github+json; charset=utf-8")
+            connection.setRequestProperty("User-Agent", "RexGit")
+            connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            val bytes = payload.toString().toByteArray(Charsets.UTF_8)
+            connection.setFixedLengthStreamingMode(bytes.size)
+            connection.outputStream.use { it.write(bytes) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val reason = runCatching { JSONObject(body).optString("message") }.getOrDefault(body.take(220))
+                throw IllegalStateException(when (code) {
+                    401 -> "GitHub token tidak valid atau kedaluwarsa (401)."
+                    403 -> "GitHub menolak penerbitan release (403). Pastikan token memiliki Contents: write. $reason"
+                    404 -> "Repository tidak ditemukan atau token tidak punya akses (404). $reason"
+                    422 -> "Tag release tidak valid atau sudah digunakan. $reason"
+                    else -> "GitHub API $code. $reason"
+                }.trim())
+            }
+            return body
+        } finally {
+            connection.disconnect()
         }
     }
 

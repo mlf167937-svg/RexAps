@@ -192,12 +192,17 @@ private class GitHubAlignmentTagHandler : SimpleTagHandler() {
 }
 
 /** Resolves local Markdown image paths against the selected repository's default branch. */
-internal fun githubRawReadmeBase(repo: RexGitRepository): String {
+internal fun githubRawReadmeBase(repo: RexGitRepository, branchOverride: String? = null): String {
     val remote = repo.remoteUrl.orEmpty()
     val match = Regex("""(?:github\.com[:/])([^/]+)/([^/]+?)(?:\.git)?/?$""", RegexOption.IGNORE_CASE).find(remote)
     val owner = match?.groupValues?.getOrNull(1) ?: repo.globalOwner ?: repo.accountNickname ?: return ""
     val repository = match?.groupValues?.getOrNull(2)?.removeSuffix(".git") ?: repo.name
-    val branch = repo.branch.ifBlank { "main" }.split('/').joinToString("/") { part ->
+    // README content comes from the working tree, so resolve its relative images against
+    // the checked-out branch. GitHub metadata is only a fallback for detached/blank refs.
+    val selectedBranch = repo.branch.takeIf { it.isNotBlank() && it != "HEAD" }
+        ?: branchOverride?.takeIf { it.isNotBlank() }
+        ?: "main"
+    val branch = selectedBranch.split('/').joinToString("/") { part ->
         java.net.URLEncoder.encode(part, Charsets.UTF_8.name()).replace("+", "%20")
     }
     return "https://raw.githubusercontent.com/$owner/$repository/$branch/"

@@ -34,6 +34,16 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
             send(p.writer, JSONObject().put("type", "welcome").put("id", p.id).put("room", roomName))
             broadcastMembers()
             sendQueue(p); broadcastMembers()
+            // Late joiners need the currently playing asset too: playTrack removes it
+            // from sharedQueue, so sending only queued tracks would leave them silent.
+            val existingRoomTracks = (listOfNotNull(hostTrack) + sharedQueue.toList()).distinctBy { it.id }
+            if (existingRoomTracks.isNotEmpty()) scope.launch {
+                existingRoomTracks.forEach { track ->
+                    if (!sendBundle(p.ip, track)) {
+                        _state.value = _state.value.copy(cacheStatus = "Gagal mengirim ${track.title} ke anggota baru ${p.name}")
+                    }
+                }
+            }
             while (true) {
                 val line = withContext(Dispatchers.IO) { p.reader.readLine() } ?: break
                 val msg = JSONObject(line)
@@ -63,6 +73,7 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
                         _state.value = _state.value.copy(cacheStatus = "Menerima ${t?.title ?: "lagu"} dari ${p.name}…")
                     }
                     "queue_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); sendQueue(p) }
+                    "repeat_request" -> { p.lastSeen = SystemClock.elapsedRealtime(); setRepeat(msg.optInt("total", 0)) }
                     "volume" -> {
                         p.lastSeen = SystemClock.elapsedRealtime()
                         p.volume = msg.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f)
@@ -85,6 +96,7 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_acceptPeer(socket: Socket) {
 
 internal fun RexMusicSyncEngine.__splitImpl_joinRoom(room: String, ip: String, password: String) {
         closeAll()
+        RexPlayerController.setSynchronizedPlaybackMode(true)
         val profileName = RexLocalProfileBridge.read().name.trim().ifBlank { "Rex User" }
         _state.value = _state.value.copy(hosting = false, connected = false, room = room, name = profileName,
             ip = ip, password = password, status = "Menghubungkan…", error = null)

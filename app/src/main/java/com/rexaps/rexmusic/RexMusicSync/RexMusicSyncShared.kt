@@ -10,6 +10,12 @@ import org.json.JSONObject
 internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
         when (m.optString("type")) {
             "room_time" -> _state.value = _state.value.copy(roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs))
+            "repeat" -> {
+                val total = m.optInt("total", 0).coerceIn(0, MAX_SYNC_REPEAT)
+                val left = m.optInt("left", total).coerceIn(0, MAX_SYNC_REPEAT)
+                RexPlayerController.setSynchronizedRepeat(total, left)
+                _state.value = _state.value.copy(repeatTotal = total, repeatLeft = left)
+            }
             "pong" -> {
                 val c0 = m.optLong("clientElapsed", 0L)
                 val h1 = m.optLong("hostReceiveElapsed", 0L)
@@ -65,7 +71,10 @@ internal fun RexMusicSyncEngine.__splitImpl_handleClientMessage(m: JSONObject) {
                 val pos = m.optLong("position", 0L)
                 val playing = m.optBoolean("playing", false)
                 val startAt = m.optLong("startAt", 0L)
-                _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs), status = "Sinkronisasi · $title")
+                val repeatTotal = m.optInt("repeatTotal", _state.value.repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
+                val repeatLeft = m.optInt("repeatLeft", repeatTotal).coerceIn(0, MAX_SYNC_REPEAT)
+                RexPlayerController.setSynchronizedRepeat(repeatTotal, repeatLeft)
+                _state.value = _state.value.copy(trackId = id, trackTitle = title, positionMs = pos, playing = playing, roomElapsedMs = m.optLong("roomElapsedMs", _state.value.roomElapsedMs), status = "Sinkronisasi · $title", repeatTotal = repeatTotal, repeatLeft = repeatLeft)
 
                 // A state snapshot may arrive after the initial sync packet. Never restart
                 // preparation for a track that is already loaded, and don't cancel an

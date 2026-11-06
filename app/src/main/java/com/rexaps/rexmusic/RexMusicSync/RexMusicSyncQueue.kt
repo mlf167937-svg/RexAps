@@ -1,5 +1,6 @@
 package com.rexaps.rexmusic
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -79,11 +80,23 @@ internal fun RexMusicSyncEngine.__splitImpl_addToQueue(track: RexTrack) {
 
 internal fun RexMusicSyncEngine.__splitImpl_playQueued(track: RexTrack) {
         if (_state.value.hosting) scope.launch {
-            delay(500L)
-            val offline = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
-            if (offline == null) { _state.value = _state.value.copy(error = "Transfer lagu belum selesai atau izin penyimpanan belum aktif."); return@launch }
-            sharedQueue.removeAll { it.id == track.id }; publishQueue(); playTrack(offline.track)
-        } else if (_state.value.connected) runCatching { clientWriter?.let { send(it, JSONObject().put("type", "play_request").put("trackId", track.id)) } }
+            _state.value = _state.value.copy(error = null, cacheStatus = "Menunggu cache ${track.title} siap…")
+            val deadline = SystemClock.elapsedRealtime() + 90_000L
+            var offline = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
+            while (offline == null && SystemClock.elapsedRealtime() < deadline && _state.value.hosting) {
+                delay(250L)
+                offline = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
+            }
+            if (offline == null) {
+                _state.value = _state.value.copy(error = "Cache ${track.title} belum diterima setelah 90 detik. Coba bagikan ulang playlist atau lagu.")
+                return@launch
+            }
+            sharedQueue.removeAll { it.id == track.id }
+            publishQueue()
+            playTrack(offline.track)
+        } else if (_state.value.connected) {
+            runCatching { clientWriter?.let { send(it, JSONObject().put("type", "play_request").put("trackId", track.id)) } }
+        }
     }
 
 @Composable

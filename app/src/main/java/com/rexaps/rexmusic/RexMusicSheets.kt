@@ -127,7 +127,8 @@ fun RepeatSheet(
     left: Int,
     title: String,
     onSet: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    maxValue: Int = 50
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scheme = MaterialTheme.colorScheme
@@ -163,18 +164,19 @@ fun RepeatSheet(
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant
                     )
                 }
-                StepButton(Icons.Default.Add, "Tambah", total < 50) { onSet(total + 1) }
+                StepButton(Icons.Default.Add, "Tambah", total < maxValue) { onSet(total + 1) }
             }
 
             Slider(
                 value = total.toFloat(),
                 onValueChange = { onSet(it.roundToInt()) },
-                valueRange = 0f..50f,
-                steps = 49
+                valueRange = 0f..maxValue.toFloat(),
+                steps = (maxValue - 1).coerceAtLeast(0)
             )
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(0, 2, 5, 10, 25, 50).forEach { n ->
+                (if (maxValue <= 20) listOf(0, 1, 2, 5, 10, 15, 20) else listOf(0, 2, 5, 10, 25, 50))
+                    .filter { it <= maxValue }.forEach { n ->
                     PresetPill(
                         if (n == 0) "Mati" else "$n", total == n, Modifier.weight(1f)
                     ) { onSet(n) }

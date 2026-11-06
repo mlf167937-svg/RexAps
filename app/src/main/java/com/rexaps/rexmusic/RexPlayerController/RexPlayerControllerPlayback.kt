@@ -74,9 +74,11 @@ import kotlinx.coroutines.launch
                         mp.start()
                     }
                 } else {
-                    _state.update { s -> s.copy(isPlaying = false, repeatTotal = 0, repeatLeft = 0) }
-                    cancelPending()
-                    advance()
+                    _state.update { s -> s.copy(isPlaying = false, positionMs = s.durationMs, repeatTotal = 0, repeatLeft = 0) }
+                    if (!synchronizedPlaybackMode) {
+                        cancelPending()
+                        advance()
+                    }
                 }
             }
             mp.setOnErrorListener { _, what, extra ->

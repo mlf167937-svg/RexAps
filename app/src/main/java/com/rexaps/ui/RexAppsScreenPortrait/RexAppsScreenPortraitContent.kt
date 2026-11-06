@@ -36,9 +36,11 @@ internal fun __splitImpl_ProFeaturedCard(
 ) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(32.dp)
+    val motionLevel = RexMotionRuntime.settings.level
+    val animationsEnabled = motionLevel != RexAnimationLevel.OFF
     val glow by animateFloatAsState(
-        targetValue = if (app.available) 1f else 0.45f,
-        animationSpec = tween(when (RexMotionRuntime.settings.level) {
+        targetValue = if (!animationsEnabled) .12f else if (app.available) 1f else 0.45f,
+        animationSpec = tween(when (motionLevel) {
             RexAnimationLevel.OFF -> 0
             RexAnimationLevel.SAVER -> 180
             RexAnimationLevel.BALANCED -> 360
@@ -53,7 +55,7 @@ internal fun __splitImpl_ProFeaturedCard(
             .height(190.dp)
             .alpha(if (app.available) 1f else 0.6f)
             .shadow(
-                elevation = 20.dp,
+                elevation = if (animationsEnabled) 20.dp else 2.dp,
                 shape = shape,
                 ambientColor = colors.primary.copy(alpha = 0.22f),
                 spotColor = colors.primary.copy(alpha = 0.24f)
@@ -62,26 +64,28 @@ internal fun __splitImpl_ProFeaturedCard(
             .background(colors.surfaceVariant)
             .proPress(enabled = app.available, onClick = onClick)
             .drawBehind {
-                drawRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            colors.primary.copy(alpha = 0.20f * glow),
-                            colors.tertiary.copy(alpha = 0.13f * glow),
-                            Color.Transparent
-                        ),
-                        start = Offset.Zero,
-                        end = Offset(size.width, size.height)
+                if (animationsEnabled) {
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                colors.primary.copy(alpha = 0.22f * glow),
+                                colors.tertiary.copy(alpha = 0.15f * glow),
+                                Color.Transparent
+                            ),
+                            start = Offset.Zero,
+                            end = Offset(size.width, size.height)
+                        )
                     )
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(colors.primary.copy(alpha = 0.16f * glow), Color.Transparent),
-                        center = Offset(size.width * 0.87f, size.height * 0.18f),
-                        radius = size.width * 0.52f
-                    ),
-                    radius = size.width * 0.52f,
-                    center = Offset(size.width * 0.87f, size.height * 0.18f)
-                )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(colors.primary.copy(alpha = 0.18f * glow), Color.Transparent),
+                            center = Offset(size.width * 0.87f, size.height * 0.18f),
+                            radius = size.width * 0.52f
+                        ),
+                        radius = size.width * 0.52f,
+                        center = Offset(size.width * 0.87f, size.height * 0.18f)
+                    )
+                }
             }
             .padding(22.dp)
     ) {
@@ -236,6 +240,22 @@ internal fun __splitImpl_ProAmbientBackdrop(modifier: Modifier = Modifier) {
         val h = size.height
         val min = size.minDimension
         drawRect(c.background)
+        if (!animationsEnabled) {
+            // OFF mode keeps only one inexpensive static theme wash: no animated
+            // radial fields, orbital rings, sweep pass, dust particles or grid.
+            drawRect(
+                Brush.linearGradient(
+                    colors = listOf(
+                        c.primary.copy(alpha = 0.035f),
+                        Color.Transparent,
+                        c.tertiary.copy(alpha = 0.022f)
+                    ),
+                    start = Offset.Zero,
+                    end = Offset(w, h)
+                )
+            )
+            return@drawBehind
+        }
 
         // Three large, low-contrast color fields produce a living aurora without
         // bitmap blur, off-screen layers, or per-frame layout work.

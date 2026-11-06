@@ -44,7 +44,9 @@ internal fun RexMusicSyncEngine.__splitImpl_closeAll() {
         runCatching { client?.close() }; client = null; clientWriter = null
         runCatching { server?.close() }; server = null
         if (_state.value.hosting) stopLocalPlayback()
-        _state.value = _state.value.copy(queue = emptyList(), autoRefreshEnabled = false, resyncing = false)
+        RexPlayerController.setSynchronizedPlaybackMode(false)
+        RexPlayerController.setRepeat(0)
+        _state.value = _state.value.copy(queue = emptyList(), autoRefreshEnabled = false, resyncing = false, repeatTotal = 0, repeatLeft = 0)
     }
 
 internal fun RexMusicSyncEngine.__splitImpl_stopAll(reason: String = "Host menghentikan pemutaran") {

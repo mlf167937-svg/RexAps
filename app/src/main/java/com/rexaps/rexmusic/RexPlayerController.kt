@@ -41,6 +41,8 @@ object RexPlayerController {
     internal var syncPrepareTrackId: String? = null
     internal var syncSeekPending = false
     internal var syncSeekTargetMs = -1L
+    /** When true, completion is owned by RexMusicSyncEngine rather than local autoplay. */
+    internal var synchronizedPlaybackMode = false
     internal var prepared = false
     internal var progressJob: Job? = null
     internal var seekJob: Job? = null
@@ -219,6 +221,16 @@ object RexPlayerController {
     /** Ulangi lagu yang sedang diputar sebanyak [times] kali lagi (0 = mati, maks 50). */
     fun setRepeat(times: Int) {
         return this.__splitImpl_setRepeat(times)
+    }
+
+    fun setSynchronizedPlaybackMode(enabled: Boolean) {
+        synchronizedPlaybackMode = enabled
+    }
+
+    /** Sync protocol can apply the host's total and remaining repeat counters independently. */
+    fun setSynchronizedRepeat(total: Int, left: Int) {
+        val max = MAX_SYNC_REPEAT
+        _state.update { it.copy(repeatTotal = total.coerceIn(0, max), repeatLeft = left.coerceIn(0, max)) }
     }
 
     fun setAutoplay(on: Boolean) {

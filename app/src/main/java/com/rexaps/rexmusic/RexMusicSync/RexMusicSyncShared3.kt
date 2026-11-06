@@ -22,7 +22,7 @@ import org.json.JSONObject
 internal fun RexMusicSyncEngine.__splitImpl_receiveBundle(socket: Socket) {
         socket.use { s ->
             try {
-                s.soTimeout = 20000
+                s.soTimeout = 120000
                 val input = DataInputStream(s.getInputStream())
                 val track = trackFromJson(JSONObject(input.readUTF())) ?: return
                 val size = input.readLong(); if (size <= 0L || size > 600L * 1024L * 1024L) return
@@ -62,14 +62,31 @@ internal fun RexMusicSyncEngine.__splitImpl_broadcastTick() {
         if (hostPreparing) return
         val track = hostTrack ?: return
         val current = RexPlayerController.state.value
-        // RexPlayerController has its own autoplay. If it advances away from the shared track,
-        // hand control back to the room queue so every member gets the same next track.
-        if (hostPlaying && SystemClock.elapsedRealtime() > playAnchorWallMs + 2500L &&
-            current.isPlaying && current.nowPlaying?.id != null && current.nowPlaying?.id != track.id) {
+        // The room, not the local autoplay queue, owns what happens after the final play.
+        // Wait beyond the shared start deadline so a still-preparing player is not mistaken
+        // for a completed track.
+        if (hostPlaying && now > playAnchorWallMs + 2500L && current.nowPlaying?.id == track.id &&
+            current.durationMs > 0L && current.positionMs >= current.durationMs - 1500L && !current.isPlaying) {
+            hostPlaying = false
+            _state.value = _state.value.copy(playing = false, positionMs = current.durationMs)
             val next = sharedQueue.firstOrNull()
             if (next != null) { playQueued(next); return }
             stopAll("Lagu selesai · antrean bersama kosong")
             return
+        }
+        // Defensive fallback for a player transition outside the sync-aware completion path.
+        if (hostPlaying && now > playAnchorWallMs + 2500L && current.isPlaying &&
+            current.nowPlaying?.id != null && current.nowPlaying?.id != track.id) {
+            val next = sharedQueue.firstOrNull()
+            if (next != null) { playQueued(next); return }
+            stopAll("Lagu selesai · antrean bersama kosong")
+            return
+        }
+        if (current.repeatTotal != _state.value.repeatTotal || current.repeatLeft != _state.value.repeatLeft) {
+            _state.value = _state.value.copy(repeatTotal = current.repeatTotal, repeatLeft = current.repeatLeft)
+            val repeatMessage = JSONObject().put("type", "repeat")
+                .put("total", current.repeatTotal).put("left", current.repeatLeft)
+            peers.filter { it.clockSynced }.forEach { send(it.writer, repeatMessage) }
         }
         val position = if (hostPlaying) {
             if (current.nowPlaying?.id == track.id && current.positionMs > 0L) current.positionMs
@@ -114,6 +131,8 @@ internal fun RexMusicSyncEngine.__splitImpl_resumeRoomAtCurrentPosition() {
             withContext(Dispatchers.Main) {
                 if (RexPlayerController.state.value.nowPlaying?.id != track.id) RexPlayerController.playFromOffline(track)
                 delay(150L)
+                val syncRepeat = _state.value
+                RexPlayerController.setSynchronizedRepeat(syncRepeat.repeatTotal, syncRepeat.repeatLeft)
                 RexPlayerController.seekToPositionImmediate(playAnchorPositionMs)
                 RexPlayerController.startSyncPlayback(playAnchorPositionMs)
             }

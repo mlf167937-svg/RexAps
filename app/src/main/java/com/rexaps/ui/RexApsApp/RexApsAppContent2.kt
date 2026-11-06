@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rexaps.ui.theme.RexThemeMaterial
 import com.rexaps.ui.theme.RexThemeVisuals
+import com.rexaps.ui.theme.RexAnimationLevel
+import com.rexaps.ui.theme.RexMotionRuntime
 
 @Composable
 internal fun __splitImpl_ThemeTile(
@@ -51,6 +53,13 @@ internal fun __splitImpl_ThemeTile(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
+    val motionLevel = RexMotionRuntime.settings.level
+    val motionDuration = when (motionLevel) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> 90
+        RexAnimationLevel.BALANCED -> 180
+        RexAnimationLevel.FULL -> 260
+    }
     val spec = remember(option) { RexPaletteSpec.of(option) }
     val visual = remember(option) { RexThemeVisuals.forTheme(option.labelToThemeId()) }
 
@@ -66,26 +75,26 @@ internal fun __splitImpl_ThemeTile(
 
     val borderColor by animateColorAsState(
         targetValue = if (isSelected) colors.primary else colors.outlineVariant,
-        animationSpec = tween(250),
+        animationSpec = tween(motionDuration),
         label = "tileBorder"
     )
     val tileScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0.96f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        targetValue = if (motionLevel == RexAnimationLevel.OFF || isSelected) 1f else 0.975f,
+        animationSpec = if (motionLevel == RexAnimationLevel.OFF) androidx.compose.animation.core.snap() else spring(stiffness = Spring.StiffnessMediumLow),
         label = "tileScale"
     )
     val checkScale by animateFloatAsState(
         targetValue = if (isSelected) 1f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        animationSpec = if (motionLevel == RexAnimationLevel.OFF) androidx.compose.animation.core.snap() else spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "check"
     )
 
     Column(
         modifier = modifier
-            .graphicsLayer {
+            .then(if (motionLevel == RexAnimationLevel.OFF) Modifier else Modifier.graphicsLayer {
                 scaleX = tileScale
                 scaleY = tileScale
-            }
+            })
             .clip(shape)
             .background(colors.surfaceVariant)
             .border(if (isSelected) 2.dp else 1.dp, borderColor, shape)
@@ -214,11 +223,12 @@ internal fun __splitImpl_SocialLinkCard(link: SocialLink, modifier: Modifier = M
 
     val colors = MaterialTheme.colorScheme
     val uriHandler = LocalUriHandler.current
+    val motionLevel = RexMotionRuntime.settings.level
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 400f),
+        targetValue = if (motionLevel != RexAnimationLevel.OFF && pressed) 0.965f else 1f,
+        animationSpec = if (motionLevel == RexAnimationLevel.OFF) androidx.compose.animation.core.snap() else spring(dampingRatio = 0.55f, stiffness = 400f),
         label = "pressScale"
     )
 
@@ -235,7 +245,7 @@ internal fun __splitImpl_SocialLinkCard(link: SocialLink, modifier: Modifier = M
         color = colors.surfaceVariant.copy(alpha = 0.45f),
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
+            .then(if (motionLevel == RexAnimationLevel.OFF) Modifier else Modifier.scale(scale))
             .border(
                 width = 1.dp,
                 brush = Brush.linearGradient(

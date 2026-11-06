@@ -34,7 +34,11 @@ import com.rexaps.rexspacex.RexSpaceXScreen
 import com.rexaps.rextools.navigation.RexNavGraph
 
 @Composable
-internal fun __splitImpl_RexApsApp(activity: Activity) {
+internal fun __splitImpl_RexApsApp(
+    activity: Activity,
+    initialModuleId: String? = null,
+    onShortcutConsumed: () -> Unit = {}
+) {
 
     var route by rememberSaveable { mutableStateOf(RexRoute.NONE) }
     var routeLoading by rememberSaveable { mutableStateOf(false) }
@@ -53,6 +57,21 @@ internal fun __splitImpl_RexApsApp(activity: Activity) {
     var pendingTheme by remember { mutableStateOf<RexThemeOption?>(null) }
     var showThemeSheet by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableStateOf(RexTab.HOME) }
+
+    // A pinned launcher shortcut can deep-open any currently available RexAps module.
+    LaunchedEffect(initialModuleId) {
+        val requestedId = initialModuleId?.trim().orEmpty()
+        if (requestedId.isNotEmpty()) {
+            val module = RexAppRegistry.getModule(requestedId)
+            if (module?.available == true) {
+                RexRoute.fromModuleId(module.id)?.let { targetRoute ->
+                    route = targetRoute
+                    routeLoading = true
+                }
+            }
+            onShortcutConsumed()
+        }
+    }
 
     // System bars belong to RexAps, not the Android device's light/dark preference.
     val activePalette = remember(themeOption) { RexPaletteSpec.of(themeOption) }

@@ -1,5 +1,8 @@
 package com.rexaps.ui
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -26,21 +29,25 @@ import androidx.compose.ui.unit.dp
 internal fun __splitImpl_SpinningAvatar(isActive: Boolean, size: Dp = 132.dp) {
 
     val colors = MaterialTheme.colorScheme
-    val spin = rememberInfiniteTransition(label = "spin")
-    val angle by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = if (isActive) 360f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing)
-        ),
-        label = "angle"
-    )
+    val animationsEnabled = RexMotionRuntime.settings.level != RexAnimationLevel.OFF
+    val angle = if (animationsEnabled) {
+        val spin = rememberInfiniteTransition(label = "spin")
+        val animatedAngle by spin.animateFloat(
+            initialValue = 0f,
+            targetValue = if (isActive) 360f else 0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(8000, easing = LinearEasing)
+            ),
+            label = "angle"
+        )
+        animatedAngle
+    } else 0f
 
     Box(
         modifier = Modifier
             .size(size)
             .shadow(
-                elevation = 20.dp,
+                elevation = if (animationsEnabled) 20.dp else 0.dp,
                 shape = CircleShape,
                 ambientColor = colors.primary.copy(alpha = 0.4f),
                 spotColor = colors.primary.copy(alpha = 0.4f)
@@ -50,7 +57,7 @@ internal fun __splitImpl_SpinningAvatar(isActive: Boolean, size: Dp = 132.dp) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { rotationZ = angle }
+                .then(if (animationsEnabled) Modifier.graphicsLayer { rotationZ = angle } else Modifier)
                 .background(
                     Brush.sweepGradient(
                         listOf(colors.primary, colors.tertiary, colors.primary)

@@ -16,6 +16,7 @@ import org.json.JSONObject
 
 internal suspend fun RexMusicSyncEngine.__splitImpl_reconcileLocalTrack(id: String, targetPosition: Long, shouldPlay: Boolean) {
         val context = appContextRef ?: return
+        RexPlayerController.setSynchronizedPlaybackMode(true)
         RexPlayerController.init(context)
         val current = RexPlayerController.state.value
         if (current.nowPlaying?.id != id) {

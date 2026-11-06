@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import com.rexaps.ui.theme.RexAnimationLevel
+import com.rexaps.ui.theme.RexMotionRuntime
 
 @Composable
 internal fun __splitImpl_StatusPill(available: Boolean) {
@@ -129,22 +131,23 @@ internal fun Modifier.__splitImpl_pressable(
     onClick: () -> Unit
 ): Modifier {
 
+    val motionEnabled = RexMotionRuntime.settings.level != RexAnimationLevel.OFF
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(
+        targetValue = if (motionEnabled && pressed && enabled) 0.965f else 1f,
+        animationSpec = if (motionEnabled) spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
-        ),
+        ) else androidx.compose.animation.core.snap(),
         label = "press"
     )
 
     return this
-        .graphicsLayer {
+        .then(if (motionEnabled) Modifier.graphicsLayer {
             scaleX = scale
             scaleY = scale
-        }
+        } else Modifier)
         .clickable(
             interactionSource = source,
             indication = null,
@@ -159,12 +162,13 @@ internal fun __splitImpl_AppIcon(letter: String, size: Dp, modifier: Modifier = 
 
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(size * 0.32f)
+    val animated = RexMotionRuntime.settings.level != RexAnimationLevel.OFF
 
     Box(
         modifier = modifier
             .size(size)
             .shadow(
-                elevation = 14.dp,
+                elevation = if (animated) 14.dp else 0.dp,
                 shape = shape,
                 ambientColor = colors.primary.copy(alpha = 0.5f),
                 spotColor = colors.primary.copy(alpha = 0.5f)
@@ -184,16 +188,31 @@ internal fun __splitImpl_AppIcon(letter: String, size: Dp, modifier: Modifier = 
 @Composable
 internal fun Modifier.__splitImpl_entrance(index: Int): Modifier {
 
+    val motionLevel = RexMotionRuntime.settings.level
+    if (motionLevel == RexAnimationLevel.OFF) return this
+
     var shown by rememberSaveable { mutableStateOf(false) }
+    val duration = when (motionLevel) {
+        RexAnimationLevel.FULL -> 560
+        RexAnimationLevel.BALANCED -> 420
+        RexAnimationLevel.SAVER -> 240
+        RexAnimationLevel.OFF -> 0
+    }
+    val stagger = when (motionLevel) {
+        RexAnimationLevel.FULL -> 58L
+        RexAnimationLevel.BALANCED -> 42L
+        RexAnimationLevel.SAVER -> 18L
+        RexAnimationLevel.OFF -> 0L
+    }
 
     LaunchedEffect(Unit) {
-        if (!shown) delay(index.coerceAtMost(8) * 60L)
+        if (!shown) delay(index.coerceAtMost(8) * stagger)
         shown = true
     }
 
     val progress by animateFloatAsState(
         targetValue = if (shown) 1f else 0f,
-        animationSpec = tween(550, easing = FastOutSlowInEasing),
+        animationSpec = tween(duration, easing = FastOutSlowInEasing),
         label = "entrance"
     )
 

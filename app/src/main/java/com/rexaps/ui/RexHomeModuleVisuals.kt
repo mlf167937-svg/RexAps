@@ -73,6 +73,8 @@ internal fun ProModuleAmbientLayer(
     val colors = MaterialTheme.colorScheme
     val motion = RexMotionRuntime.settings
     val animated = motion.level != RexAnimationLevel.OFF
+    // OFF is a real low-overhead mode: omit per-tile ambient canvases altogether.
+    if (!animated) return
     val baseDuration = 5200 + (moduleId.fold(0) { total, character -> total + character.code } % 1700)
     val duration = when (motion.level) {
         RexAnimationLevel.FULL -> (baseDuration * 0.82f).toInt()

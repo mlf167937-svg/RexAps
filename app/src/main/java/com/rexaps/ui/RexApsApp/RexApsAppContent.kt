@@ -29,6 +29,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rexaps.ui.theme.RexThemeMaterial
+import com.rexaps.ui.theme.RexAnimationLevel
+import com.rexaps.ui.theme.RexMotionRuntime
 
 @Composable
 internal fun __splitImpl_FeaturedCard(
@@ -43,9 +45,19 @@ internal fun __splitImpl_FeaturedCard(
     val shape = RoundedCornerShape((28 + visual.radiusBias).coerceIn(22, 34).dp)
     val primary = colors.primary
     val outline = colors.outlineVariant
+    val motionLevel = RexMotionRuntime.settings.level
+    val animationsEnabled = motionLevel != RexAnimationLevel.OFF
     val glow by animateFloatAsState(
-        targetValue = if (isActive) .74f else .25f,
-        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        targetValue = if (!animationsEnabled) .12f else if (isActive) .82f else .28f,
+        animationSpec = tween(
+            when (motionLevel) {
+                RexAnimationLevel.OFF -> 0
+                RexAnimationLevel.SAVER -> 180
+                RexAnimationLevel.BALANCED -> 360
+                RexAnimationLevel.FULL -> 520
+            },
+            easing = FastOutSlowInEasing
+        ),
         label = "featuredGlow"
     )
 
@@ -55,7 +67,7 @@ internal fun __splitImpl_FeaturedCard(
             .pressable(enabled = app.available, onClick = onClick)
             .alpha(if (app.available) 1f else 0.6f)
             .shadow(
-                elevation = 16.dp,
+                elevation = if (animationsEnabled) 16.dp else 2.dp,
                 shape = shape,
                 ambientColor = primary.copy(alpha = 0.3f),
                 spotColor = primary.copy(alpha = 0.3f)
@@ -63,15 +75,19 @@ internal fun __splitImpl_FeaturedCard(
             .clip(shape)
             .background(colors.surfaceVariant.copy(alpha = if (glass) visual.surfaceAlpha else .96f))
             .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(primary.copy(alpha = 0.28f * glow), Color.Transparent),
-                        center = Offset(size.width * 0.9f, 0f),
-                        radius = size.width * 0.75f
-                    ),
-                    radius = size.width * 0.75f,
-                    center = Offset(size.width * 0.9f, 0f)
-                )
+                if (animationsEnabled) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(primary.copy(alpha = 0.30f * glow), Color.Transparent),
+                            center = Offset(size.width * 0.9f, 0f),
+                            radius = size.width * 0.75f
+                        ),
+                        radius = size.width * 0.75f,
+                        center = Offset(size.width * 0.9f, 0f)
+                    )
+                } else {
+                    drawRect(primary.copy(alpha = .025f))
+                }
             }
             .border(
                 width = 1.dp,

@@ -29,6 +29,8 @@ import com.rexaps.ui.theme.RexThemeMaterial
 import com.rexaps.ui.theme.RexThemeRegistry
 import com.rexaps.ui.theme.RexThemeVisuals
 import com.rexaps.ui.theme.RexThemeVisualSpec
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
 
 /** Purpose-drawn module artwork. IDs choose a visual grammar; theme tokens control its material. */
 @Composable
@@ -44,12 +46,13 @@ internal fun currentThemeVisualSpec(): RexThemeVisualSpec {
 internal fun ModuleArtwork(moduleId: String, size: Dp, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val visual = currentThemeVisualSpec()
+    val animationsEnabled = RexMotionRuntime.settings.level != RexAnimationLevel.OFF
     val shape = RoundedCornerShape(size * .30f)
     val glass = visual.material == RexThemeMaterial.GLASS
     Box(
         modifier = modifier.size(size)
             .shadow(
-                elevation = if (glass) 8.dp else 12.dp,
+                elevation = if (!animationsEnabled) 0.dp else if (glass) 8.dp else 12.dp,
                 shape = shape,
                 ambientColor = colors.primary.copy(alpha = if (glass) .20f else .30f),
                 spotColor = colors.primary.copy(alpha = if (glass) .18f else .24f)

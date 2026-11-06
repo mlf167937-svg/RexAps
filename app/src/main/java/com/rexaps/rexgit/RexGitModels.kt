@@ -146,7 +146,8 @@ data class RexGitRelease(
     val htmlUrl: String,
     val draft: Boolean,
     val prerelease: Boolean,
-    val assets: List<RexGitReleaseAsset> = emptyList()
+    val assets: List<RexGitReleaseAsset> = emptyList(),
+    val uploadUrl: String = ""
 )
 
 data class RexGitAuth(
@@ -189,6 +190,9 @@ data class RexGitUiState(
     val repoHubError: String? = null,
     val actionsError: String? = null,
     val releasesError: String? = null,
+    val isPublishingRelease: Boolean = false,
+    val releasePublishError: String? = null,
+    val releasePublishMessage: String? = null,
     val downloadError: String? = null,
     val downloadingArtifact: String? = null,
     val downloadedBytes: Long = 0L,

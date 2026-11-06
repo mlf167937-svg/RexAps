@@ -13,6 +13,7 @@ internal fun RexMusicSyncEngine.__splitImpl_createRoom(room: String, password: S
         roomName = room.trim().ifBlank { "RexSyncRoom1" }
         roomStartedElapsedMs = SystemClock.elapsedRealtime()
         roomPassword = password
+        RexPlayerController.setSynchronizedPlaybackMode(true)
         autoRefreshJob?.cancel()
         val hostProfile = RexLocalProfileBridge.read()
         val hostName = hostProfile.name.trim().ifBlank { "Rex User" }

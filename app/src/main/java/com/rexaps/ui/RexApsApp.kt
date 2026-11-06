@@ -56,8 +56,12 @@ internal class RexShell(
 /* ═════════════════════ ROOT ═════════════════════ */
 
 @Composable
-fun RexApsApp(activity: Activity) {
-        return __splitImpl_RexApsApp(activity)
+fun RexApsApp(
+    activity: Activity,
+    initialModuleId: String? = null,
+    onShortcutConsumed: () -> Unit = {}
+) {
+        return __splitImpl_RexApsApp(activity, initialModuleId, onShortcutConsumed)
     }
 
 /* ═════════════════════ Animasi & util ═════════════════════ */

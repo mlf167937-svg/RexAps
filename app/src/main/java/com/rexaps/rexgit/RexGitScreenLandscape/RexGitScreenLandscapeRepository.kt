@@ -35,7 +35,8 @@ internal fun __splitImpl_RepositoryScreenLandscape(
     onNavigate: (String?) -> Unit,
     onPull: () -> Unit,
     onSelectRun: (Long) -> Unit,
-    onCloseRunDetails: () -> Unit
+    onCloseRunDetails: () -> Unit,
+    onCreateRelease: (String, String, String, Boolean, Boolean, android.net.Uri?) -> Unit
 ) {
     val repo = state.selectedRepository ?: return
 
@@ -161,7 +162,7 @@ internal fun __splitImpl_RepositoryScreenLandscape(
                         onCloseRunDetails = onCloseRunDetails,
                         modifier = Modifier.fillMaxSize()
                     )
-                    else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, modifier = Modifier.fillMaxSize())
+                    else -> RexGitReleasePanel(state = state, onRefresh = onRefreshHub, onDownload = onDownloadAsset, onCreateRelease = onCreateRelease, modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -232,7 +233,8 @@ internal fun __splitImpl_RexGitScreenLandscape(
                         },
                         onPull = viewModel::pull,
                         onSelectRun = viewModel::selectWorkflowRun,
-                        onCloseRunDetails = viewModel::clearWorkflowRunSelection
+                        onCloseRunDetails = viewModel::clearWorkflowRunSelection,
+                        onCreateRelease = viewModel::publishRelease
                     )
 
                     else -> HomeScreenLandscape(

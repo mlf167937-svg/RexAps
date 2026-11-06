@@ -1,6 +1,9 @@
 // RexAppsScreenPortrait.kt
 package com.rexaps.ui
 
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -48,14 +51,15 @@ internal fun proFilterApps(apps: List<RexModule>, query: String, filter: String)
 
 /** Efek tekan membal untuk elemen yang bisa diketuk. */
 internal fun Modifier.proPress(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+    val motionEnabled = RexMotionRuntime.settings.level != RexAnimationLevel.OFF
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        targetValue = if (motionEnabled && pressed && enabled) 0.965f else 1f,
+        animationSpec = if (motionEnabled) spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium) else snap(),
         label = "proPress"
     )
-    this.graphicsLayer { scaleX = s; scaleY = s }
+    (if (motionEnabled) this.graphicsLayer { scaleX = s; scaleY = s } else this)
         .clickable(
             interactionSource = src,
             indication = null,

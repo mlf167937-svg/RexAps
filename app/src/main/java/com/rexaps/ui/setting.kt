@@ -307,9 +307,9 @@ fun RexSettingsScreen(
                         }
                         Text(
                             when (motionSettings.level) {
-                                RexAnimationLevel.SAVER -> "Low: animasi ringan dan jumlah efek visual dikurangi."
-                                RexAnimationLevel.BALANCED -> "Medium: transisi halus dengan efek visual seimbang."
-                                RexAnimationLevel.FULL -> "High: efek visual lebih kaya; penggunaan resource bisa meningkat."
+                                RexAnimationLevel.SAVER -> "Low: transisi pendek, feedback tekan ringan, dan efek ambient minimal."
+                                RexAnimationLevel.BALANCED -> "Medium: gerakan aurora lembut, entrance bertahap, glow, dan feedback tombol yang terasa."
+                                RexAnimationLevel.FULL -> "High: transisi lebih ekspresif dan efek ambient lebih kuat; penggunaan resource meningkat."
                                 RexAnimationLevel.OFF -> "Animasi nonaktif."
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -317,13 +317,22 @@ fun RexSettingsScreen(
                         )
                     } else {
                         Text(
-                            "Animasi dekoratif dan gerakan background dihentikan. Indikator proses penting tetap ditampilkan.",
+                            "Mode hemat: tidak ada ambient bergerak, partikel, auto-slide banner, entrance bertahap, atau scale saat tombol ditekan. Bayangan dekoratif juga dikurangi; indikator proses tetap berjalan.",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
                         )
                     }
                 }
             }
+        }
+
+        /* ── Home screen shortcuts ── */
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsSectionTitle(
+                title = "Akses cepat",
+                subtitle = "Buat ikon launcher untuk membuka modul secara langsung"
+            )
+            RexShortcutSettingsCard(context = context)
         }
 
         /* ── Tentang & sosial ── */

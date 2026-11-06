@@ -29,6 +29,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rexaps.ui.theme.RexThemeMaterial
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
 
 @Composable
 internal fun __splitImpl_AppCard(
@@ -134,10 +136,16 @@ internal fun __splitImpl_HeroCard(
     val visual = currentThemeVisualSpec()
     val glass = visual.material == RexThemeMaterial.GLASS
     val onAccent = if (glass) colors.onSurface else colors.onPrimary
-
+    val motionLevel = RexMotionRuntime.settings.level
+    val animationsEnabled = motionLevel != RexAnimationLevel.OFF
     val drift by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0f,
-        animationSpec = tween(460, easing = FastOutSlowInEasing),
+        targetValue = if (animationsEnabled && isActive) 1f else 0f,
+        animationSpec = tween(when (motionLevel) {
+            RexAnimationLevel.OFF -> 0
+            RexAnimationLevel.SAVER -> 180
+            RexAnimationLevel.BALANCED -> 320
+            RexAnimationLevel.FULL -> 460
+        }, easing = FastOutSlowInEasing),
         label = "heroDrift"
     )
 
@@ -145,7 +153,7 @@ internal fun __splitImpl_HeroCard(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 20.dp,
+                elevation = if (animationsEnabled) 20.dp else 2.dp,
                 shape = RoundedCornerShape(28.dp),
                 ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                 spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)

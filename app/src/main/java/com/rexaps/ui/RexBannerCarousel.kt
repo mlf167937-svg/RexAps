@@ -33,6 +33,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import kotlinx.coroutines.delay
+import com.rexaps.ui.theme.RexMotionRuntime
+import com.rexaps.ui.theme.RexAnimationLevel
 
 private val rexBannerSlides = listOf(
     R.drawable.rex_banner_slide1,
@@ -44,10 +46,20 @@ private val rexBannerSlides = listOf(
 @Composable
 fun RexBannerCarousel(modifier: Modifier = Modifier) {
     var currentSlide by remember { mutableIntStateOf(0) }
+    val motionLevel = RexMotionRuntime.settings.level
+    val animationsEnabled = motionLevel != RexAnimationLevel.OFF
+    val transitionDuration = when (motionLevel) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> 120
+        RexAnimationLevel.BALANCED -> 260
+        RexAnimationLevel.FULL -> 420
+    }
 
-    LaunchedEffect(currentSlide) {
-        delay(15_000L)
-        currentSlide = (currentSlide + 1) % rexBannerSlides.size
+    LaunchedEffect(currentSlide, animationsEnabled) {
+        if (animationsEnabled) {
+            delay(15_000L)
+            currentSlide = (currentSlide + 1) % rexBannerSlides.size
+        }
     }
 
     androidx.compose.foundation.layout.Column(
@@ -76,7 +88,7 @@ fun RexBannerCarousel(modifier: Modifier = Modifier) {
         ) {
             Crossfade(
                 targetState = currentSlide,
-                animationSpec = tween(420),
+                animationSpec = tween(transitionDuration),
                 label = "rexBannerSlide"
             ) { index ->
                 Image(

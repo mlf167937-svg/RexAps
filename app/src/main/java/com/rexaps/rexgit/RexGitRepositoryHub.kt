@@ -106,9 +106,10 @@ internal fun RexGitReleasePanel(
     state: RexGitUiState,
     onRefresh: () -> Unit,
     onDownload: (String, String) -> Unit,
+    onCreateRelease: (String, String, String, Boolean, Boolean, Uri?) -> Unit = { _, _, _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-        return __splitImpl_RexGitReleasePanel(state, onRefresh, onDownload, modifier)
+        return __splitImpl_RexGitReleasePanel(state, onRefresh, onDownload, onCreateRelease, modifier)
     }
 
 @Composable

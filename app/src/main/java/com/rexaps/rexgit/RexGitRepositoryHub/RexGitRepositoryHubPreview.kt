@@ -135,7 +135,7 @@ internal fun __splitImpl_RexGitReadmePreview(
             ) {
                 RexGitMarkdownRichText(
                     content = content,
-                    rawBaseUrl = githubRawReadmeBase(repo),
+                    rawBaseUrl = githubRawReadmeBase(repo, metadata?.defaultBranch),
                     darkTheme = previewDark,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                     onInternalLink = onFileLink

@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,9 +28,11 @@ internal fun __splitImpl_SyncPlaybackCard(
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
     onRefresh: () -> Unit,
-    onAutoRefreshChange: (Boolean) -> Unit
+    onAutoRefreshChange: (Boolean) -> Unit,
+    onRepeatChange: (Int) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    var showRepeatSheet by remember { mutableStateOf(false) }
     val playerState by RexPlayerController.state.collectAsState()
     val activeTrack = playerState.nowPlaying
     val duration = playerState.durationMs.coerceAtLeast(0L)
@@ -177,15 +180,35 @@ internal fun __splitImpl_SyncPlaybackCard(
                 }
             } else {
                 Text(
-                    if (state.resyncing) "Host sedang menyelaraskan ulang semua perangkat…" else "Kontrol musik dan refresh hanya tersedia untuk host.",
+                    if (state.resyncing) "Host sedang menyelaraskan ulang semua perangkat…" else "Kontrol pemutaran utama tersedia untuk host. Kamu tetap dapat meminta pengaturan repeat room.",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant
                 )
+            }
+            OutlinedButton(
+                onClick = { showRepeatSheet = true },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.trackId.isNotBlank() && !state.resyncing && !state.status.contains("Menyiapkan", ignoreCase = true),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                androidx.compose.material3.Icon(Icons.Default.Repeat, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (state.repeatTotal == 0) "Ulangi lagu · Mati (maks 20×)" else "Ulangi lagu · ${state.repeatTotal}× · sisa ${state.repeatLeft}")
             }
             if (state.status.isNotBlank()) {
                 Text(state.status, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
             }
         }
+    }
+    if (showRepeatSheet) {
+        RepeatSheet(
+            total = state.repeatTotal,
+            left = state.repeatLeft,
+            title = state.trackTitle.ifBlank { "Room playback" },
+            onSet = onRepeatChange,
+            onDismiss = { showRepeatSheet = false },
+            maxValue = MAX_SYNC_REPEAT
+        )
     }
 }
 
@@ -202,13 +225,18 @@ private fun formatSyncClock(ms: Long): String {
 
 internal fun RexMusicSyncEngine.__splitImpl_playTrack(track: RexTrack) {
         if (!_state.value.hosting) return
+        RexPlayerController.setSynchronizedPlaybackMode(true)
         val local = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == track.id }
         if (local == null) { _state.value = _state.value.copy(error = "Pilih lagu yang sudah tersedia offline di HP host."); return }
         hostTrack = local.track
         playAnchorPositionMs = 0L
         hostPreparing = true
         hostPlaying = false
-        _state.value = _state.value.copy(trackId = track.id, trackTitle = track.title, positionMs = 0L, playing = false, status = "Menyiapkan semua perangkat…", error = null)
+        _state.value = _state.value.copy(
+            trackId = track.id, trackTitle = track.title, positionMs = 0L, playing = false,
+            repeatTotal = 0, repeatLeft = 0,
+            status = "Menyiapkan semua perangkat…", error = null
+        )
         playbackJob?.cancel()
         playbackJob = scope.launch {
             // Prepare the host player before announcing the future start; do not play early.
@@ -239,6 +267,7 @@ internal fun RexMusicSyncEngine.__splitImpl_playTrack(track: RexTrack) {
 
 internal suspend fun RexMusicSyncEngine.__splitImpl_syncLocalTrack(id: String, pos: Long, playing: Boolean, startAt: Long) {
         RexPlayerController.init(appContextRef ?: return)
+        RexPlayerController.setSynchronizedPlaybackMode(true)
         val track = RexOfflineManager.state.value.entries.firstOrNull { it.track.id == id }?.track
         if (track == null) {
             _state.value = _state.value.copy(status = "Lagu belum ada di HP ini", error = "Lagu '$id' belum diterima atau belum terindeks di library offline; tunggu transfer cache selesai.")
@@ -253,6 +282,12 @@ internal suspend fun RexMusicSyncEngine.__splitImpl_syncLocalTrack(id: String, p
         }
         val actual = RexPlayerController.state.value
         if (actual.nowPlaying?.id != id) return
+        // Preparing a new local player resets the normal repeat state; re-apply the
+        // authoritative room counters after preparation and before its scheduled start.
+        val syncRepeat = _state.value
+        withContext(Dispatchers.Main) {
+            RexPlayerController.setSynchronizedRepeat(syncRepeat.repeatTotal, syncRepeat.repeatLeft)
+        }
         val targetHostElapsed = if (startAt > 0L) startAt else SystemClock.elapsedRealtime() + clockOffsetMs
         val targetLocalElapsed = targetHostElapsed - clockOffsetMs
         delay(max(0L, targetLocalElapsed - SystemClock.elapsedRealtime()))

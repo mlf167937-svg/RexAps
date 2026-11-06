@@ -83,9 +83,10 @@ internal fun RepositoryScreenPortrait(
     onNavigate: (String?) -> Unit,
     onPull: () -> Unit,
     onSelectRun: (Long) -> Unit,
-    onCloseRunDetails: () -> Unit
+    onCloseRunDetails: () -> Unit,
+    onCreateRelease: (String, String, String, Boolean, Boolean, android.net.Uri?) -> Unit
 ) {
-        return __splitImpl_RepositoryScreenPortrait(state, host, onBack, onRefresh, onRefreshHub, onDownloadAsset, onOpen, onNavigate, onPull, onSelectRun, onCloseRunDetails)
+        return __splitImpl_RepositoryScreenPortrait(state, host, onBack, onRefresh, onRefreshHub, onDownloadAsset, onOpen, onNavigate, onPull, onSelectRun, onCloseRunDetails, onCreateRelease)
     }
 
 // ============================================================

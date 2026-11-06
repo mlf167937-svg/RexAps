@@ -256,6 +256,17 @@ class RexGitViewModel(
         return this.__splitImpl_downloadGithubAsset(url, rawName)
     }
 
+    fun publishRelease(
+        tagName: String,
+        releaseName: String,
+        body: String,
+        draft: Boolean,
+        prerelease: Boolean,
+        assetUri: android.net.Uri?
+    ) {
+        return this.__splitImpl_publishRelease(tagName, releaseName, body, draft, prerelease, assetUri)
+    }
+
     // ---------- GitHub ----------
 
     /**

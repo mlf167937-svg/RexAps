@@ -160,25 +160,32 @@ internal fun __splitImpl_RexAppsScreenPortrait(shell: RexShell) {
 @Composable
 internal fun __splitImpl_ProNavItem(tab: BottomTab, selected: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val motionLevel = RexMotionRuntime.settings.level
+    val motionDuration = when (motionLevel) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> 100
+        RexAnimationLevel.BALANCED -> 190
+        RexAnimationLevel.FULL -> 280
+    }
     val bg by animateColorAsState(
         targetValue = if (selected) c.primary else Color.Transparent,
-        animationSpec = tween(300),
+        animationSpec = tween(motionDuration),
         label = "pnBg"
     )
     val fg by animateColorAsState(
         targetValue = if (selected) c.onPrimary else c.onSurfaceVariant,
-        animationSpec = tween(300),
+        animationSpec = tween(motionDuration),
         label = "pnFg"
     )
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        targetValue = if (motionLevel == RexAnimationLevel.OFF) 1f else if (selected) 1.08f else 1f,
+        animationSpec = if (motionLevel == RexAnimationLevel.OFF) snap() else spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
         label = "pnScale"
     )
 
     Row(
         Modifier
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow))
+            .animateContentSize(tween(motionDuration))
             .clip(CircleShape)
             .background(bg)
             .clickable(role = Role.Tab, onClick = onClick)
@@ -192,7 +199,7 @@ internal fun __splitImpl_ProNavItem(tab: BottomTab, selected: Boolean, onClick: 
             tint = fg,
             modifier = Modifier
                 .size(22.dp)
-                .graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+                .then(if (motionLevel == RexAnimationLevel.OFF) Modifier else Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale })
         )
         if (selected) {
             Text(

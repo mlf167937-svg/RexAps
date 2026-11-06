@@ -19,11 +19,12 @@ import java.util.concurrent.CopyOnWriteArrayList
 internal const val SYNC_PORT = 38741
 internal const val TRANSFER_PORT = 38742
 internal const val HEARTBEAT_MS = 800L
-internal const val CLIENT_TIMEOUT_MS = 3500L
+internal const val CLIENT_TIMEOUT_MS = 6000L
 internal const val START_LEAD_MS = 3000L
 internal const val DRIFT_CORRECTION_MS = 180L
 internal const val MANUAL_RESYNC_LEAD_MS = 1000L
 internal const val AUTO_RESYNC_INTERVAL_MS = 5 * 60 * 1000L
+internal const val MAX_SYNC_REPEAT = 20
 
 internal data class SyncMember(
     val id: String,
@@ -43,7 +44,8 @@ internal data class SyncUiState(
     val status: String = "Belum terhubung", val members: List<SyncMember> = emptyList(),
     val trackId: String = "", val trackTitle: String = "Belum ada lagu", val positionMs: Long = 0L,
     val playing: Boolean = false, val error: String? = null, val queue: List<RexTrack> = emptyList(), val cacheStatus: String = "", val volumes: Map<String, Float> = emptyMap(), val hostVolume: Float = 1f, val roomElapsedMs: Long = 0L,
-    val autoRefreshEnabled: Boolean = false, val resyncing: Boolean = false, val lastResyncAtMs: Long = 0L
+    val autoRefreshEnabled: Boolean = false, val resyncing: Boolean = false, val lastResyncAtMs: Long = 0L,
+    val repeatTotal: Int = 0, val repeatLeft: Int = 0
 )
 
 /** Local Wi-Fi sync protocol. Uses newline-delimited JSON control messages; no SSH or internet. */
@@ -184,6 +186,14 @@ internal object RexMusicSyncEngine {
         return this.__splitImpl_setAutoRefresh(enabled)
     }
 
+    fun setRepeat(times: Int) {
+        return this.__splitImpl_setRepeat(times)
+    }
+
+    fun addPlaylistToQueue(playlist: RexPlaylist) {
+        return this.__splitImpl_addPlaylistToQueue(playlist)
+    }
+
     internal fun trackJson(t: RexTrack) = this.__splitImpl_trackJson(t)
     internal fun trackFromJson(o: JSONObject?): RexTrack? = this.__splitImpl_trackFromJson(o)
     internal fun sendQueue(p: Peer) {
@@ -285,9 +295,10 @@ internal fun SyncPlaybackCard(
     onTogglePlayback: () -> Unit,
     onStop: () -> Unit,
     onRefresh: () -> Unit,
-    onAutoRefreshChange: (Boolean) -> Unit
+    onAutoRefreshChange: (Boolean) -> Unit,
+    onRepeatChange: (Int) -> Unit
 ) {
-        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop, onRefresh, onAutoRefreshChange)
+        return __splitImpl_SyncPlaybackCard(state, onHostVolumeChange, onTogglePlayback, onStop, onRefresh, onAutoRefreshChange, onRepeatChange)
     }
 
 @Composable

@@ -110,14 +110,20 @@ private fun ProRail(selected: Int, onSelect: (Int) -> Unit) {
 @Composable
 private fun ProRailItem(tab: BottomTab, selected: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val motionDuration = when (RexMotionRuntime.settings.level) {
+        RexAnimationLevel.OFF -> 0
+        RexAnimationLevel.SAVER -> 100
+        RexAnimationLevel.BALANCED -> 190
+        RexAnimationLevel.FULL -> 280
+    }
     val bg by animateColorAsState(
         targetValue = if (selected) c.primaryContainer else Color.Transparent,
-        animationSpec = tween(300),
+        animationSpec = tween(motionDuration),
         label = "railBg"
     )
     val fg by animateColorAsState(
         targetValue = if (selected) c.onPrimaryContainer else c.onSurfaceVariant,
-        animationSpec = tween(300),
+        animationSpec = tween(motionDuration),
         label = "railFg"
     )
 
