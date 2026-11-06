@@ -17,7 +17,11 @@ configurations.all {
     resolutionStrategy {
         force(
             "androidx.core:core:1.15.0",
-            "androidx.core:core-ktx:1.15.0"
+            "androidx.core:core-ktx:1.15.0",
+            // Tambahkan ini untuk menimpa kotlin-stdlib dari GeckoView
+            "org.jetbrains.kotlin:kotlin-stdlib:2.0.21",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21"
         )
     }
 }
