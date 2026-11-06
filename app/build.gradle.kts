@@ -10,6 +10,19 @@ configurations.configureEach {
     exclude(group = "org.jetbrains", module = "annotations-java5")
 }
 
+// ========== PAKSA VERSI androidx.core ==========
+// GeckoView Nightly menarik androidx.core:1.17.0 yang butuh compileSdk 36,
+// sementara proyek ini masih di compileSdk 35. Force turunkan ke 1.15.0.
+configurations.all {
+    resolutionStrategy {
+        force(
+            "androidx.core:core:1.15.0",
+            "androidx.core:core-ktx:1.15.0"
+        )
+    }
+}
+// ================================================
+
 android {
     namespace = "com.rexaps"
     compileSdk = 35
@@ -154,6 +167,6 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
 
     // ========== GECKOVIEW ==========
-    // GeckoView Arm64 Armeabi 
+    // GeckoView Arm64 Armeabi
     implementation("org.mozilla.geckoview:geckoview-nightly:149.0.20260223091613")
 }
