@@ -154,8 +154,6 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
 
     // ========== GECKOVIEW ==========
-    // GeckoView untuk arm64-v8a
-    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:128.0.20240812094317")
-    // GeckoView untuk armeabi-v7a
-    implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:128.0.20240812094317")
+    // GeckoView Arm64 Armeabi 
+    implementation("org.mozilla.geckoview:geckoview-nightly:149.0.20260223091613")
 }
