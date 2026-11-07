@@ -37,8 +37,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK command-line tools
+        id: android_tools
+        uses: android-actions/setup-android@v4
+        with:
+          # Command-line tools only; install the exact project SDK packages below.
+          packages: ''
+          accept-android-sdk-licenses: 'true'
+
+      - name: Install required Android SDK packages
+        id: android_sdk
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          set -Eeuo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
+          mkdir -p "$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+
+          echo "Android SDK root: $SDK_ROOT"
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.2.12479018"
+
+          echo "Installed SDK packages:"
+          sdkmanager --list_installed
+
+          test -d "$SDK_ROOT/platforms/android-35"
+          test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
+          test -d "$SDK_ROOT/cmake/3.22.1"
+          test -d "$SDK_ROOT/ndk/27.2.12479018"
+          echo "Android SDK platform, build-tools, CMake, and NDK are ready."
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -254,6 +288,10 @@ jobs:
       - name: Fail workflow if a required stage failed
         if: always()
         run: |
+          if [[ "${{ steps.android_tools.outcome }}" != "success" || "${{ steps.android_sdk.outcome }}" != "success" ]]; then
+            echo "Android SDK setup failed. Check the Setup Android SDK and Install required Android SDK packages steps."
+            exit 1
+          fi
           if [[ "${{ steps.signing.outcome }}" != "success" ]]; then
             echo "Release signing setup failed. Configure all four RELEASE_* secrets."
             exit 1
