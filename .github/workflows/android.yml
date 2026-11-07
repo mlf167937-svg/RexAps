@@ -177,9 +177,26 @@ jobs:
         id: build
         if: steps.signing.outcome == 'success' && steps.nodejs_download.outcome == 'success'
         continue-on-error: true
+        # GitHub Actions env values are step-scoped. Re-inject the three
+        # signing values here so app/build.gradle.kts can configure signing.
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
+
+          # Fail early instead of silently creating unsigned APKs.
+          : "${RELEASE_STORE_FILE:?Release keystore file was not exported by the signing step}"
+          : "${RELEASE_STORE_PASSWORD:?RELEASE_STORE_PASSWORD is missing in the build step}"
+          : "${RELEASE_KEY_ALIAS:?RELEASE_KEY_ALIAS is missing in the build step}"
+          : "${RELEASE_KEY_PASSWORD:?RELEASE_KEY_PASSWORD is missing in the build step}"
+          test -s "$RELEASE_STORE_FILE"
+          keytool -list -keystore "$RELEASE_STORE_FILE" \
+            -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
+          echo "Release signing variables are available to Gradle."
+
           ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
 
       - name: Verify signatures, ABIs, and create download ZIPs
