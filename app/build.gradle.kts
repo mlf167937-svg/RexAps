@@ -38,6 +38,12 @@ android {
     namespace = "com.rexaps"
     compileSdk = 35
 
+    // Work around a crash in the Lifecycle NullSafeMutableLiveData lint detector
+    // reported by lintVitalAnalyzeRelease. Other lint checks remain enabled.
+    lint {
+        disable += "NullSafeMutableLiveData"
+    }
+
     defaultConfig {
         applicationId = "com.rexaps"
         minSdk = 27
@@ -197,6 +203,9 @@ dependencies {
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
     implementation("io.noties.markwon:image:4.6.2")
+    // Markwon's SVG/GIF decoders reference these optional Android libraries.
+    implementation("com.caverock:androidsvg-aar:1.4")
+    implementation("pl.droidsonroids.gif:android-gif-drawable:1.2.32")
     implementation("io.noties.markwon:linkify:4.6.2")
     implementation("io.noties.markwon:syntax-highlight:4.6.2")
     implementation("io.noties.markwon:ext-tables:4.6.2")

@@ -8,3 +8,11 @@
 -keepclassmembers enum com.rexaps.rexfox.SearchEngine {
     *;
 }
+
+
+# JGit has optional desktop-Java integrations that Android does not provide:
+# JMX/management monitoring and GSSAPI (Negotiate) authentication.
+# The app does not use these optional integrations; suppress only these absent APIs.
+-dontwarn java.lang.management.**
+-dontwarn javax.management.**
+-dontwarn org.ietf.jgss.**

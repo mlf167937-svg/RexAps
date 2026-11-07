@@ -37,6 +37,9 @@ object RexGitJGit {
                 )
 
                 WindowCacheConfig().apply {
+                    // Android does not provide the Java desktop JMX API.
+                    // JGit enables JMX statistics by default, so disable it explicitly.
+                    setExposeStatsViaJmx(false)
                     packedGitLimit = 8L * 1024 * 1024
                     packedGitWindowSize = 512 * 1024
                     setPackedGitMMAP(false)
