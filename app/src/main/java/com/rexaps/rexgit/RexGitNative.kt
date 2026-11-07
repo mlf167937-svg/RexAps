@@ -1,5 +1,6 @@
 package com.rexaps.rexgit
 
+import android.util.Log
 import org.eclipse.jgit.lib.ProgressMonitor
 import android.content.Context
 import org.eclipse.jgit.api.Git
@@ -14,6 +15,14 @@ data class RexGitNativeResult(
 )
 
 internal fun Throwable.readableMessage(fallback: String): String {
+    // Keep the user-facing message concise, but preserve the full cause chain in
+    // Logcat for release-only reflection/R8 failures. Never log credentials here.
+    val reflectionFailure = generateSequence(this) { it.cause }
+        .any { it is NoSuchMethodException }
+    if (reflectionFailure) {
+        Log.e("RexGit", "Reflective construction failed during: $fallback", this)
+    }
+
     val text = message?.trim()
     return if (!text.isNullOrEmpty()) text else (javaClass.simpleName.ifBlank { fallback })
 }

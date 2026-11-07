@@ -239,6 +239,14 @@ jobs:
 
           zip -q -j dist/Actions.zip Build.log NodeJS-Download.log Actions-AllLog.log
 
+          # Keep R8's mapping with private CI diagnostics so obfuscated Release
+          # exceptions can be retraced without publishing the mapping beside APKs.
+          MAPPING_FILE="app/build/outputs/mapping/release/mapping.txt"
+          if [[ -s "$MAPPING_FILE" ]]; then
+            cp "$MAPPING_FILE" dist/RexAps-release-mapping.txt
+            zip -q -j dist/Actions.zip dist/RexAps-release-mapping.txt
+          fi
+
       - name: Upload RexAps-Arm64-v8a
         uses: actions/upload-artifact@v4
         if: always() && steps.verify.outcome == 'success'

@@ -34,6 +34,14 @@ val releaseSigningConfigured = listOf(
     releaseStoreFilePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
 ).all { !it.isNullOrBlank() }
 
+// The current Release build has a runtime NoSuchMethodException in RexGit that
+// appears only after R8 shrinking/obfuscation. Keep Release runnable by default;
+// minification can be re-enabled explicitly after validating the keep rules with
+// a retraced release stack trace: -Prexaps.release.minify=true.
+val releaseMinificationEnabled = providers.gradleProperty("rexaps.release.minify")
+    .map { it.equals("true", ignoreCase = true) }
+    .getOrElse(false)
+
 android {
     namespace = "com.rexaps"
     compileSdk = 35
@@ -94,8 +102,8 @@ android {
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = releaseMinificationEnabled
+            isShrinkResources = releaseMinificationEnabled
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
