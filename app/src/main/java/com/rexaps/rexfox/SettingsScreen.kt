@@ -20,17 +20,23 @@ fun SettingsScreen(
     onClearHistory: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(DeepBlack)) {
-        Row(Modifier.fillMaxWidth().background(SurfaceDark).padding(10.dp)) {
+        Row(
+            Modifier.fillMaxWidth().background(SurfaceDark).statusBarsPadding().padding(10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
             Text("Settings", fontWeight = FontWeight.Bold)
         }
 
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Section("GENERAL")
             Surface(Modifier.fillMaxWidth(), color = SurfaceCard, shape = RoundedCornerShape(12.dp)) {
                 Column(Modifier.padding(14.dp)) {
                     Text("Search engine", fontWeight = FontWeight.SemiBold)
-                    SearchEngine.values().forEach { engine ->
+                    SearchEngine.entries.forEach { engine ->
                         TextButton(onClick = { onChange(settings.copy(searchEngine = engine)) }) {
                             Text(if (engine == settings.searchEngine) "✓ ${engine.label}" else engine.label)
                         }
@@ -38,46 +44,62 @@ fun SettingsScreen(
                 }
             }
 
-            Section("PRIVACY")
-            Toggle("Tracking protection", "No tracker blocker is installed in this build.", settings.trackingProtectionEnabled) {
-                onChange(settings.copy(trackingProtectionEnabled = it))
-            }
-            Toggle("Do Not Track", "Request the preference where supported.", settings.doNotTrack) {
-                onChange(settings.copy(doNotTrack = it))
-            }
+            Section("PRIVACY & SECURITY")
+            Toggle(
+                "Tracking protection",
+                "Uses GeckoView's built-in tracking protection for browser sessions.",
+                settings.trackingProtectionEnabled
+            ) { onChange(settings.copy(trackingProtectionEnabled = it)) }
+            InfoRow(
+                "Do Not Track",
+                "The selected GeckoView API does not expose the legacy WebView Do Not Track switch. The stored preference is retained but is not sent as a request header."
+            )
             OutlinedButton(onClick = onClearHistory, Modifier.fillMaxWidth()) {
                 Text("Clear browsing history")
             }
 
-            Section("WEB")
+            Section("WEB CONTENT")
             Toggle("JavaScript", "Required by many modern websites.", settings.javaScriptEnabled) {
                 onChange(settings.copy(javaScriptEnabled = it))
             }
-            Toggle("DOM storage", "Allow website local storage.", settings.domStorageEnabled) {
-                onChange(settings.copy(domStorageEnabled = it))
-            }
-            Toggle("Third-party cookies", "Allow embedded services to use cookies.", settings.thirdPartyCookiesEnabled) {
-                onChange(settings.copy(thirdPartyCookiesEnabled = it))
-            }
-            Toggle("Desktop site", "Request desktop layouts.", settings.desktopSite) {
+            Toggle("Desktop site", "Request desktop layouts from websites.", settings.desktopSite) {
                 onChange(settings.copy(desktopSite = it))
             }
+            InfoRow(
+                "DOM storage",
+                "Managed by GeckoView and enabled by default for regular sessions. Private sessions use private browsing mode."
+            )
+            InfoRow(
+                "Third-party cookies",
+                "Cookie policy is managed by GeckoView. This API version does not expose the previous per-WebView cookie toggle. Normal profiles remain isolated from private browsing."
+            )
         }
     }
 }
 
-@Composable private fun Section(text: String) =
+@Composable
+private fun Section(text: String) =
     Text(text, color = OnSurfaceMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
 
 @Composable
 private fun Toggle(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Surface(Modifier.fillMaxWidth(), color = SurfaceCard, shape = RoundedCornerShape(12.dp)) {
-        Row(Modifier.padding(12.dp)) {
+        Row(Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, color = OnSurfaceMuted, fontSize = 11.sp)
             }
             Switch(checked, onCheckedChange = onChange)
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(title: String, description: String) {
+    Surface(Modifier.fillMaxWidth(), color = SurfaceCard, shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(description, color = OnSurfaceMuted, fontSize = 11.sp)
         }
     }
 }

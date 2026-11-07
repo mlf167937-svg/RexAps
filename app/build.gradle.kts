@@ -10,9 +10,8 @@ configurations.configureEach {
     exclude(group = "org.jetbrains", module = "annotations-java5")
 }
 
-// ========== PAKSA VERSI androidx.core ==========
-// GeckoView Nightly menarik androidx.core:1.17.0 yang butuh compileSdk 36,
-// sementara proyek ini masih di compileSdk 35. Force turunkan ke 1.15.0.
+// GeckoView Nightly 149 pulls AndroidX Core 1.17.0 (compileSdk 36).
+// This app remains on compileSdk 35, so preserve the project's explicit Core 1.15.0 compatibility pin.
 configurations.all {
     resolutionStrategy {
         force(
@@ -27,6 +26,14 @@ configurations.all {
 }
 // ================================================
 
+val releaseStoreFilePath = providers.environmentVariable("RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStoreFilePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.rexaps"
     compileSdk = 35
@@ -38,6 +45,11 @@ android {
         versionCode = 2726
         versionName = "27.26"
 
+        // Ship both supported ARM ABIs. The Node.js Mobile runtime is added
+        // by CI for each ABI before the Release variant is assembled.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
         externalNativeBuild {
             cmake {
                 arguments += "-DANDROID_STL=c++_shared"
@@ -45,19 +57,48 @@ android {
         }
     }
 
-    // Buat APK terpisah untuk setiap arsitektur CPU.
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    // Produce two device-specific APKs plus one fat APK containing both ARM ABIs.
+    // Keep this list aligned with defaultConfig.ndk.abiFilters and the Node.js
+    // Mobile native libraries downloaded in .github/workflows/android.yml.
     splits {
         abi {
             isEnable = true
             reset()
             include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 
     externalNativeBuild {
         cmake {
             path = file("CMakeLists.txt")
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // CI injects a persistent signing key from GitHub Actions secrets.
+            // Local builds remain possible but are unsigned until these variables are supplied.
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -75,6 +116,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
         resources {
             excludes += setOf(
                 "META-INF/*.SF",
@@ -170,7 +214,6 @@ dependencies {
 
     implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // ========== GECKOVIEW ==========
-    // GeckoView Arm64 Armeabi
+    // GeckoView engine used only by RexFox and RexAI. Keep the validated project pin.
     implementation("org.mozilla.geckoview:geckoview-nightly:149.0.20260223091613")
 }

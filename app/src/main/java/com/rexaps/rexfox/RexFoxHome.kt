@@ -34,9 +34,10 @@ fun RexFoxHome(
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onIncognito: () -> Unit
 ) {
-        return __splitImpl_RexFoxHome(state, onNavigate, onTabs, onBookmarks, onHistory, onDownloads, onSettings)
+        return __splitImpl_RexFoxHome(state, onNavigate, onTabs, onBookmarks, onHistory, onDownloads, onSettings, onIncognito)
     }
 
 /** Desktop-like wide layout: navigation/search on the left, activity lists on the right. */
@@ -48,9 +49,10 @@ internal fun RexFoxHomeLandscape(
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onIncognito: () -> Unit
 ) {
-        return __splitImpl_RexFoxHomeLandscape(state, onNavigate, onTabs, onBookmarks, onHistory, onDownloads, onSettings)
+        return __splitImpl_RexFoxHomeLandscape(state, onNavigate, onTabs, onBookmarks, onHistory, onDownloads, onSettings, onIncognito)
     }
 
 @Composable

@@ -33,7 +33,8 @@ internal fun __splitImpl_RexFoxHomeLandscape(
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onIncognito: () -> Unit
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     // Resolve theme-dependent composable colors before entering the non-composable draw scope.
@@ -105,6 +106,7 @@ internal fun __splitImpl_RexFoxHomeLandscape(
                     QuickAction("Riwayat", Icons.Default.History, Cyan, onHistory)
                     QuickAction("Unduhan", Icons.Default.Download, VioletLight, onDownloads)
                     QuickAction("Tab", Icons.Default.Tab, Cyan, onTabs)
+                    QuickAction("Private", Icons.Default.VisibilityOff, VioletLight, onIncognito)
                 }
                 PrivacyCard(status = state.privacyStatus, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.weight(1f))

@@ -16,6 +16,11 @@ enum class RexRoute(
         "RexFox"
     ),
 
+    REXADM(
+        "rexadm",
+        "RexADM"
+    ),
+
     REXPANEL(
         "rexpanel",
         "RexPanel"

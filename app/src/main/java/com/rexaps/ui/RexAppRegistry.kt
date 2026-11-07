@@ -26,6 +26,13 @@ object RexAppRegistry {
         ),
 
         RexModule(
+            id = "rexadm",
+            name = "RexADM",
+            description = "Professional Download Manager",
+            available = true
+        ),
+
+        RexModule(
             id = "rexcoder",
             name = "RexCoder",
             description = "VS Code Version RexAps",

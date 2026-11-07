@@ -29,7 +29,8 @@ internal fun __splitImpl_RexFoxHome(
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
     onDownloads: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onIncognito: () -> Unit
 ) {
     if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
         RexFoxHomeLandscape(
@@ -39,7 +40,8 @@ internal fun __splitImpl_RexFoxHome(
             onBookmarks = onBookmarks,
             onHistory = onHistory,
             onDownloads = onDownloads,
-            onSettings = onSettings
+            onSettings = onSettings,
+            onIncognito = onIncognito
         )
         return
     }
@@ -128,6 +130,7 @@ internal fun __splitImpl_RexFoxHome(
                     QuickAction("History", Icons.Default.History, Cyan, onHistory)
                     QuickAction("Downloads", Icons.Default.Download, VioletLight, onDownloads)
                     QuickAction("Tabs", Icons.Default.Tab, Cyan, onTabs)
+                    QuickAction("Private", Icons.Default.VisibilityOff, VioletLight, onIncognito)
                 }
             }
 

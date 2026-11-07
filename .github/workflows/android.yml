@@ -1,10 +1,13 @@
-name: Build RexAps
+name: Build RexAps Release
 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -14,178 +17,257 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK
+      - name: Initialize diagnostic logs
+        run: |
+          set -Eeuo pipefail
+          : > Build.log
+          : > NodeJS-Download.log
+          : > Full-Actions.log
+          {
+            echo "RexAps Release pipeline"
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Started (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+          } | tee -a Full-Actions.log
+
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Download Node.js Mobile Libraries
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Prepare persistent Release signing key
+        id: signing
+        continue-on-error: true
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          set -Eeuo pipefail
+          missing=0
+          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required GitHub Actions secret: ${name}"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Configure all four release-signing secrets before building installable Release APKs."
+            exit 1
+          fi
+
+          SIGNING_DIR="$RUNNER_TEMP/rexaps-signing"
+          mkdir -p "$SIGNING_DIR"
+          chmod 700 "$SIGNING_DIR"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$SIGNING_DIR/rexaps-release.jks"
+          test -s "$SIGNING_DIR/rexaps-release.jks"
+          chmod 600 "$SIGNING_DIR/rexaps-release.jks"
+          keytool -list -keystore "$SIGNING_DIR/rexaps-release.jks" \
+            -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
+          echo "RELEASE_STORE_FILE=$SIGNING_DIR/rexaps-release.jks" >> "$GITHUB_ENV"
+          echo "Persistent Release keystore decoded and alias verified."
+
+      - name: Download and validate Node.js Mobile ARM libraries
         id: nodejs_download
+        if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
-
-          LOG_FILE="$GITHUB_WORKSPACE/nodejs-download.log"
-          : > "$LOG_FILE"
-          exec > >(tee -a "$LOG_FILE") 2>&1
 
           RELEASE_REPO="nodejs-mobile/nodejs-mobile"
           RELEASE_TAG="v18.20.4"
           ASSET_NAME="nodejs-mobile-v18.20.4-android.zip"
           DOWNLOAD_DIR="$RUNNER_TEMP/nodejs-mobile"
           ZIP_FILE="$DOWNLOAD_DIR/$ASSET_NAME"
-
           mkdir -p "$DOWNLOAD_DIR"
 
-          echo "Repository: $RELEASE_REPO"
-          echo "Release: $RELEASE_TAG"
-          echo "Expected asset: $ASSET_NAME"
-          echo "Available release assets:"
-          gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" --json assets --jq '.assets[] | "\(.name) | \(.size) bytes"'
-
-          echo "Downloading release asset..."
-          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
-
-          if [[ ! -s "$ZIP_FILE" ]]; then
-            echo "ERROR: ZIP download completed without producing the expected file: $ZIP_FILE"
-            find "$DOWNLOAD_DIR" -maxdepth 2 -type f -printf '%p (%s bytes)\n' || true
-            exit 1
-          fi
-
-          echo "Downloaded archive:"
-          ls -lh "$ZIP_FILE"
-          echo "Checking ZIP integrity..."
+          echo "Inspecting ${RELEASE_REPO} ${RELEASE_TAG} assets..."
+          gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" --json assets \
+            --jq '.assets[] | "\(.name) | \(.size) bytes"'
+          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" \
+            --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
+          test -s "$ZIP_FILE"
           unzip -tq "$ZIP_FILE"
 
-          echo "Searching the archive for both libnode.so files..."
           mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
+          for ABI in arm64-v8a armeabi-v7a; do
+            ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk -v abi="$ABI" \
+              'tolower($0) ~ ("(^|/)bin/" tolower(abi) "/libnode\\.so$") && !seen { print; seen=1 }')"
+            if [[ -z "$ENTRY" ]]; then
+              echo "ERROR: ${ABI}/libnode.so was not found in ${ASSET_NAME}."
+              printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | grep -Ei 'libnode\.so$' || true
+              exit 1
+            fi
 
-          # PERBAIKAN: Menghapus perintah 'exit' agar tidak terjadi 'Broken pipe'
-          # awk akan membaca semua baris sampai selesai dan mencetak yang cocok (hanya ada 1 yang cocok)
-          ARM64_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/arm64-v8a\/libnode\.so$/ && !seen { print; seen=1 }')"
-          ARMV7_ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk 'tolower($0) ~ /(^|\/)bin\/armeabi-v7a\/libnode\.so$/ && !seen { print; seen=1 }')"
+            LIB_DIR="app/src/main/jniLibs/$ABI"
+            mkdir -p "$LIB_DIR"
+            unzip -p "$ZIP_FILE" "$ENTRY" > "$LIB_DIR/libnode.so"
+            test -s "$LIB_DIR/libnode.so"
 
-          if [[ -z "$ARM64_ENTRY" || -z "$ARMV7_ENTRY" ]]; then
-            echo "ERROR: One or both expected library paths were not found."
-            echo "Archive entries containing libnode.so:"
-            printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | grep -Ei 'libnode\.so$' || true
-            exit 1
-          fi
+            ELF_CLASS="$(readelf -h "$LIB_DIR/libnode.so" | awk -F: '/Class:/ {gsub(/^[ \t]+/, "", $2); print $2}')"
+            ELF_MACHINE="$(readelf -h "$LIB_DIR/libnode.so" | awk -F: '/Machine:/ {gsub(/^[ \t]+/, "", $2); print $2}')"
+            echo "${ABI}: ELF class=${ELF_CLASS}; machine=${ELF_MACHINE}"
+            if [[ "$ABI" == "arm64-v8a" ]]; then
+              [[ "$ELF_CLASS" == "ELF64" && "$ELF_MACHINE" == *AArch64* ]]
+            else
+              [[ "$ELF_CLASS" == "ELF32" && "$ELF_MACHINE" == *ARM* ]]
+            fi
+            sha256sum "$LIB_DIR/libnode.so"
+          done
 
-          REQUESTED_DIR="app/src/main/JniLibs"
-          ANDROID_DEFAULT_DIR="app/src/main/jniLibs"
-
-          mkdir -p "$REQUESTED_DIR/arm64-v8a" "$REQUESTED_DIR/armeabi-v7a"
-          mkdir -p "$ANDROID_DEFAULT_DIR/arm64-v8a" "$ANDROID_DEFAULT_DIR/armeabi-v7a"
-
-          unzip -p "$ZIP_FILE" "$ARM64_ENTRY" > "$REQUESTED_DIR/arm64-v8a/libnode.so"
-          unzip -p "$ZIP_FILE" "$ARMV7_ENTRY" > "$REQUESTED_DIR/armeabi-v7a/libnode.so"
-
-          cp "$REQUESTED_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so"
-          cp "$REQUESTED_DIR/armeabi-v7a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
-
-          echo "Checking ELF architectures..."
-          ARM64_MACHINE="$(readelf -h "$REQUESTED_DIR/arm64-v8a/libnode.so" | awk -F: '/Machine:/ {sub(/^[ \t]+/, "", $2); print $2}')"
-          ARMV7_MACHINE="$(readelf -h "$REQUESTED_DIR/armeabi-v7a/libnode.so" | awk -F: '/Machine:/ {sub(/^[ \t]+/, "", $2); print $2}')"
-
-          echo "arm64-v8a: $ARM64_MACHINE"
-          echo "armeabi-v7a: $ARMV7_MACHINE"
-
-          [[ "$ARM64_MACHINE" == *AArch64* ]]
-          [[ "$ARMV7_MACHINE" == *ARM* ]]
-          [[ -s "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" ]]
-          [[ -s "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so" ]]
-
-          echo "Final library files:"
-          ls -lh "$REQUESTED_DIR/arm64-v8a/libnode.so" "$REQUESTED_DIR/armeabi-v7a/libnode.so"
-          echo "Android Gradle Plugin source files:"
-          ls -lh "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
-          sha256sum "$ANDROID_DEFAULT_DIR/arm64-v8a/libnode.so" "$ANDROID_DEFAULT_DIR/armeabi-v7a/libnode.so"
-
-      - name: Upload Node.js Download Diagnostics
+      - name: Grant execute permission for Gradle wrapper
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nodejs-download-diagnostics
-          path: nodejs-download.log
-          if-no-files-found: warn
-
-      - name: Stop if Node.js Download Failed
-        if: steps.nodejs_download.outcome == 'failure'
-        run: |
-          echo "Node.js Mobile download or library validation failed. Download the nodejs-download-diagnostics artifact to inspect the cause."
-          exit 1
-
-      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build APK
+      - name: Build signed ARM Release APKs
         id: build
+        if: steps.signing.outcome == 'success' && steps.nodejs_download.outcome == 'success'
         continue-on-error: true
         run: |
-          set -o pipefail
-          ./gradlew assembleDebug --stacktrace --refresh-dependencies 2>&1 | tee build.log
-          exit ${PIPESTATUS[0]}
+          exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          set -Eeuo pipefail
+          ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
 
-      - name: Prepare Split APKs
+      - name: Verify signatures, ABIs, and create download ZIPs
+        id: verify
         if: steps.build.outcome == 'success'
+        continue-on-error: true
         run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
 
-          OUTPUT_DIR="app/build/outputs/apk/debug"
-          ARTIFACT_DIR="artifacts"
-          mkdir -p "$ARTIFACT_DIR/arm64-v8a" "$ARTIFACT_DIR/armeabi-v7a"
+          OUTPUT_DIR="app/build/outputs/apk/release"
+          ARM64_APK="$OUTPUT_DIR/app-arm64-v8a-release.apk"
+          ARM32_APK="$OUTPUT_DIR/app-armeabi-v7a-release.apk"
+          UNIVERSAL_APK="$OUTPUT_DIR/app-universal-release.apk"
+          for APK in "$ARM64_APK" "$ARM32_APK" "$UNIVERSAL_APK"; do
+            if [[ ! -s "$APK" ]]; then
+              echo "ERROR: Expected Release APK not found: $APK"
+              find "$OUTPUT_DIR" -maxdepth 2 -type f -printf '%p (%s bytes)\n' || true
+              exit 1
+            fi
+          done
 
-          ARM64_APK="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*arm64-v8a*debug.apk' -print -quit)"
-          ARMV7_APK="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*armeabi-v7a*debug.apk' -print -quit)"
-
-          if [[ -z "$ARM64_APK" || ! -s "$ARM64_APK" ]]; then
-            echo "ERROR: APK split arm64-v8a tidak ditemukan di $OUTPUT_DIR"
-            find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%p (%s bytes)\n' || true
+          APKSIGNER="$(command -v apksigner || true)"
+          if [[ -z "$APKSIGNER" ]]; then
+            SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+            APKSIGNER="$(find "$SDK_ROOT/build-tools" -maxdepth 2 -type f -name apksigner 2>/dev/null | sort -V | tail -1)"
+          fi
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
+            echo "ERROR: Android build-tools apksigner was not found."
             exit 1
           fi
 
-          if [[ -z "$ARMV7_APK" || ! -s "$ARMV7_APK" ]]; then
-            echo "ERROR: APK split armeabi-v7a tidak ditemukan di $OUTPUT_DIR"
-            find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%p (%s bytes)\n' || true
-            exit 1
-          fi
+          mkdir -p dist staging
+          create_bundle() {
+            local bundle_name="$1"
+            local apk_path="$2"
+            local expected_csv="$3"
+            local bundle_dir="staging/$bundle_name"
+            local -a expected_abis actual_abis
+            IFS=',' read -r -a expected_abis <<< "$expected_csv"
+            mkdir -p "$bundle_dir"
 
-          cp "$ARM64_APK" "$ARTIFACT_DIR/arm64-v8a/RexAps-arm64-v8a.apk"
-          cp "$ARMV7_APK" "$ARTIFACT_DIR/armeabi-v7a/RexAps-armeabi-v7a.apk"
+            "$APKSIGNER" verify --verbose --print-certs "$apk_path"
+            mapfile -t actual_abis < <(unzip -Z1 "$apk_path" | \
+              awk -F/ '$1 == "lib" && NF >= 3 && $NF ~ /\.so$/ { print $2 }' | sort -u)
+            if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
+              echo "ERROR: ${bundle_name} ABI mismatch. Expected: ${expected_abis[*]}; got: ${actual_abis[*]:-none}"
+              exit 1
+            fi
 
-          echo "APK hasil split:"
-          ls -lh "$ARTIFACT_DIR/arm64-v8a/RexAps-arm64-v8a.apk" "$ARTIFACT_DIR/armeabi-v7a/RexAps-armeabi-v7a.apk"
+            for ABI in "${expected_abis[@]}"; do
+              for NATIVE_LIB in libnode.so libmozglue.so libxul.so; do
+                if ! unzip -Z1 "$apk_path" | grep -Fxq "lib/$ABI/$NATIVE_LIB"; then
+                  echo "ERROR: ${bundle_name} is missing lib/$ABI/$NATIVE_LIB"
+                  echo "The ABI split may be missing Node.js Mobile or GeckoView native binaries."
+                  exit 1
+                fi
+              done
+            done
 
-      - name: Upload ARM64 APK
-        if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: RexAps-arm64-v8a
-          path: artifacts/arm64-v8a/RexAps-arm64-v8a.apk
-          if-no-files-found: error
+            cp "$apk_path" "$bundle_dir/$bundle_name.apk"
+            printf 'RexAps Release package: %s\n\nThis APK was built as a signed Release APK by GitHub Actions.\nIncluded Android ABIs: %s\n\nExtract this APK from the ZIP before installing it. Keep the same release signing key for future app updates. If Android reports a signature conflict, do not uninstall immediately; first confirm which signing key was used.\n' \
+              "$bundle_name" "$expected_csv" > "$bundle_dir/INSTALL.txt"
+            (cd "$bundle_dir" && sha256sum "$bundle_name.apk" > SHA256SUMS.txt)
+            (cd "$bundle_dir" && zip -q -r "$GITHUB_WORKSPACE/dist/$bundle_name.zip" .)
+            unzip -tq "$GITHUB_WORKSPACE/dist/$bundle_name.zip"
+            echo "Created dist/$bundle_name.zip"
+            ls -lh "$GITHUB_WORKSPACE/dist/$bundle_name.zip" "$apk_path"
+          }
 
-      - name: Upload ARMv7 APK
-        if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: RexAps-armeabi-v7a
-          path: artifacts/armeabi-v7a/RexAps-armeabi-v7a.apk
-          if-no-files-found: error
+          create_bundle "RexAps-arm64-v8a" "$ARM64_APK" "arm64-v8a"
+          create_bundle "RexAps-armeabi-v7a" "$ARM32_APK" "armeabi-v7a"
+          create_bundle "RexAps-Universal" "$UNIVERSAL_APK" "arm64-v8a,armeabi-v7a"
 
-      - name: Upload Build Log
+      - name: Create Actions.zip diagnostics
+        id: diagnostics
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          mkdir -p dist
+          for FILE in Build.log NodeJS-Download.log Full-Actions.log; do
+            [[ -f "$FILE" ]] || : > "$FILE"
+          done
+          {
+            echo
+            echo "Pipeline outcomes:"
+            echo "  signing: ${{ steps.signing.outcome }}"
+            echo "  NodeJS download: ${{ steps.nodejs_download.outcome }}"
+            echo "  build: ${{ steps.build.outcome }}"
+            echo "  verification/package: ${{ steps.verify.outcome }}"
+            echo "Finished (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } >> Full-Actions.log
+          zip -q -j dist/Actions.zip Build.log NodeJS-Download.log Full-Actions.log
+          unzip -tq dist/Actions.zip
+          echo "Created dist/Actions.zip"
+
+      - name: Upload Release ZIPs and Actions.zip
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RexAps-build-log
-          path: build.log
+          name: RexAps-Release-Files
+          path: dist/*.zip
           if-no-files-found: warn
+          retention-days: 14
 
-      - name: Fail Workflow If Build Failed
-        if: steps.build.outcome == 'failure'
+      - name: Fail workflow if a required stage failed
+        if: always()
         run: |
-          echo "Build gagal. Cek build.log untuk detail."
-          exit 1
+          if [[ "${{ steps.signing.outcome }}" != "success" ]]; then
+            echo "Release signing setup failed. Configure all four RELEASE_* secrets."
+            exit 1
+          fi
+          if [[ "${{ steps.nodejs_download.outcome }}" != "success" ]]; then
+            echo "Node.js Mobile ARM32/ARM64 download or ELF validation failed. See Actions.zip."
+            exit 1
+          fi
+          if [[ "${{ steps.build.outcome }}" != "success" ]]; then
+            echo "Gradle Release build failed. See Build.log inside Actions.zip."
+            exit 1
+          fi
+          if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
+            echo "APK signature / ABI verification or ZIP packaging failed. See Full-Actions.log."
+            exit 1
+          fi
+          echo "All three signed Release bundles were built and verified."

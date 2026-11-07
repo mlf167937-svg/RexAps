@@ -118,7 +118,7 @@ class OkHttpRexSmartManager(context: Context) : RexSmartManager {
         client.newCall(builder.build()).execute().use { response ->
             if (response.code == 401 || response.code == 403 || response.code == 429) {
                 update(record, record.progress.copy(status = DownloadStatus.ACTION_REQUIRED,
-                    message = "Server meminta autentikasi atau menolak permintaan (HTTP ${response.code}). Buka halaman di RexFox, selesaikan langkah yang diminta, lalu coba lagi."))
+                    message = "Server meminta autentikasi atau menolak permintaan (HTTP ${response.code}). Buka sumbernya di browser. OkHttp RexADM tidak mewarisi cookie sesi browser; gunakan URL unduhan langsung atau kredensial yang didukung server sebelum mencoba lagi."))
                 return@withContext
             }
             if (!response.isSuccessful) throw IOException("HTTP ${response.code} ${response.message}")
@@ -188,6 +188,17 @@ class OkHttpRexSmartManager(context: Context) : RexSmartManager {
             if (!candidate.exists()) return candidate
             index++
         }
+    }
+
+    /** Remove a terminal download and its local file without changing the OkHttp transfer engine. */
+    fun deleteDownload(id: DownloadId): Boolean {
+        val record = records[id] ?: return false
+        if (record.progress.status !in setOf(DownloadStatus.COMPLETED, DownloadStatus.FAILED, DownloadStatus.CANCELLED)) return false
+        record.progress.filePath?.let { runCatching { File(it).delete() } }
+        File(outputDir, "${record.id}.part").delete()
+        records.remove(id)
+        _downloads.value = records.values.map { it.progress }.sortedByDescending { it.id }
+        return true
     }
 
     fun close() { scope.cancel() }

@@ -1,10 +1,11 @@
 package com.rexaps.rexfox
 
+import org.mozilla.geckoview.GeckoSession
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
- data class Bookmark(val url: String, val title: String, val id: Long = System.currentTimeMillis())
+data class Bookmark(val url: String, val title: String, val id: Long = System.currentTimeMillis())
 
 data class HistoryEntry(val url: String, val title: String, val timestamp: Long = System.currentTimeMillis()) {
     fun formattedTime(): String = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(timestamp))
@@ -35,10 +36,22 @@ data class BrowserTab(
     val id: Int,
     var title: String = "New Tab",
     var url: String = "about:blank",
-    val webView: android.webkit.WebView,
+    val session: GeckoSession,
     val isIncognito: Boolean = false,
     var canGoBack: Boolean = false,
-    var canGoForward: Boolean = false
+    var canGoForward: Boolean = false,
+    var progress: Int = 0,
+    var isLoading: Boolean = false,
+    var error: String? = null
 )
 
-data class TabSnapshot(val id: Int, val title: String, val url: String, val isIncognito: Boolean)
+data class TabSnapshot(
+    val id: Int,
+    val title: String,
+    val url: String,
+    val isIncognito: Boolean,
+    val progress: Int = 0,
+    val isLoading: Boolean = false,
+    val canGoBack: Boolean = false,
+    val canGoForward: Boolean = false
+)

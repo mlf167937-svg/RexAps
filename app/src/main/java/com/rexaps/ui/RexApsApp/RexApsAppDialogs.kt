@@ -24,6 +24,7 @@ import com.rexaps.rexlife.RexLifeScreen
 import com.rexaps.ui.theme.RexMotionRuntime
 import com.rexaps.ui.theme.RexAnimationLevel
 import com.rexaps.rexai.RexAIScreen
+import com.rexaps.rexadm.RexAdmScreen
 import com.rexaps.rexcoder.RexCoderScreen
 import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexgit.RexGit
@@ -126,6 +127,8 @@ internal fun __splitImpl_RexApsApp(
                                 RexRoute.REXLIFE -> RexLifeScreen(onExit = { route = RexRoute.NONE })
 
                                 RexRoute.REXFOX -> RexFoxScreen(activity = activity)
+
+                                RexRoute.REXADM -> RexAdmScreen(onExit = { route = RexRoute.NONE })
 
                                 RexRoute.REXPANEL ->
                                     com.rexaps.rexpanel.RexPanelScreen(

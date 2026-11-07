@@ -43,7 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-/** RexAI v1: curated provider WebViews. Agent functionality is intentionally marked as upcoming. */
+/** RexAI v1: curated provider GeckoView sessions. Agent functionality is intentionally marked as upcoming. */
 @Composable
 fun RexAIScreen(onExit: () -> Unit = {}) {
     val webStateHolder: RexAIWebStateHolder = viewModel()
@@ -154,7 +154,7 @@ private fun RexAIHomeScreen(onExit: () -> Unit, onSelectProvider: (String) -> Un
             }
         }
         Text(
-            "RexAI v1 uses official provider websites. Google sign-in may open your external browser because providers can restrict OAuth inside embedded WebViews. Account access and session sharing depend on each provider.",
+            "RexAI v1 uses the official provider websites. Login cookies are isolated per provider; navigation outside each provider's allowlist opens in your external browser.",
             style = MaterialTheme.typography.labelSmall,
             color = colors.onSurfaceVariant
         )

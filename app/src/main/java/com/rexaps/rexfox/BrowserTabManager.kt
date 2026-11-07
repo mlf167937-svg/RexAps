@@ -1,155 +1,338 @@
 package com.rexaps.rexfox
 
-import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.graphics.Bitmap
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.annotation.MainThread
+import com.rexaps.gecko.RexGeckoRuntime
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
 
-/** Owns WebView instances and browser state for RexFox tabs. */
+/** Owns one GeckoSession per RexFox tab. All public methods are called on the main thread. */
 class BrowserTabManager(
-    private val activity: Activity,
+    context: Context,
     private val settingsProvider: () -> BrowserSettings,
     private val onChanged: () -> Unit,
     private val onDownload: (String, String?, String?, String?) -> Unit
 ) {
+    private val appContext = context.applicationContext
+    private val runtime by lazy(LazyThreadSafetyMode.NONE) { RexGeckoRuntime.get(appContext) }
     private val tabs = mutableListOf<BrowserTab>()
     private var nextId = 1
     var activeTabId: Int? = null
         private set
 
-    var pageStateListener: ((String, String, Int, Boolean, String?, Boolean) -> Unit)? = null
-
-    fun createTab(incognito: Boolean = false, url: String = "about:blank", loadInitialUrl: Boolean = true): BrowserTab {
-        val webView = WebView(activity).apply {
-            val settings = settingsProvider()
-            this.settings.javaScriptEnabled = settings.javaScriptEnabled
-            this.settings.domStorageEnabled = settings.domStorageEnabled
-            this.settings.javaScriptCanOpenWindowsAutomatically = true
-            this.settings.setSupportMultipleWindows(false)
-            this.settings.loadsImagesAutomatically = true
-            this.settings.useWideViewPort = true
-            this.settings.loadWithOverviewMode = settings.desktopSite
-            if (settings.desktopSite) {
-                this.settings.userAgentString = this.settings.userAgentString.replace("; wv", "")
-            }
-            if (incognito) {
-                this.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                clearCache(true)
-            }
-            CookieManager.getInstance().setAcceptCookie(true)
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, settings.thirdPartyCookiesEnabled && !incognito)
+    /** tabId is included so a background tab can never overwrite the active tab's UI state. */
+    var pageStateListener: ((Int, String, String, Int, Boolean, String?, Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            tabs.forEach(::publish)
         }
-        var tabRef: BrowserTab? = null
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val uri = request.url
-                val scheme = uri.scheme?.lowercase()
-                if (scheme == "http" || scheme == "https" || scheme == "about" || scheme == "data" || scheme == "blob") return false
-                openExternal(uri)
-                return true
-            }
 
-            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                tabRef?.let { it.url = url; it.title = view.title ?: it.title }
-                onState(url, view.title.orEmpty(), 0, true, null, incognito)
-            }
+    @MainThread
+    fun createTab(
+        incognito: Boolean = false,
+        url: String = "about:blank",
+        loadInitialUrl: Boolean = true
+    ): BrowserTab {
+        val currentSettings = settingsProvider()
+        val builder = GeckoSessionSettings.Builder()
+            .allowJavascript(currentSettings.javaScriptEnabled)
+            .usePrivateMode(incognito)
+            .useTrackingProtection(currentSettings.trackingProtectionEnabled)
+            .userAgentMode(
+                if (currentSettings.desktopSite) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+                else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+            )
+            .viewportMode(
+                if (currentSettings.desktopSite) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+                else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+            )
+        if (!incognito) builder.contextId("rexfox-normal")
 
-            override fun onPageFinished(view: WebView, url: String) {
-                tabRef?.let {
-                    it.url = url
-                    it.title = view.title?.takeIf(String::isNotBlank) ?: it.title
-                    it.canGoBack = view.canGoBack()
-                    it.canGoForward = view.canGoForward()
-                }
-                onState(url, view.title.orEmpty(), 100, false, null, incognito)
-                onChanged()
-            }
-
-            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                if (request.isForMainFrame) {
-                    onState(request.url.toString(), view.title.orEmpty(), 0, false,
-                        "Halaman gagal dimuat (${error.errorCode}).", incognito)
-                }
-            }
-        }
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                val current = view.url.orEmpty()
-                onState(current, view.title.orEmpty(), newProgress, newProgress < 100, null, incognito)
-                tabRef?.let { it.url = current.ifBlank { it.url }; it.title = view.title?.takeIf(String::isNotBlank) ?: it.title }
-            }
-            override fun onReceivedTitle(view: WebView, title: String?) {
-                tabRef?.let { if (!title.isNullOrBlank()) it.title = title }
-                onChanged()
-            }
-        }
-        webView.setDownloadListener { downloadUrl, userAgent, contentDisposition, mimeType, _ ->
-            onDownload(downloadUrl, userAgent, contentDisposition, mimeType)
-        }
-        val tab = BrowserTab(nextId++, url = url, webView = webView, isIncognito = incognito)
-        tabRef = tab
+        val session = GeckoSession(builder.build())
+        val tab = BrowserTab(
+            id = nextId++,
+            url = url,
+            session = session,
+            isIncognito = incognito
+        )
+        configureDelegates(tab)
         tabs += tab
+        activeTabId?.let { findTab(it)?.session?.setActive(false) }
         activeTabId = tab.id
-        if (loadInitialUrl && url != "about:blank") webView.loadUrl(url)
+        session.open(runtime)
+        session.setActive(true)
+        if (loadInitialUrl && url != "about:blank") session.load(GeckoSession.Loader().uri(url))
         onChanged()
         return tab
     }
 
-    private fun onState(url: String, title: String, progress: Int, loading: Boolean, error: String?, incognito: Boolean) {
-        onChanged()
-        pageStateListener?.invoke(url, title, progress, loading, error, incognito)
+    private fun configureDelegates(tab: BrowserTab) {
+        val session = tab.session
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLoadRequest(
+                session: GeckoSession,
+                request: GeckoSession.NavigationDelegate.LoadRequest
+            ): GeckoResult<AllowOrDeny>? {
+                val uri = runCatching { Uri.parse(request.uri) }.getOrNull() ?: return null
+                val scheme = uri.scheme?.lowercase().orEmpty()
+                if (scheme in setOf("http", "https", "about", "data", "blob", "resource", "moz-extension")) {
+                    return null
+                }
+                openExternal(uri)
+                return GeckoResult.fromValue(AllowOrDeny.DENY)
+            }
+
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean
+            ) {
+                url?.takeIf(String::isNotBlank)?.let { tab.url = it }
+                publish(tab)
+                onChanged()
+            }
+
+            override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
+                tab.canGoBack = canGoBack
+                onChanged()
+            }
+
+            override fun onCanGoForward(session: GeckoSession, canGoForward: Boolean) {
+                tab.canGoForward = canGoForward
+                onChanged()
+            }
+
+            override fun onLoadError(
+                session: GeckoSession,
+                uri: String?,
+                error: org.mozilla.geckoview.WebRequestError
+            ): GeckoResult<String>? {
+                tab.isLoading = false
+                tab.progress = 0
+                tab.error = "Halaman gagal dimuat: ${error.message ?: "koneksi atau server bermasalah"}"
+                publish(tab)
+                onChanged()
+                // Returning null aborts the failed load. Gecko's default certificate validation stays enabled.
+                return null
+            }
+
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                // Popups are not silently attached to the wrong tab; the user can open the link explicitly.
+                return null
+            }
+        }
+
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                tab.url = url
+                tab.progress = 0
+                tab.isLoading = true
+                tab.error = null
+                publish(tab)
+                onChanged()
+            }
+
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                tab.progress = progress.coerceIn(0, 100)
+                tab.isLoading = progress < 100
+                publish(tab)
+                onChanged()
+            }
+
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                tab.isLoading = false
+                if (success) tab.progress = 100
+                publish(tab)
+                onChanged()
+            }
+        }
+
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                title?.takeIf(String::isNotBlank)?.let { tab.title = it }
+                publish(tab)
+                onChanged()
+            }
+
+            override fun onExternalResponse(session: GeckoSession, response: org.mozilla.geckoview.WebResponse) {
+                val headers = response.headers
+                fun header(name: String): String? = headers.entries.firstOrNull { it.key.equals(name, true) }?.value
+                val contentDisposition = header("content-disposition")
+                val contentType = header("content-type")
+                // The existing Android DownloadManager bridge performs the transfer. Close Gecko's
+                // response stream before handing off the URL; do not call getUserAgent() here because
+                // GeckoView exposes that query on its handler thread, not this UI callback.
+                runCatching { response.body?.close() }
+                onDownload(response.uri, null, contentDisposition, contentType)
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                tab.isLoading = false
+                tab.canGoBack = false
+                tab.canGoForward = false
+                tab.error = "Proses halaman terhenti. Muat ulang untuk memulihkan sesi."
+                publish(tab)
+                onChanged()
+            }
+
+            override fun onKill(session: GeckoSession) {
+                tab.isLoading = false
+                tab.canGoBack = false
+                tab.canGoForward = false
+                tab.error = "Proses browser dihentikan Android. Muat ulang untuk membuka kembali halaman."
+                publish(tab)
+                onChanged()
+            }
+        }
+    }
+
+    private fun publish(tab: BrowserTab) {
+        pageStateListener?.invoke(
+            tab.id, tab.url, tab.title, tab.progress, tab.isLoading, tab.error, tab.isIncognito
+        )
     }
 
     private fun openExternal(uri: Uri) {
-        runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+        runCatching {
+            appContext.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     }
 
+    @MainThread
     fun switchTab(id: Int): BrowserTab? {
-        if (tabs.none { it.id == id }) return null
+        val next = findTab(id) ?: return null
+        if (activeTabId != id) findTab(activeTabId)?.session?.setActive(false)
         activeTabId = id
+        if (!next.session.isOpen) {
+            next.session.open(runtime)
+            if (next.url.isNotBlank() && next.url != "about:blank") {
+                next.session.load(GeckoSession.Loader().uri(next.url))
+            }
+        }
+        next.session.setActive(true)
+        publish(next)
         onChanged()
-        return getActiveTab()
+        return next
     }
 
+    @MainThread
+    fun setBrowserVisible(visible: Boolean) {
+        tabs.forEach { tab ->
+            val shouldBeActive = visible && tab.id == activeTabId
+            if (shouldBeActive && !tab.session.isOpen) {
+                tab.session.open(runtime)
+                if (tab.url.isNotBlank() && tab.url != "about:blank") {
+                    tab.session.load(GeckoSession.Loader().uri(tab.url))
+                }
+            }
+            tab.session.setActive(shouldBeActive)
+        }
+    }
+
+    @MainThread
     fun closeTab(id: Int) {
         val index = tabs.indexOfFirst { it.id == id }
         if (index < 0) return
-        tabs.removeAt(index).webView.apply {
-            stopLoading()
-            loadUrl("about:blank")
-            clearHistory()
-            removeAllViews()
-            destroy()
+        val tab = tabs.removeAt(index)
+        runCatching {
+            tab.session.stop()
+            tab.session.setActive(false)
+            tab.session.close()
         }
         activeTabId = when {
             tabs.isEmpty() -> null
             activeTabId != id -> activeTabId
             else -> tabs[index.coerceAtMost(tabs.lastIndex)].id
         }
+        getActiveTab()?.session?.setActive(true)
         onChanged()
     }
 
-    fun getActiveTab(): BrowserTab? = tabs.firstOrNull { it.id == activeTabId }
-    fun getTabs(): List<BrowserTab> = tabs.toList()
-    fun count() = tabs.size
-    fun snapshots() = tabs.map { TabSnapshot(it.id, it.title, it.url, it.isIncognito) }
-
-    fun destroyAll() {
+    @MainThread
+    fun closeAllTabs() {
         tabs.toList().forEach { tab ->
             runCatching {
-                tab.webView.stopLoading()
-                tab.webView.loadUrl("about:blank")
-                tab.webView.removeAllViews()
-                tab.webView.destroy()
+                tab.session.stop()
+                tab.session.setActive(false)
+                tab.session.close()
             }
         }
         tabs.clear()
         activeTabId = null
+        onChanged()
     }
+
+    fun getActiveTab(): BrowserTab? = findTab(activeTabId)
+    fun getTabs(): List<BrowserTab> = tabs.toList()
+    fun count(): Int = tabs.size
+    fun snapshots(): List<TabSnapshot> = tabs.map {
+        TabSnapshot(
+            it.id, it.title, it.url, it.isIncognito, it.progress, it.isLoading,
+            it.canGoBack, it.canGoForward
+        )
+    }
+
+    @MainThread
+    fun navigateActive(url: String) {
+        val tab = getActiveTab() ?: createTab()
+        tab.url = url
+        tab.error = null
+        if (!tab.session.isOpen) tab.session.open(runtime)
+        tab.session.load(GeckoSession.Loader().uri(url))
+        onChanged()
+    }
+
+    @MainThread
+    fun goBack() {
+        getActiveTab()?.takeIf { it.canGoBack && it.session.isOpen }?.session?.goBack()
+    }
+
+    @MainThread
+    fun goForward() {
+        getActiveTab()?.takeIf { it.canGoForward && it.session.isOpen }?.session?.goForward()
+    }
+
+    @MainThread
+    fun reload() {
+        val tab = getActiveTab() ?: return
+        if (tab.session.isOpen) {
+            tab.session.reload()
+        } else {
+            tab.session.open(runtime)
+            if (tab.url.isNotBlank() && tab.url != "about:blank") {
+                tab.session.load(GeckoSession.Loader().uri(tab.url))
+            }
+        }
+    }
+
+    @MainThread
+    fun stop() { getActiveTab()?.session?.takeIf { it.isOpen }?.stop() }
+
+    @MainThread
+    fun applySettings(settings: BrowserSettings) {
+        tabs.filterNot { it.isIncognito }.forEach { tab ->
+            tab.session.settings.apply {
+                setAllowJavascript(settings.javaScriptEnabled)
+                setUseTrackingProtection(settings.trackingProtectionEnabled)
+                setUserAgentMode(
+                    if (settings.desktopSite) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+                    else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+                )
+                setViewportMode(
+                    if (settings.desktopSite) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+                    else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+                )
+            }
+        }
+    }
+
+    @MainThread
+    fun destroyAll() = closeAllTabs()
+
+    private fun findTab(id: Int?): BrowserTab? = id?.let { target -> tabs.firstOrNull { it.id == target } }
 }

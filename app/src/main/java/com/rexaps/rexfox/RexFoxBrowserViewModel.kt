@@ -1,7 +1,7 @@
 package com.rexaps.rexfox
 
-import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +14,9 @@ data class BrowserUiState(
     val bookmarks: List<Bookmark> = emptyList(),
     val tabs: List<TabSnapshot> = emptyList(),
     val activeTabId: Int? = null,
+    val activeUrl: String = "about:blank",
+    val activeTitle: String = "New Tab",
+    val activeIncognito: Boolean = false,
     val progress: Int = 0,
     val loading: Boolean = false,
     val error: String? = null,
@@ -22,11 +25,9 @@ data class BrowserUiState(
 
 enum class Screen { Home, Browser, Tabs, Bookmarks, History, Downloads, Settings, DevTools }
 
-class RexFoxBrowserViewModel(
-    context: Context,
-    private val activity: Activity
-) : ViewModel() {
-    private val store = BrowserStore(context.applicationContext)
+class RexFoxBrowserViewModel(context: Context) : ViewModel() {
+    private val appContext = context.applicationContext
+    private val store = BrowserStore(appContext)
     private val bookmarksRepo = BookmarkRepository(store)
     private val historyRepo = HistoryRepository(store)
     private val privacy = PrivacyManager()
@@ -43,15 +44,15 @@ class RexFoxBrowserViewModel(
     val state = _state.asStateFlow()
 
     val tabManager = BrowserTabManager(
-        activity = activity,
+        context = appContext,
         settingsProvider = { _state.value.settings },
         onChanged = ::refreshTabs,
-        onDownload = { url, ua, cd, mime ->
-            downloadManager.enqueue(url, ua, cd, mime)
+        onDownload = { url, userAgent, disposition, mimeType ->
+            downloadManager.enqueue(url, userAgent, disposition, mimeType)
         }
     ).also { manager ->
-        manager.pageStateListener = { url, title, progress, loading, error, incognito ->
-            onPageState(url, title, progress, loading, error, incognito)
+        manager.pageStateListener = { tabId, url, title, progress, loading, error, incognito ->
+            onPageState(tabId, url, title, progress, loading, error, incognito)
         }
     }
 
@@ -61,56 +62,73 @@ class RexFoxBrowserViewModel(
             is NavigationTarget.Web -> load(target.url)
             is NavigationTarget.Search -> load(target.url)
             is NavigationTarget.External -> runCatching {
-                activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, target.uri))
+                appContext.startActivity(Intent(Intent.ACTION_VIEW, target.uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
     }
 
     fun load(url: String) {
-        val tab = tabManager.getActiveTab()
-        if (tab == null) tabManager.createTab(false, url)
-        else { tab.url = url; tab.webView.loadUrl(url) }
-        _state.value = _state.value.copy(screen = Screen.Browser, error = null)
+        tabManager.navigateActive(url)
+        openScreen(Screen.Browser)
     }
 
     fun newTab() {
         tabManager.createTab()
-        _state.value = _state.value.copy(screen = Screen.Browser)
+        openScreen(Screen.Browser)
     }
 
     fun newIncognitoTab() {
-        tabManager.createTab(true)
-        _state.value = _state.value.copy(screen = Screen.Browser)
+        tabManager.createTab(incognito = true)
+        openScreen(Screen.Browser)
     }
 
     fun switchTab(id: Int) {
         tabManager.switchTab(id)
-        _state.value = _state.value.copy(screen = Screen.Browser)
+        openScreen(Screen.Browser)
     }
 
     fun closeTab(id: Int) {
         tabManager.closeTab(id)
-        _state.value = _state.value.copy(
-            screen = if (tabManager.count() == 0) Screen.Home else Screen.Browser
-        )
+        openScreen(if (tabManager.count() == 0) Screen.Home else Screen.Browser)
     }
 
-    fun back() {
-        tabManager.getActiveTab()?.let { if (it.webView.canGoBack()) it.webView.goBack() }
+    fun closeAllTabs() {
+        tabManager.closeAllTabs()
+        openScreen(Screen.Home)
     }
 
-    fun forward() {
-        tabManager.getActiveTab()?.let { if (it.webView.canGoForward()) it.webView.goForward() }
+    fun shareActiveUrlToRexAdm() {
+        val url = tabManager.getActiveTab()?.url ?: return
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) return
+        val intent = Intent(appContext, com.rexaps.rexadm.MainActivity::class.java).apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        appContext.startActivity(intent)
     }
 
-    fun reload() = tabManager.getActiveTab()?.webView?.reload()
-    fun stop() = tabManager.getActiveTab()?.webView?.stopLoading()
+    fun back() = tabManager.goBack()
+    fun forward() = tabManager.goForward()
+    fun reload() = tabManager.reload()
+    fun stop() = tabManager.stop()
 
     fun toggleBookmark() {
         val tab = tabManager.getActiveTab() ?: return
         if (bookmarksRepo.isBookmarked(tab.url)) bookmarksRepo.remove(tab.url)
         else bookmarksRepo.add(tab.url, tab.title)
         _state.value = _state.value.copy(bookmarks = bookmarksRepo.all())
+    }
+
+    fun removeBookmark(url: String) {
+        bookmarksRepo.remove(url)
+        _state.value = _state.value.copy(bookmarks = bookmarksRepo.all())
+    }
+
+    fun deleteHistory(timestamp: Long) {
+        historyRepo.delete(timestamp)
+        _state.value = _state.value.copy(history = historyRepo.all())
     }
 
     fun clearHistory() {
@@ -120,13 +138,15 @@ class RexFoxBrowserViewModel(
 
     fun updateSettings(settings: BrowserSettings) {
         store.saveSettings(settings)
+        tabManager.applySettings(settings)
         _state.value = _state.value.copy(
             settings = settings,
             privacyStatus = privacy.status(settings)
         )
     }
 
-    fun onPageState(
+    private fun onPageState(
+        tabId: Int,
         url: String,
         title: String,
         progress: Int,
@@ -134,15 +154,15 @@ class RexFoxBrowserViewModel(
         error: String?,
         incognito: Boolean
     ) {
-        // Persist only completed, non-incognito navigations. Progress callbacks can fire many times.
-        if (!loading && progress >= 100) {
-            historyRepo.add(url, title, incognito)
-        }
-
+        if (!loading && progress >= 100) historyRepo.add(url, title, incognito)
+        val active = tabManager.activeTabId == tabId
         _state.value = _state.value.copy(
-            progress = progress,
-            loading = loading,
-            error = error,
+            progress = if (active) progress else _state.value.progress,
+            loading = if (active) loading else _state.value.loading,
+            error = if (active) error else _state.value.error,
+            activeUrl = if (active) url else _state.value.activeUrl,
+            activeTitle = if (active) title else _state.value.activeTitle,
+            activeIncognito = if (active) incognito else _state.value.activeIncognito,
             history = historyRepo.all(),
             tabs = tabManager.snapshots(),
             activeTabId = tabManager.activeTabId
@@ -150,26 +170,32 @@ class RexFoxBrowserViewModel(
     }
 
     private fun refreshTabs() {
+        val active = tabManager.getActiveTab()
         _state.value = _state.value.copy(
             tabs = tabManager.snapshots(),
-            activeTabId = tabManager.activeTabId
+            activeTabId = tabManager.activeTabId,
+            activeUrl = active?.url ?: "about:blank",
+            activeTitle = active?.title ?: "New Tab",
+            activeIncognito = active?.isIncognito ?: false,
+            progress = active?.progress ?: 0,
+            loading = active?.isLoading ?: false,
+            error = active?.error
         )
     }
 
-    fun openScreen(screen: Screen) { _state.value = _state.value.copy(screen = screen, error = null) }
+    fun openScreen(screen: Screen) {
+        tabManager.setBrowserVisible(screen == Screen.Browser)
+        _state.value = _state.value.copy(screen = screen, error = null)
+    }
 
     override fun onCleared() {
         tabManager.destroyAll()
         super.onCleared()
     }
 
-    class Factory(
-        private val context: Context,
-        private val activity: Activity
-    ) : ViewModelProvider.Factory {
+    class Factory(private val context: Context) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            RexFoxBrowserViewModel(context, activity) as T
+            RexFoxBrowserViewModel(context) as T
     }
 }
-
