@@ -1,10 +1,20 @@
 package com.rexaps.rexfox
 
 import android.app.Activity
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import com.rexaps.rexadm.RexAdmScreen
@@ -84,9 +94,37 @@ fun RexFoxScreen(activity: Activity) {
                         onBack = { vm.openScreen(Screen.Home) },
                         onClearHistory = vm::clearHistory
                     )
-                    else -> PlaceholderScreen(state.screen) { vm.openScreen(Screen.Home) }
+                    else -> RexFoxPlaceholderScreen(state.screen) { vm.openScreen(Screen.Home) }
                 }
             }
+        }
+    }
+}
+
+/** Fallback for screens that have a route but are not implemented yet (currently DevTools). */
+@Composable
+private fun RexFoxPlaceholderScreen(screen: Screen, onHome: () -> Unit) {
+    val description = when (screen) {
+        Screen.DevTools -> "Developer tools belum tersedia di versi ini."
+        else -> "Halaman ini belum tersedia di versi ini."
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = if (screen == Screen.DevTools) "Developer Tools" else "Fitur belum tersedia",
+            style = MaterialTheme.typography.titleLarge
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onHome, modifier = Modifier.padding(top = 16.dp)) {
+            Text("Kembali ke beranda")
         }
     }
 }
