@@ -199,77 +199,89 @@ jobs:
 
           ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
 
-      - name: Verify signatures, ABIs, and create download ZIPs
+      - name: Sign APKs, verify ABIs, and create download ZIPs
         id: verify
-        if: steps.build.outcome == 'success'
+        if: steps.build.outcome == 'success' && steps.signing.outcome == 'success'
         continue-on-error: true
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
 
           OUTPUT_DIR="app/build/outputs/apk/release"
-          ARM64_APK="$OUTPUT_DIR/app-arm64-v8a-release.apk"
-          ARM32_APK="$OUTPUT_DIR/app-armeabi-v7a-release.apk"
-          UNIVERSAL_APK="$OUTPUT_DIR/app-universal-release.apk"
-          for APK in "$ARM64_APK" "$ARM32_APK" "$UNIVERSAL_APK"; do
-            if [[ ! -s "$APK" ]]; then
-              echo "ERROR: Expected Release APK not found: $APK"
-              find "$OUTPUT_DIR" -maxdepth 2 -type f -printf '%p (%s bytes)\n' || true
-              exit 1
+          DIST_DIR="$GITHUB_WORKSPACE/dist"
+          SIGN_DIR="$RUNNER_TEMP/rexaps-signed"
+          mkdir -p "$DIST_DIR" "$SIGN_DIR"
+          : "${RELEASE_STORE_FILE:?Release keystore path is missing}"
+          : "${RELEASE_STORE_PASSWORD:?Release store password is missing}"
+          : "${RELEASE_KEY_ALIAS:?Release key alias is missing}"
+          : "${RELEASE_KEY_PASSWORD:?Release key password is missing}"
+          test -s "$RELEASE_STORE_FILE"
+
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+          STORE_PASS_FILE="$RUNNER_TEMP/rexaps-store-pass"
+          KEY_PASS_FILE="$RUNNER_TEMP/rexaps-key-pass"
+          printf '%s' "$RELEASE_STORE_PASSWORD" > "$STORE_PASS_FILE"
+          printf '%s' "$RELEASE_KEY_PASSWORD" > "$KEY_PASS_FILE"
+          chmod 600 "$STORE_PASS_FILE" "$KEY_PASS_FILE"
+
+          sign_one() {
+            local label="$1" unsigned="$2" signed="$3"
+            if [[ ! -s "$unsigned" ]]; then
+              echo "ERROR: Expected unsigned APK missing: $unsigned"
+              find "$OUTPUT_DIR" -maxdepth 1 -type f -printf '%f (%s bytes)\n' || true
+              return 1
             fi
-          done
+            "$APKSIGNER" sign \
+              --ks "$RELEASE_STORE_FILE" \
+              --ks-key-alias "$RELEASE_KEY_ALIAS" \
+              --ks-pass "file:$STORE_PASS_FILE" \
+              --key-pass "file:$KEY_PASS_FILE" \
+              --out "$signed" "$unsigned"
+            "$APKSIGNER" verify --verbose --print-certs "$signed"
+            echo "Signed and verified: $label ($(stat -c%s "$signed") bytes)"
+          }
 
-          APKSIGNER="$(command -v apksigner || true)"
-          if [[ -z "$APKSIGNER" ]]; then
-            SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-            APKSIGNER="$(find "$SDK_ROOT/build-tools" -maxdepth 2 -type f -name apksigner 2>/dev/null | sort -V | tail -1)"
-          fi
-          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
-            echo "ERROR: Android build-tools apksigner was not found."
-            exit 1
-          fi
+          ARM64_APK="$SIGN_DIR/RexAps-arm64-v8a.apk"
+          ARM32_APK="$SIGN_DIR/RexAps-armeabi-v7a.apk"
+          UNIVERSAL_APK="$SIGN_DIR/RexAps-Universal.apk"
+          sign_one arm64-v8a "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk" "$ARM64_APK"
+          sign_one armeabi-v7a "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk" "$ARM32_APK"
+          sign_one Universal "$OUTPUT_DIR/app-universal-release-unsigned.apk" "$UNIVERSAL_APK"
 
-          mkdir -p dist staging
           create_bundle() {
-            local bundle_name="$1"
-            local apk_path="$2"
-            local expected_csv="$3"
-            local bundle_dir="staging/$bundle_name"
+            local bundle_name="$1" apk_path="$2" expected_csv="$3"
+            local bundle_dir="$RUNNER_TEMP/$bundle_name"
             local -a expected_abis actual_abis
             IFS=',' read -r -a expected_abis <<< "$expected_csv"
             mkdir -p "$bundle_dir"
-
-            "$APKSIGNER" verify --verbose --print-certs "$apk_path"
-            mapfile -t actual_abis < <(unzip -Z1 "$apk_path" | \
-              awk -F/ '$1 == "lib" && NF >= 3 && $NF ~ /\.so$/ { print $2 }' | sort -u)
+            mapfile -t actual_abis < <(unzip -Z1 "$apk_path" | awk -F/ '$1 == "lib" && NF >= 3 && $NF ~ /\.so$/ { print $2 }' | sort -u)
             if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
-              echo "ERROR: ${bundle_name} ABI mismatch. Expected: ${expected_abis[*]}; got: ${actual_abis[*]:-none}"
+              echo "ERROR: $bundle_name ABI mismatch. Expected ${expected_abis[*]}, got ${actual_abis[*]:-none}"
               exit 1
             fi
-
             for ABI in "${expected_abis[@]}"; do
               for NATIVE_LIB in libnode.so libmozglue.so libxul.so; do
-                if ! unzip -Z1 "$apk_path" | grep -Fxq "lib/$ABI/$NATIVE_LIB"; then
-                  echo "ERROR: ${bundle_name} is missing lib/$ABI/$NATIVE_LIB"
-                  echo "The ABI split may be missing Node.js Mobile or GeckoView native binaries."
-                  exit 1
-                fi
+                unzip -Z1 "$apk_path" | grep -Fxq "lib/$ABI/$NATIVE_LIB" || {
+                  echo "ERROR: $bundle_name missing lib/$ABI/$NATIVE_LIB"; exit 1;
+                }
               done
             done
-
             cp "$apk_path" "$bundle_dir/$bundle_name.apk"
-            printf 'RexAps Release package: %s\n\nThis APK was built as a signed Release APK by GitHub Actions.\nIncluded Android ABIs: %s\n\nExtract this APK from the ZIP before installing it. Keep the same release signing key for future app updates. If Android reports a signature conflict, do not uninstall immediately; first confirm which signing key was used.\n' \
-              "$bundle_name" "$expected_csv" > "$bundle_dir/INSTALL.txt"
+            printf 'Signed RexAps Release APK\nIncluded ABIs: %s\nExtract the APK before installing. Keep this release keystore for future updates.\n' "$expected_csv" > "$bundle_dir/INSTALL.txt"
             (cd "$bundle_dir" && sha256sum "$bundle_name.apk" > SHA256SUMS.txt)
-            (cd "$bundle_dir" && zip -q -r "$GITHUB_WORKSPACE/dist/$bundle_name.zip" .)
-            unzip -tq "$GITHUB_WORKSPACE/dist/$bundle_name.zip"
-            echo "Created dist/$bundle_name.zip"
-            ls -lh "$GITHUB_WORKSPACE/dist/$bundle_name.zip" "$apk_path"
+            (cd "$bundle_dir" && zip -q -r "$DIST_DIR/$bundle_name.zip" .)
+            unzip -tq "$DIST_DIR/$bundle_name.zip"
+            echo "Created $DIST_DIR/$bundle_name.zip ($(stat -c%s "$DIST_DIR/$bundle_name.zip") bytes)"
           }
 
-          create_bundle "RexAps-arm64-v8a" "$ARM64_APK" "arm64-v8a"
-          create_bundle "RexAps-armeabi-v7a" "$ARM32_APK" "armeabi-v7a"
-          create_bundle "RexAps-Universal" "$UNIVERSAL_APK" "arm64-v8a,armeabi-v7a"
+          create_bundle RexAps-arm64-v8a "$ARM64_APK" arm64-v8a
+          create_bundle RexAps-armeabi-v7a "$ARM32_APK" armeabi-v7a
+          create_bundle RexAps-Universal "$UNIVERSAL_APK" arm64-v8a,armeabi-v7a
 
       - name: Create Actions.zip diagnostics
         id: diagnostics
@@ -291,14 +303,53 @@ jobs:
           } >> Full-Actions.log
           zip -q -j dist/Actions.zip Build.log NodeJS-Download.log Full-Actions.log
           unzip -tq dist/Actions.zip
-          echo "Created dist/Actions.zip"
+          echo "Created dist/Actions.zip ($(stat -c%s dist/Actions.zip) bytes)"
 
-      - name: Upload Release ZIPs and Actions.zip
+      - name: Upload ARM64 package
+        if: steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-arm64-v8a
+          path: dist/RexAps-arm64-v8a.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ARM32 package
+        if: steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-armeabi-v7a
+          path: dist/RexAps-armeabi-v7a.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Universal package
+        if: steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-Universal
+          path: dist/RexAps-Universal.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics only (small files)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RexAps-Release-Files
-          path: dist/*.zip
+          name: Actions-Logs
+          path: |
+            Build.log
+            NodeJS-Download.log
+            Full-Actions.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload diagnostics ZIP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Actions.zip
+          path: dist/Actions.zip
           if-no-files-found: warn
           retention-days: 14
 
