@@ -21,3 +21,6 @@
 -dontwarn java.lang.management.**
 -dontwarn javax.management.**
 -dontwarn org.ietf.jgss.**
+
+# The Node.js JNI bridge is resolved by its package/class/method symbol.
+-keep class com.rexaps.rexchat.v1.RexNodeBridge { *; }

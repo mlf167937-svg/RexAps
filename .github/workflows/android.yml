@@ -103,7 +103,13 @@ jobs:
 
           echo "RELEASE_STORE_FILE=$SIGNING_DIR/rexaps-release.jks" >> "$GITHUB_ENV"
 
-      - name: Download and validate Node.js ARM64 and ARM32 libraries
+      - name: Setup Node.js 26.13.0 for RexChat dependencies
+        id: setup_nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+
+      - name: Download and validate Node.js Mobile ARM libraries
         id: nodejs_download
         if: always() && steps.checkout.outcome == 'success'
         continue-on-error: true
@@ -113,44 +119,68 @@ jobs:
 
           ARM64_URL="https://github.com/mlf167937-svg/RexAps/releases/download/v26.13/libnode.so"
           ARM32_URL="https://github.com/mlf167937-svg/RexAps/releases/download/v26.12/libnode.so"
+          NODE_VERSION="26.13.0"
 
           ARM64_DIR="app/src/main/jniLibs/arm64-v8a"
           ARM32_DIR="app/src/main/jniLibs/armeabi-v7a"
-
           mkdir -p "$ARM64_DIR" "$ARM32_DIR"
 
-          echo "========================================"
-          echo "Downloading Node.js 26.13 ARM libraries"
-          echo "========================================"
+          echo "Downloading Node.js 26.13 ARM64 libnode.so from v26.13..."
+          curl -fL --retry 5 --retry-delay 3 "$ARM64_URL" -o "$ARM64_DIR/libnode.so"
 
-          echo "[ARM64] Downloading libnode.so..."
-          curl -fL --retry 5 --retry-delay 3 \
-            "$ARM64_URL" \
-            -o "$ARM64_DIR/libnode.so"
-
-          echo "[ARM32] Downloading libnode.so..."
-          curl -fL --retry 5 --retry-delay 3 \
-            "$ARM32_URL" \
-            -o "$ARM32_DIR/libnode.so"
-
-          echo
-          echo "Validating downloaded libraries..."
+          echo "Downloading Node.js 26.13 ARM32 libnode.so from v26.12..."
+          curl -fL --retry 5 --retry-delay 3 "$ARM32_URL" -o "$ARM32_DIR/libnode.so"
 
           test -s "$ARM64_DIR/libnode.so"
           test -s "$ARM32_DIR/libnode.so"
 
-          echo
-          echo "[ARM64]"
+          echo "ARM64 library:"
           ls -lh "$ARM64_DIR/libnode.so"
           file "$ARM64_DIR/libnode.so"
 
-          echo
-          echo "[ARM32]"
+          echo "ARM32 library:"
           ls -lh "$ARM32_DIR/libnode.so"
           file "$ARM32_DIR/libnode.so"
 
-          echo
-          echo "Node.js 26.13 ARM libraries downloaded successfully."
+          # The JNI bridge calls node::Start(), so it must compile against the
+          # matching Node.js C++ headers, not just package libnode.so.
+          HEADERS_ARCHIVE="$RUNNER_TEMP/node-v${NODE_VERSION}-headers.tar.gz"
+          HEADERS_DIR="$RUNNER_TEMP/node-v${NODE_VERSION}-headers"
+          mkdir -p "$HEADERS_DIR"
+          curl -fL --retry 5 --retry-delay 3 \
+            "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz" \
+            -o "$HEADERS_ARCHIVE"
+          tar -xzf "$HEADERS_ARCHIVE" -C "$HEADERS_DIR" --strip-components=1
+          test -s "$HEADERS_DIR/include/node/node.h"
+          mkdir -p app/libnode/include
+          rm -rf app/libnode/include/node
+          cp -a "$HEADERS_DIR/include/node" app/libnode/include/node
+
+          echo "Node.js ${NODE_VERSION} headers and both Android ARM libraries are ready."
+
+      - name: Bundle RexChat Baileys dependencies
+        id: rexchat_deps
+        if: always() && steps.nodejs_download.outcome == 'success' && steps.setup_nodejs.outcome == 'success'
+        continue-on-error: true
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          REXCHAT_DIR="app/src/main/assets/rexchat"
+          test -s "$REXCHAT_DIR/package.json"
+          npm install \
+            --prefix "$REXCHAT_DIR" \
+            --omit=dev \
+            --no-audit \
+            --no-fund \
+            --package-lock=false \
+            --ignore-scripts
+
+          test -s "$REXCHAT_DIR/node_modules/@whiskeysockets/baileys/package.json"
+          test -s "$REXCHAT_DIR/node_modules/pino/package.json"
+          # Android assets do not need npm's command symlinks.
+          rm -rf "$REXCHAT_DIR/node_modules/.bin"
+          echo "RexChat Baileys and production dependencies bundled into Android assets."
 
       - name: Grant execute permission for Gradle wrapper
         id: gradle_wrapper
@@ -163,12 +193,35 @@ jobs:
           steps.java.outcome == 'success' &&
           steps.android_sdk.outcome == 'success' &&
           steps.signing.outcome == 'success' &&
-          steps.nodejs_download.outcome == 'success'
+          steps.nodejs_download.outcome == 'success' &&
+          steps.rexchat_deps.outcome == 'success'
         continue-on-error: true
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
           ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
+
+          OUTPUT_DIR="app/build/outputs/apk/release"
+          ARM64_APK="$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk"
+          ARM32_APK="$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk"
+          UNIVERSAL_APK="$OUTPUT_DIR/app-universal-release-unsigned.apk"
+
+          for APK in "$ARM64_APK" "$ARM32_APK" "$UNIVERSAL_APK"; do
+            test -s "$APK"
+            unzip -Z1 "$APK" | grep -q '^assets/rexchat/node_modules/@whiskeysockets/baileys/package.json$'
+            unzip -Z1 "$APK" | grep -q '^lib/[^/]*/librexnode.so$'
+            unzip -Z1 "$APK" | grep -q '^lib/[^/]*/libnode.so$'
+          done
+
+          unzip -Z1 "$ARM64_APK" | grep -q '^lib/arm64-v8a/libnode.so$'
+          unzip -Z1 "$ARM64_APK" | grep -q '^lib/arm64-v8a/librexnode.so$'
+          unzip -Z1 "$ARM32_APK" | grep -q '^lib/armeabi-v7a/libnode.so$'
+          unzip -Z1 "$ARM32_APK" | grep -q '^lib/armeabi-v7a/librexnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/arm64-v8a/libnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/arm64-v8a/librexnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/armeabi-v7a/libnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/armeabi-v7a/librexnode.so$'
+          echo "Verified: all APK variants include libnode.so, JNI bridge, and Baileys dependencies."
 
       - name: Sign APKs and create download ZIPs
         id: verify

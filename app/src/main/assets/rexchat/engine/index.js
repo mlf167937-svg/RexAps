@@ -1,18 +1,28 @@
 import makeWASocket, { useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
 import pino from 'pino'
-import readline from 'node:readline'
+import http from 'node:http'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { readdir } from 'node:fs/promises'
 
-const home = process.env.REXCHAT_HOME || process.cwd()
-const sessionRoot = process.env.REXCHAT_SESSION_ROOT || path.join(home, 'sessions')
+const engineDirectory = path.dirname(fileURLToPath(import.meta.url))
+const home = path.resolve(engineDirectory, '..')
+const readArgument = (prefix, fallback) => {
+  const value = process.argv.find(argument => argument.startsWith(prefix))
+  return value ? value.slice(prefix.length) : fallback
+}
+const port = Number(readArgument('--rexchat-port=', '43827'))
+const authToken = readArgument('--rexchat-token=', '')
+const sessionRoot = readArgument('--rexchat-session-root=', path.join(home, 'sessions'))
+
 const accounts = new Map()
 const plugins = []
+const eventQueue = []
 const logger = pino({ level: 'silent' })
 
 function emit(event, payload = {}) {
-  process.stdout.write(`${JSON.stringify({ event, ...payload })}\n`)
+  eventQueue.push({ event, ...payload })
+  if (eventQueue.length > 1000) eventQueue.splice(0, eventQueue.length - 1000)
 }
 
 function textFromMessage(message) {
@@ -30,10 +40,10 @@ async function loadPlugins() {
   }
   for (const file of files) {
     try {
-      const moduleUrl = pathToFileURL(path.join(directory, file)).href
-      const plugin = await import(moduleUrl)
+      const moduleUrl = new URL(`../plugins/${file}`, import.meta.url)
+      const plugin = await import(moduleUrl.href)
       if (typeof plugin.default === 'function') {
-        plugins.push({ name: file, register: plugin.default })
+        plugins.push({ name: file, register: plugin.default, handler: null })
       }
     } catch (error) {
       emit('error', { message: `Plugin ${file}: ${error.message}` })
@@ -96,8 +106,7 @@ async function createAccount(sessionId) {
         }
         for (const plugin of plugins) {
           try {
-            const handler = plugin.handler
-            if (typeof handler === 'function') await handler(api)
+            if (typeof plugin.handler === 'function') await plugin.handler(api)
           } catch (error) {
             emit('error', { sessionId, message: `Plugin ${plugin.name}: ${error.message}` })
           }
@@ -107,7 +116,11 @@ async function createAccount(sessionId) {
   })
   for (const plugin of plugins) {
     try {
-      await plugin.register({ sessionId, socket, onCommand: handler => { plugin.handler = handler } })
+      await plugin.register({
+        sessionId,
+        socket,
+        onCommand: handler => { plugin.handler = handler }
+      })
     } catch (error) {
       emit('error', { sessionId, message: `Plugin ${plugin.name}: ${error.message}` })
     }
@@ -117,17 +130,22 @@ async function createAccount(sessionId) {
 
 async function handle(command) {
   const sessionId = Number(command.sessionId)
+  if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    throw new Error('Invalid RexChat session ID')
+  }
+
   if (command.type === 'add-account') {
     await createAccount(sessionId)
     return
   }
   if (command.type === 'pairing-code') {
     const account = accounts.get(sessionId) || await createAccount(sessionId)
-    account.pairingPhone = String(command.phone || '').replace(/\D/g, '')
+    const phone = String(command.phone || '').replace(/\D/g, '')
+    if (!phone) throw new Error('Phone number is required')
+    account.pairingPhone = phone
     account.pairingRequested = true
-    if (!account.pairingPhone) throw new Error('Phone number is required')
     try {
-      const code = await account.socket.requestPairingCode(account.pairingPhone)
+      const code = await account.socket.requestPairingCode(phone)
       emit('pairing-code', { sessionId, value: code })
     } catch (error) {
       account.pairingRequested = false
@@ -149,20 +167,68 @@ async function handle(command) {
     }
     return
   }
-  if (command.type === 'shutdown') {
-    for (const account of accounts.values()) account.socket.end(undefined)
-    accounts.clear()
-    process.exit(0)
-  }
+  throw new Error(`Unsupported RexChat command: ${command.type}`)
 }
 
-await loadPlugins()
-const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })
-input.on('line', line => {
-  try {
-    const command = JSON.parse(line)
-    handle(command).catch(error => emit('error', { message: error.message }))
-  } catch (error) {
-    emit('error', { message: error.message })
+function sendJson(response, statusCode, value) {
+  response.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  })
+  response.end(JSON.stringify(value))
+}
+
+async function readJson(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > 1024 * 1024) throw new Error('Request body too large')
+    chunks.push(chunk)
   }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+}
+
+async function loadAndStartServer() {
+  await loadPlugins()
+  const server = http.createServer(async (request, response) => {
+    if (request.headers['x-rexchat-token'] !== authToken) {
+      sendJson(response, 401, { ok: false, error: 'Unauthorized' })
+      return
+    }
+
+    const pathname = new URL(request.url || '/', `http://127.0.0.1:${port}`).pathname
+    if (request.method === 'GET' && pathname === '/health') {
+      sendJson(response, 200, { ok: true, version: process.version, accounts: accounts.size })
+      return
+    }
+    if (request.method === 'GET' && pathname === '/events') {
+      sendJson(response, 200, { events: eventQueue.splice(0, eventQueue.length) })
+      return
+    }
+    if (request.method === 'POST' && pathname === '/command') {
+      try {
+        await handle(await readJson(request))
+        sendJson(response, 200, { ok: true })
+      } catch (error) {
+        const message = error?.message || String(error)
+        emit('error', { message })
+        sendJson(response, 400, { ok: false, error: message })
+      }
+      return
+    }
+    sendJson(response, 404, { ok: false, error: 'Not found' })
+  })
+
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`RexChat Node.js ${process.version} ready on 127.0.0.1:${port}`)
+  })
+  server.on('error', error => {
+    emit('error', { message: `RexChat HTTP server: ${error.message}` })
+  })
+}
+
+loadAndStartServer().catch(error => {
+  console.error('RexChat engine failed to initialize:', error)
+  process.exitCode = 1
 })
