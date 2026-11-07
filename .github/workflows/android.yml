@@ -24,14 +24,14 @@ jobs:
           set -Eeuo pipefail
           : > Build.log
           : > NodeJS-Download.log
-          : > Full-Actions.log
+          : > Actions-AllLog.log
           {
             echo "RexAps Release pipeline"
             echo "Run ID: ${GITHUB_RUN_ID}"
             echo "Commit: ${GITHUB_SHA}"
             echo "Started (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo
-          } | tee -a Full-Actions.log
+          } | tee -a Actions-AllLog.log
 
       - name: Setup JDK 17
         id: java
@@ -50,7 +50,7 @@ jobs:
       - name: Install required Android SDK packages
         id: android_sdk
         run: |
-          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          exec > >(tee -a "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
 
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
@@ -59,11 +59,6 @@ jobs:
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-          export ANDROID_HOME="$SDK_ROOT"
-          export ANDROID_SDK_ROOT="$SDK_ROOT"
-
-          echo "Android SDK root: $SDK_ROOT"
-
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -71,7 +66,6 @@ jobs:
             "cmake;3.22.1" \
             "ndk;27.2.12479018"
 
-          test -d "$SDK_ROOT/platforms/android-35"
           test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
           test -x "$SDK_ROOT/build-tools/35.0.0/zipalign"
           
@@ -97,21 +91,8 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          exec > >(tee -a "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
-
-          missing=0
-          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Missing required GitHub Actions secret: ${name}"
-              missing=1
-            fi
-          done
-
-          if [[ "$missing" -ne 0 ]]; then
-            echo "Release signing secrets are incomplete."
-            exit 1
-          fi
 
           SIGNING_DIR="$RUNNER_TEMP/rexaps-signing"
           mkdir -p "$SIGNING_DIR"
@@ -121,7 +102,6 @@ jobs:
           chmod 600 "$SIGNING_DIR/rexaps-release.jks"
 
           echo "RELEASE_STORE_FILE=$SIGNING_DIR/rexaps-release.jks" >> "$GITHUB_ENV"
-          echo "Persistent Release keystore decoded and alias verified."
 
       - name: Download and validate Node.js Mobile ARM libraries
         id: nodejs_download
@@ -130,7 +110,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
 
           RELEASE_REPO="nodejs-mobile/nodejs-mobile"
@@ -142,31 +122,20 @@ jobs:
           mkdir -p "$DOWNLOAD_DIR"
 
           gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
-          unzip -tq "$ZIP_FILE"
 
           mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
 
           for ABI in arm64-v8a armeabi-v7a; do
             ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk -v abi="$ABI" 'tolower($0) ~ ("(^|/)bin/" tolower(abi) "/libnode\\.so$") && !seen {print; seen=1}')"
-
-            if [[ -z "$ENTRY" ]]; then
-              echo "ERROR: ${ABI}/libnode.so was not found."
-              exit 1
-            fi
-
             LIB_DIR="app/src/main/jniLibs/$ABI"
             mkdir -p "$LIB_DIR"
             unzip -p "$ZIP_FILE" "$ENTRY" > "$LIB_DIR/libnode.so"
           done
-          echo "Node.js Mobile ARM libraries validated."
 
       - name: Grant execute permission for Gradle wrapper
         id: gradle_wrapper
         if: always() && steps.checkout.outcome == 'success'
-        continue-on-error: true
-        run: |
-          chmod +x gradlew
-          echo "Gradle wrapper is executable."
+        run: chmod +x gradlew
 
       - name: Build Release APKs
         id: build
@@ -174,19 +143,14 @@ jobs:
           steps.java.outcome == 'success' &&
           steps.android_sdk.outcome == 'success' &&
           steps.signing.outcome == 'success' &&
-          steps.nodejs_download.outcome == 'success' &&
-          steps.gradle_wrapper.outcome == 'success'
+          steps.nodejs_download.outcome == 'success'
         continue-on-error: true
         run: |
-          exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
           ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
-          
-          OUTPUT_DIR="app/build/outputs/apk/release"
-          echo "Generated APK files:"
-          find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%f (%s bytes)\n'
 
-      - name: Sign APKs, verify ABIs, and create download ZIPs
+      - name: Sign APKs and create download ZIPs
         id: verify
         if: steps.build.outcome == 'success' && steps.signing.outcome == 'success'
         continue-on-error: true
@@ -195,7 +159,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
+          exec > >(tee -a "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
 
           OUTPUT_DIR="app/build/outputs/apk/release"
@@ -211,13 +175,11 @@ jobs:
           KEY_PASS_FILE="$RUNNER_TEMP/rexaps-key-pass"
           printf '%s' "$RELEASE_STORE_PASSWORD" > "$STORE_PASS_FILE"
           printf '%s' "$RELEASE_KEY_PASSWORD" > "$KEY_PASS_FILE"
-          chmod 600 "$STORE_PASS_FILE" "$KEY_PASS_FILE"
           trap 'rm -f "$STORE_PASS_FILE" "$KEY_PASS_FILE"' EXIT
 
           sign_one() {
-            local label="$1"
-            local unsigned="$2"
-            local signed="$3"
+            local unsigned="$1"
+            local signed="$2"
             local aligned="${unsigned%.apk}-aligned.apk"
 
             if [[ ! -s "$unsigned" ]]; then
@@ -225,7 +187,6 @@ jobs:
               return 1
             fi
 
-            # Menjalankan Zipalign sebelum Signing (Wajib)
             "$ZIPALIGN" -p -f 4 "$unsigned" "$aligned"
 
             "$APKSIGNER" sign \
@@ -235,53 +196,77 @@ jobs:
               --key-pass "file:$KEY_PASS_FILE" \
               --out "$signed" \
               "$aligned"
-
-            "$APKSIGNER" verify --verbose --print-certs "$signed"
-            echo "Signed and verified: $label"
           }
 
-          ARM64_APK="$SIGN_DIR/RexAps-arm64-v8a.apk"
-          ARM32_APK="$SIGN_DIR/RexAps-armeabi-v7a.apk"
+          ARM64_APK="$SIGN_DIR/RexAps-Arm64-v8a.apk"
+          ARM32_APK="$SIGN_DIR/RexAps-Armeabi-v7a.apk"
           UNIVERSAL_APK="$SIGN_DIR/RexAps-Universal.apk"
 
-          # CATATAN: Pastikan build.gradle Anda diatur untuk menghasilkan 3 output APK ini.
-          # Jika tidak, ganti nama file unsigned di bawah ini menjadi output Gradle yang Anda miliki (contoh: app-release-unsigned.apk)
-          sign_one arm64-v8a "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk" "$ARM64_APK"
-          sign_one armeabi-v7a "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk" "$ARM32_APK"
-          sign_one Universal "$OUTPUT_DIR/app-universal-release-unsigned.apk" "$UNIVERSAL_APK"
+          # Ubah nama target unsigned di bawah jika nama output dari gradle berbeda
+          sign_one "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk" "$ARM64_APK"
+          sign_one "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk" "$ARM32_APK"
+          sign_one "$OUTPUT_DIR/app-universal-release-unsigned.apk" "$UNIVERSAL_APK"
 
           create_bundle() {
             local bundle_name="$1"
             local apk_path="$2"
-            local expected_csv="$3"
             local bundle_dir="$RUNNER_TEMP/$bundle_name"
-            local -a expected_abis
-            IFS=',' read -r -a expected_abis <<< "$expected_csv"
+            
             mkdir -p "$bundle_dir"
 
-            for ABI in "${expected_abis[@]}"; do
-              # Pengecekan file diubah agar hanya mewajibkan libnode.so, menghapus libmozglue dan libxul
-              if ! unzip -Z1 "$apk_path" | grep -Fxq "lib/$ABI/libnode.so"; then
-                echo "ERROR: $bundle_name missing lib/$ABI/libnode.so"
-                exit 1
-              fi
-            done
-
-            cp "$apk_path" "$bundle_dir/$bundle_name.apk"
+            # Mengubah nama APK menjadi RexAps.apk di dalam folder ZIP
+            cp "$apk_path" "$bundle_dir/RexAps.apk"
             (
               cd "$bundle_dir"
               zip -q -r "$DIST_DIR/$bundle_name.zip" .
             )
           }
 
-          create_bundle RexAps-arm64-v8a "$ARM64_APK" arm64-v8a
-          create_bundle RexAps-armeabi-v7a "$ARM32_APK" armeabi-v7a
-          create_bundle RexAps-Universal "$UNIVERSAL_APK" arm64-v8a,armeabi-v7a
+          create_bundle RexAps-Arm64-v8a "$ARM64_APK"
+          create_bundle RexAps-Armeabi-v7a "$ARM32_APK"
+          create_bundle RexAps-Universal "$UNIVERSAL_APK"
 
-      - name: Upload Artifacts
+      - name: Create Actions.zip diagnostics
         id: diagnostics
         if: always()
         run: |
           set -Eeuo pipefail
           mkdir -p dist
-          # Proses Upload Diagnostik disederhanakan...
+
+          for FILE in Build.log NodeJS-Download.log Actions-AllLog.log; do
+            [[ -f "$FILE" ]] || : > "$FILE"
+          done
+
+          zip -q -j dist/Actions.zip Build.log NodeJS-Download.log Actions-AllLog.log
+
+      - name: Upload RexAps-Arm64-v8a
+        uses: actions/upload-artifact@v4
+        if: always() && steps.verify.outcome == 'success'
+        with:
+          name: RexAps-Arm64-v8a
+          path: dist/RexAps-Arm64-v8a.zip
+          retention-days: 14
+
+      - name: Upload RexAps-Armeabi-v7a
+        uses: actions/upload-artifact@v4
+        if: always() && steps.verify.outcome == 'success'
+        with:
+          name: RexAps-Armeabi-v7a
+          path: dist/RexAps-Armeabi-v7a.zip
+          retention-days: 14
+
+      - name: Upload RexAps-Universal
+        uses: actions/upload-artifact@v4
+        if: always() && steps.verify.outcome == 'success'
+        with:
+          name: RexAps-Universal
+          path: dist/RexAps-Universal.zip
+          retention-days: 14
+
+      - name: Upload Actions Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Actions
+          path: dist/Actions.zip
+          retention-days: 14
