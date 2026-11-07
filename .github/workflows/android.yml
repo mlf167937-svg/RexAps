@@ -103,34 +103,54 @@ jobs:
 
           echo "RELEASE_STORE_FILE=$SIGNING_DIR/rexaps-release.jks" >> "$GITHUB_ENV"
 
-      - name: Download and validate Node.js Mobile ARM libraries
+      - name: Download and validate Node.js ARM64 and ARM32 libraries
         id: nodejs_download
         if: always() && steps.checkout.outcome == 'success'
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
 
-          RELEASE_REPO="nodejs-mobile/nodejs-mobile"
-          RELEASE_TAG="v18.20.4"
-          ASSET_NAME="nodejs-mobile-v18.20.4-android.zip"
+          ARM64_URL="https://github.com/mlf167937-svg/RexAps/releases/download/v26.13/libnode.so"
+          ARM32_URL="https://github.com/mlf167937-svg/RexAps/releases/download/v26.12/libnode.so"
 
-          DOWNLOAD_DIR="$RUNNER_TEMP/nodejs-mobile"
-          ZIP_FILE="$DOWNLOAD_DIR/$ASSET_NAME"
-          mkdir -p "$DOWNLOAD_DIR"
+          ARM64_DIR="app/src/main/jniLibs/arm64-v8a"
+          ARM32_DIR="app/src/main/jniLibs/armeabi-v7a"
 
-          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
+          mkdir -p "$ARM64_DIR" "$ARM32_DIR"
 
-          mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
+          echo "========================================"
+          echo "Downloading Node.js 26.13 ARM libraries"
+          echo "========================================"
 
-          for ABI in arm64-v8a armeabi-v7a; do
-            ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk -v abi="$ABI" 'tolower($0) ~ ("(^|/)bin/" tolower(abi) "/libnode\\.so$") && !seen {print; seen=1}')"
-            LIB_DIR="app/src/main/jniLibs/$ABI"
-            mkdir -p "$LIB_DIR"
-            unzip -p "$ZIP_FILE" "$ENTRY" > "$LIB_DIR/libnode.so"
-          done
+          echo "[ARM64] Downloading libnode.so..."
+          curl -fL --retry 5 --retry-delay 3 \
+            "$ARM64_URL" \
+            -o "$ARM64_DIR/libnode.so"
+
+          echo "[ARM32] Downloading libnode.so..."
+          curl -fL --retry 5 --retry-delay 3 \
+            "$ARM32_URL" \
+            -o "$ARM32_DIR/libnode.so"
+
+          echo
+          echo "Validating downloaded libraries..."
+
+          test -s "$ARM64_DIR/libnode.so"
+          test -s "$ARM32_DIR/libnode.so"
+
+          echo
+          echo "[ARM64]"
+          ls -lh "$ARM64_DIR/libnode.so"
+          file "$ARM64_DIR/libnode.so"
+
+          echo
+          echo "[ARM32]"
+          ls -lh "$ARM32_DIR/libnode.so"
+          file "$ARM32_DIR/libnode.so"
+
+          echo
+          echo "Node.js 26.13 ARM libraries downloaded successfully."
 
       - name: Grant execute permission for Gradle wrapper
         id: gradle_wrapper
