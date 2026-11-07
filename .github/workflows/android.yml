@@ -15,9 +15,11 @@ jobs:
 
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v4
 
       - name: Initialize diagnostic logs
+        id: init_logs
         run: |
           set -Eeuo pipefail
           : > Build.log
@@ -32,6 +34,7 @@ jobs:
           } | tee -a Full-Actions.log
 
       - name: Setup JDK 17
+        id: java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -41,7 +44,6 @@ jobs:
         id: android_tools
         uses: android-actions/setup-android@v4
         with:
-          # Command-line tools only; install the exact project SDK packages below.
           packages: ''
           accept-android-sdk-licenses: 'true'
 
@@ -50,14 +52,18 @@ jobs:
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
+
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
           mkdir -p "$SDK_ROOT"
+
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
           export ANDROID_HOME="$SDK_ROOT"
           export ANDROID_SDK_ROOT="$SDK_ROOT"
 
           echo "Android SDK root: $SDK_ROOT"
+
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -70,11 +76,14 @@ jobs:
 
           test -d "$SDK_ROOT/platforms/android-35"
           test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/35.0.0/zipalign"
           test -d "$SDK_ROOT/cmake/3.22.1"
           test -d "$SDK_ROOT/ndk/27.2.12479018"
-          echo "Android SDK platform, build-tools, CMake, and NDK are ready."
+
+          echo "Android SDK packages are ready."
 
       - name: Cache Gradle
+        id: gradle_cache
         uses: actions/cache@v4
         with:
           path: |
@@ -95,32 +104,48 @@ jobs:
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
+
           missing=0
-          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+
+          for name in \
+            RELEASE_KEYSTORE_BASE64 \
+            RELEASE_STORE_PASSWORD \
+            RELEASE_KEY_ALIAS \
+            RELEASE_KEY_PASSWORD
+          do
             if [[ -z "${!name:-}" ]]; then
               echo "Missing required GitHub Actions secret: ${name}"
               missing=1
             fi
           done
+
           if [[ "$missing" -ne 0 ]]; then
-            echo "Configure all four release-signing secrets before building installable Release APKs."
+            echo "Release signing secrets are incomplete."
             exit 1
           fi
 
           SIGNING_DIR="$RUNNER_TEMP/rexaps-signing"
           mkdir -p "$SIGNING_DIR"
           chmod 700 "$SIGNING_DIR"
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$SIGNING_DIR/rexaps-release.jks"
+
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" \
+            | base64 --decode > "$SIGNING_DIR/rexaps-release.jks"
+
           test -s "$SIGNING_DIR/rexaps-release.jks"
           chmod 600 "$SIGNING_DIR/rexaps-release.jks"
-          keytool -list -keystore "$SIGNING_DIR/rexaps-release.jks" \
-            -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
+
+          keytool -list \
+            -keystore "$SIGNING_DIR/rexaps-release.jks" \
+            -storepass "$RELEASE_STORE_PASSWORD" \
+            -alias "$RELEASE_KEY_ALIAS" >/dev/null
+
           echo "RELEASE_STORE_FILE=$SIGNING_DIR/rexaps-release.jks" >> "$GITHUB_ENV"
+
           echo "Persistent Release keystore decoded and alias verified."
 
       - name: Download and validate Node.js Mobile ARM libraries
         id: nodejs_download
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,54 +156,101 @@ jobs:
           RELEASE_REPO="nodejs-mobile/nodejs-mobile"
           RELEASE_TAG="v18.20.4"
           ASSET_NAME="nodejs-mobile-v18.20.4-android.zip"
+
           DOWNLOAD_DIR="$RUNNER_TEMP/nodejs-mobile"
           ZIP_FILE="$DOWNLOAD_DIR/$ASSET_NAME"
+
           mkdir -p "$DOWNLOAD_DIR"
 
           echo "Inspecting ${RELEASE_REPO} ${RELEASE_TAG} assets..."
-          gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" --json assets \
+
+          gh release view "$RELEASE_TAG" \
+            --repo "$RELEASE_REPO" \
+            --json assets \
             --jq '.assets[] | "\(.name) | \(.size) bytes"'
-          gh release download "$RELEASE_TAG" --repo "$RELEASE_REPO" \
-            --pattern "$ASSET_NAME" --dir "$DOWNLOAD_DIR"
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$RELEASE_REPO" \
+            --pattern "$ASSET_NAME" \
+            --dir "$DOWNLOAD_DIR"
+
           test -s "$ZIP_FILE"
           unzip -tq "$ZIP_FILE"
 
           mapfile -t ARCHIVE_ENTRIES < <(unzip -Z1 "$ZIP_FILE")
+
           for ABI in arm64-v8a armeabi-v7a; do
-            ENTRY="$(printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | awk -v abi="$ABI" \
-              'tolower($0) ~ ("(^|/)bin/" tolower(abi) "/libnode\\.so$") && !seen { print; seen=1 }')"
+            ENTRY="$(
+              printf '%s\n' "${ARCHIVE_ENTRIES[@]}" \
+                | awk -v abi="$ABI" '
+                    tolower($0) ~ ("(^|/)bin/" tolower(abi) "/libnode\\.so$") && !seen {
+                      print
+                      seen=1
+                    }
+                  '
+            )"
+
             if [[ -z "$ENTRY" ]]; then
-              echo "ERROR: ${ABI}/libnode.so was not found in ${ASSET_NAME}."
-              printf '%s\n' "${ARCHIVE_ENTRIES[@]}" | grep -Ei 'libnode\.so$' || true
+              echo "ERROR: ${ABI}/libnode.so was not found."
+              printf '%s\n' "${ARCHIVE_ENTRIES[@]}" \
+                | grep -Ei 'libnode\.so$' || true
               exit 1
             fi
 
             LIB_DIR="app/src/main/jniLibs/$ABI"
             mkdir -p "$LIB_DIR"
+
             unzip -p "$ZIP_FILE" "$ENTRY" > "$LIB_DIR/libnode.so"
             test -s "$LIB_DIR/libnode.so"
 
-            ELF_CLASS="$(readelf -h "$LIB_DIR/libnode.so" | awk -F: '/Class:/ {gsub(/^[ \t]+/, "", $2); print $2}')"
-            ELF_MACHINE="$(readelf -h "$LIB_DIR/libnode.so" | awk -F: '/Machine:/ {gsub(/^[ \t]+/, "", $2); print $2}')"
+            ELF_CLASS="$(
+              readelf -h "$LIB_DIR/libnode.so" \
+                | awk -F: '/Class:/ {
+                    gsub(/^[ \t]+/, "", $2)
+                    print $2
+                  }'
+            )"
+
+            ELF_MACHINE="$(
+              readelf -h "$LIB_DIR/libnode.so" \
+                | awk -F: '/Machine:/ {
+                    gsub(/^[ \t]+/, "", $2)
+                    print $2
+                  }'
+            )"
+
             echo "${ABI}: ELF class=${ELF_CLASS}; machine=${ELF_MACHINE}"
+
             if [[ "$ABI" == "arm64-v8a" ]]; then
               [[ "$ELF_CLASS" == "ELF64" && "$ELF_MACHINE" == *AArch64* ]]
             else
               [[ "$ELF_CLASS" == "ELF32" && "$ELF_MACHINE" == *ARM* ]]
             fi
+
             sha256sum "$LIB_DIR/libnode.so"
           done
 
-      - name: Grant execute permission for Gradle wrapper
-        if: always()
-        run: chmod +x gradlew
+          echo "Node.js Mobile ARM libraries validated."
 
-      - name: Build signed ARM Release APKs
-        id: build
-        if: steps.signing.outcome == 'success' && steps.nodejs_download.outcome == 'success'
+      - name: Grant execute permission for Gradle wrapper
+        id: gradle_wrapper
+        if: always() && steps.checkout.outcome == 'success'
         continue-on-error: true
-        # GitHub Actions env values are step-scoped. Re-inject the three
-        # signing values here so app/build.gradle.kts can configure signing.
+        run: |
+          set -Eeuo pipefail
+          chmod +x gradlew
+          test -x gradlew
+          echo "Gradle wrapper is executable."
+
+      - name: Build Release APKs
+        id: build
+        if: >-
+          steps.java.outcome == 'success' &&
+          steps.android_sdk.outcome == 'success' &&
+          steps.signing.outcome == 'success' &&
+          steps.nodejs_download.outcome == 'success' &&
+          steps.gradle_wrapper.outcome == 'success'
+        continue-on-error: true
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
@@ -187,17 +259,33 @@ jobs:
           exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Full-Actions.log") 2>&1
           set -Eeuo pipefail
 
-          # Fail early instead of silently creating unsigned APKs.
-          : "${RELEASE_STORE_FILE:?Release keystore file was not exported by the signing step}"
-          : "${RELEASE_STORE_PASSWORD:?RELEASE_STORE_PASSWORD is missing in the build step}"
-          : "${RELEASE_KEY_ALIAS:?RELEASE_KEY_ALIAS is missing in the build step}"
-          : "${RELEASE_KEY_PASSWORD:?RELEASE_KEY_PASSWORD is missing in the build step}"
+          : "${RELEASE_STORE_FILE:?Release keystore path is missing}"
+          : "${RELEASE_STORE_PASSWORD:?Release store password is missing}"
+          : "${RELEASE_KEY_ALIAS:?Release key alias is missing}"
+          : "${RELEASE_KEY_PASSWORD:?Release key password is missing}"
+
           test -s "$RELEASE_STORE_FILE"
-          keytool -list -keystore "$RELEASE_STORE_FILE" \
-            -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
-          echo "Release signing variables are available to Gradle."
+
+          keytool -list \
+            -keystore "$RELEASE_STORE_FILE" \
+            -storepass "$RELEASE_STORE_PASSWORD" \
+            -alias "$RELEASE_KEY_ALIAS" >/dev/null
+
+          echo "Release signing variables are available."
 
           ./gradlew clean :app:assembleRelease --stacktrace --refresh-dependencies
+
+          echo "Gradle Release build finished."
+
+          OUTPUT_DIR="app/build/outputs/apk/release"
+
+          echo "Generated APK files:"
+          find "$OUTPUT_DIR" -maxdepth 1 -type f \
+            -name '*.apk' -printf '%f (%s bytes)\n'
+
+          test -s "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk"
+          test -s "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk"
+          test -s "$OUTPUT_DIR/app-universal-release-unsigned.apk"
 
       - name: Sign APKs, verify ABIs, and create download ZIPs
         id: verify
@@ -214,166 +302,315 @@ jobs:
           OUTPUT_DIR="app/build/outputs/apk/release"
           DIST_DIR="$GITHUB_WORKSPACE/dist"
           SIGN_DIR="$RUNNER_TEMP/rexaps-signed"
+
           mkdir -p "$DIST_DIR" "$SIGN_DIR"
+
           : "${RELEASE_STORE_FILE:?Release keystore path is missing}"
           : "${RELEASE_STORE_PASSWORD:?Release store password is missing}"
           : "${RELEASE_KEY_ALIAS:?Release key alias is missing}"
           : "${RELEASE_KEY_PASSWORD:?Release key password is missing}"
+
           test -s "$RELEASE_STORE_FILE"
 
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
           test -x "$APKSIGNER"
+
           STORE_PASS_FILE="$RUNNER_TEMP/rexaps-store-pass"
           KEY_PASS_FILE="$RUNNER_TEMP/rexaps-key-pass"
+
           printf '%s' "$RELEASE_STORE_PASSWORD" > "$STORE_PASS_FILE"
           printf '%s' "$RELEASE_KEY_PASSWORD" > "$KEY_PASS_FILE"
+
           chmod 600 "$STORE_PASS_FILE" "$KEY_PASS_FILE"
 
+          trap 'rm -f "$STORE_PASS_FILE" "$KEY_PASS_FILE"' EXIT
+
           sign_one() {
-            local label="$1" unsigned="$2" signed="$3"
+            local label="$1"
+            local unsigned="$2"
+            local signed="$3"
+
             if [[ ! -s "$unsigned" ]]; then
-              echo "ERROR: Expected unsigned APK missing: $unsigned"
-              find "$OUTPUT_DIR" -maxdepth 1 -type f -printf '%f (%s bytes)\n' || true
+              echo "ERROR: Expected APK missing: $unsigned"
+              find "$OUTPUT_DIR" -maxdepth 1 -type f \
+                -printf '%f (%s bytes)\n' || true
               return 1
             fi
+
             "$APKSIGNER" sign \
               --ks "$RELEASE_STORE_FILE" \
               --ks-key-alias "$RELEASE_KEY_ALIAS" \
               --ks-pass "file:$STORE_PASS_FILE" \
               --key-pass "file:$KEY_PASS_FILE" \
-              --out "$signed" "$unsigned"
+              --out "$signed" \
+              "$unsigned"
+
             "$APKSIGNER" verify --verbose --print-certs "$signed"
-            echo "Signed and verified: $label ($(stat -c%s "$signed") bytes)"
+
+            test -s "$signed"
+
+            echo "Signed and verified: $label"
+            echo "File size: $(stat -c%s "$signed") bytes"
           }
 
           ARM64_APK="$SIGN_DIR/RexAps-arm64-v8a.apk"
           ARM32_APK="$SIGN_DIR/RexAps-armeabi-v7a.apk"
           UNIVERSAL_APK="$SIGN_DIR/RexAps-Universal.apk"
-          sign_one arm64-v8a "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk" "$ARM64_APK"
-          sign_one armeabi-v7a "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk" "$ARM32_APK"
-          sign_one Universal "$OUTPUT_DIR/app-universal-release-unsigned.apk" "$UNIVERSAL_APK"
+
+          sign_one \
+            arm64-v8a \
+            "$OUTPUT_DIR/app-arm64-v8a-release-unsigned.apk" \
+            "$ARM64_APK"
+
+          sign_one \
+            armeabi-v7a \
+            "$OUTPUT_DIR/app-armeabi-v7a-release-unsigned.apk" \
+            "$ARM32_APK"
+
+          sign_one \
+            Universal \
+            "$OUTPUT_DIR/app-universal-release-unsigned.apk" \
+            "$UNIVERSAL_APK"
 
           create_bundle() {
-            local bundle_name="$1" apk_path="$2" expected_csv="$3"
+            local bundle_name="$1"
+            local apk_path="$2"
+            local expected_csv="$3"
             local bundle_dir="$RUNNER_TEMP/$bundle_name"
-            local -a expected_abis actual_abis
+
+            local -a expected_abis
+            local -a actual_abis
+
             IFS=',' read -r -a expected_abis <<< "$expected_csv"
+
             mkdir -p "$bundle_dir"
-            mapfile -t actual_abis < <(unzip -Z1 "$apk_path" | awk -F/ '$1 == "lib" && NF >= 3 && $NF ~ /\.so$/ { print $2 }' | sort -u)
-            if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
-              echo "ERROR: $bundle_name ABI mismatch. Expected ${expected_abis[*]}, got ${actual_abis[*]:-none}"
+
+            mapfile -t actual_abis < <(
+              unzip -Z1 "$apk_path" \
+                | awk -F/ '
+                    $1 == "lib" && NF >= 3 && $NF ~ /\.so$/ {
+                      print $2
+                    }
+                  ' \
+                | sort -u
+            )
+
+            local expected_sorted
+            local actual_sorted
+
+            expected_sorted="$(
+              printf '%s\n' "${expected_abis[@]}" | sort -u | paste -sd, -
+            )"
+
+            actual_sorted="$(
+              printf '%s\n' "${actual_abis[@]}" | sort -u | paste -sd, -
+            )"
+
+            if [[ "$actual_sorted" != "$expected_sorted" ]]; then
+              echo "ERROR: $bundle_name ABI mismatch."
+              echo "Expected: $expected_sorted"
+              echo "Actual: ${actual_sorted:-none}"
               exit 1
             fi
+
             for ABI in "${expected_abis[@]}"; do
               for NATIVE_LIB in libnode.so libmozglue.so libxul.so; do
-                unzip -Z1 "$apk_path" | grep -Fxq "lib/$ABI/$NATIVE_LIB" || {
-                  echo "ERROR: $bundle_name missing lib/$ABI/$NATIVE_LIB"; exit 1;
-                }
+                if ! unzip -Z1 "$apk_path" \
+                  | grep -Fxq "lib/$ABI/$NATIVE_LIB"; then
+                  echo "ERROR: $bundle_name missing lib/$ABI/$NATIVE_LIB"
+                  exit 1
+                fi
               done
             done
+
             cp "$apk_path" "$bundle_dir/$bundle_name.apk"
-            printf 'Signed RexAps Release APK\nIncluded ABIs: %s\nExtract the APK before installing. Keep this release keystore for future updates.\n' "$expected_csv" > "$bundle_dir/INSTALL.txt"
-            (cd "$bundle_dir" && sha256sum "$bundle_name.apk" > SHA256SUMS.txt)
-            (cd "$bundle_dir" && zip -q -r "$DIST_DIR/$bundle_name.zip" .)
+
+            printf \
+              'Signed RexAps Release APK\nIncluded ABIs: %s\nExtract the APK before installing. Keep this release keystore for future updates.\n' \
+              "$expected_csv" \
+              > "$bundle_dir/INSTALL.txt"
+
+            (
+              cd "$bundle_dir"
+              sha256sum "$bundle_name.apk" > SHA256SUMS.txt
+              zip -q -r "$DIST_DIR/$bundle_name.zip" .
+            )
+
             unzip -tq "$DIST_DIR/$bundle_name.zip"
-            echo "Created $DIST_DIR/$bundle_name.zip ($(stat -c%s "$DIST_DIR/$bundle_name.zip") bytes)"
+
+            echo "Created $DIST_DIR/$bundle_name.zip"
+            echo "ZIP size: $(stat -c%s "$DIST_DIR/$bundle_name.zip") bytes"
           }
 
-          create_bundle RexAps-arm64-v8a "$ARM64_APK" arm64-v8a
-          create_bundle RexAps-armeabi-v7a "$ARM32_APK" armeabi-v7a
-          create_bundle RexAps-Universal "$UNIVERSAL_APK" arm64-v8a,armeabi-v7a
+          create_bundle \
+            RexAps-arm64-v8a \
+            "$ARM64_APK" \
+            arm64-v8a
+
+          create_bundle \
+            RexAps-armeabi-v7a \
+            "$ARM32_APK" \
+            armeabi-v7a
+
+          create_bundle \
+            RexAps-Universal \
+            "$UNIVERSAL_APK" \
+            arm64-v8a,armeabi-v7a
+
+          echo "All three signed APK packages passed verification."
 
       - name: Create Actions.zip diagnostics
         id: diagnostics
         if: always()
         run: |
           set -Eeuo pipefail
+
           mkdir -p dist
-          for FILE in Build.log NodeJS-Download.log Full-Actions.log; do
+
+          for FILE in \
+            Build.log \
+            NodeJS-Download.log \
+            Full-Actions.log
+          do
             [[ -f "$FILE" ]] || : > "$FILE"
           done
+
           {
             echo
             echo "Pipeline outcomes:"
+            echo "  checkout: ${{ steps.checkout.outcome }}"
+            echo "  Java: ${{ steps.java.outcome }}"
+            echo "  Android tools: ${{ steps.android_tools.outcome }}"
+            echo "  Android SDK: ${{ steps.android_sdk.outcome }}"
             echo "  signing: ${{ steps.signing.outcome }}"
             echo "  NodeJS download: ${{ steps.nodejs_download.outcome }}"
+            echo "  Gradle wrapper: ${{ steps.gradle_wrapper.outcome }}"
             echo "  build: ${{ steps.build.outcome }}"
             echo "  verification/package: ${{ steps.verify.outcome }}"
             echo "Finished (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           } >> Full-Actions.log
-          zip -q -j dist/Actions.zip Build.log NodeJS-Download.log Full-Actions.log
+
+          rm -f dist/Actions.zip
+
+          zip -q -j dist/Actions.zip \
+            Build.log \
+            NodeJS-Download.log \
+            Full-Actions.log
+
           unzip -tq dist/Actions.zip
-          echo "Created dist/Actions.zip ($(stat -c%s dist/Actions.zip) bytes)"
+
+          echo "Created dist/Actions.zip"
+          echo "ZIP size: $(stat -c%s dist/Actions.zip) bytes"
 
       - name: Upload ARM64 package
-        if: steps.verify.outcome == 'success'
+        id: upload_arm64
+        if: ${{ always() && steps.verify.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: RexAps-arm64-v8a
           path: dist/RexAps-arm64-v8a.zip
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
 
       - name: Upload ARM32 package
-        if: steps.verify.outcome == 'success'
+        id: upload_arm32
+        if: ${{ always() && steps.verify.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: RexAps-armeabi-v7a
           path: dist/RexAps-armeabi-v7a.zip
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
 
       - name: Upload Universal package
-        if: steps.verify.outcome == 'success'
+        id: upload_universal
+        if: ${{ always() && steps.verify.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: RexAps-Universal
           path: dist/RexAps-Universal.zip
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
 
-      - name: Upload diagnostics only (small files)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Actions-Logs
-          path: |
-            Build.log
-            NodeJS-Download.log
-            Full-Actions.log
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload diagnostics ZIP
+      - name: Upload Actions.zip
+        id: upload_diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Actions.zip
           path: dist/Actions.zip
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
       - name: Fail workflow if a required stage failed
         if: always()
         run: |
-          if [[ "${{ steps.android_tools.outcome }}" != "success" || "${{ steps.android_sdk.outcome }}" != "success" ]]; then
-            echo "Android SDK setup failed. Check the Setup Android SDK and Install required Android SDK packages steps."
+          set -Eeuo pipefail
+
+          if [[ "${{ steps.checkout.outcome }}" != "success" ]]; then
+            echo "Checkout failed."
             exit 1
           fi
+
+          if [[ "${{ steps.init_logs.outcome }}" != "success" ]]; then
+            echo "Diagnostic log initialization failed."
+            exit 1
+          fi
+
+          if [[ "${{ steps.java.outcome }}" != "success" ]]; then
+            echo "JDK 17 setup failed."
+            exit 1
+          fi
+
+          if [[ "${{ steps.android_tools.outcome }}" != "success" ||
+                "${{ steps.android_sdk.outcome }}" != "success" ]]; then
+            echo "Android SDK setup failed."
+            exit 1
+          fi
+
           if [[ "${{ steps.signing.outcome }}" != "success" ]]; then
-            echo "Release signing setup failed. Configure all four RELEASE_* secrets."
+            echo "Release signing setup failed. Check the four RELEASE_* secrets."
             exit 1
           fi
+
           if [[ "${{ steps.nodejs_download.outcome }}" != "success" ]]; then
-            echo "Node.js Mobile ARM32/ARM64 download or ELF validation failed. See Actions.zip."
+            echo "Node.js Mobile ARM32/ARM64 download or ELF validation failed."
             exit 1
           fi
+
+          if [[ "${{ steps.gradle_wrapper.outcome }}" != "success" ]]; then
+            echo "Gradle wrapper setup failed."
+            exit 1
+          fi
+
           if [[ "${{ steps.build.outcome }}" != "success" ]]; then
-            echo "Gradle Release build failed. See Build.log inside Actions.zip."
+            echo "Gradle Release build failed. Check Build.log inside Actions.zip."
             exit 1
           fi
+
           if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
-            echo "APK signature / ABI verification or ZIP packaging failed. See Full-Actions.log."
+            echo "APK signing, ABI verification, or ZIP packaging failed."
             exit 1
           fi
-          echo "All three signed Release bundles were built and verified."
+
+          if [[ "${{ steps.diagnostics.outcome }}" != "success" ]]; then
+            echo "Actions.zip creation failed."
+            exit 1
+          fi
+
+          if [[ "${{ steps.upload_arm64.outcome }}" != "success" ||
+                "${{ steps.upload_arm32.outcome }}" != "success" ||
+                "${{ steps.upload_universal.outcome }}" != "success" ]]; then
+            echo "One or more RexAps package uploads failed."
+            exit 1
+          fi
+
+          if [[ "${{ steps.upload_diagnostics.outcome }}" != "success" ]]; then
+            echo "Actions.zip upload failed."
+            exit 1
+          fi
+
+          echo "All three signed Release bundles and Actions.zip were created and uploaded successfully."
