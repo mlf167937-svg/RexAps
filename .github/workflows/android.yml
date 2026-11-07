@@ -112,7 +112,6 @@ jobs:
       - name: Download and validate Node.js Mobile ARM libraries
         id: nodejs_download
         if: always() && steps.checkout.outcome == 'success'
-        continue-on-error: true
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
@@ -142,6 +141,50 @@ jobs:
           ls -lh "$ARM32_DIR/libnode.so"
           file "$ARM32_DIR/libnode.so"
 
+          # Android exposes zlib as libz.so. These libnode builds may carry
+          # the Linux-style SONAME dependency libz.so.1, which Android's
+          # linker cannot resolve. Rewrite only that DT_NEEDED entry so it
+          # resolves to Android's public system zlib.
+          sudo apt-get update
+          sudo apt-get install --yes patchelf
+
+          ARM64_MACHINE="$(readelf -h "$ARM64_DIR/libnode.so" | awk -F: '/Machine:/ {gsub(/^[[:space:]]+/, "", $2); print $2}')"
+          ARM32_MACHINE="$(readelf -h "$ARM32_DIR/libnode.so" | awk -F: '/Machine:/ {gsub(/^[[:space:]]+/, "", $2); print $2}')"
+          [[ "$ARM64_MACHINE" == "AArch64" ]] || { echo "ERROR: ARM64 URL returned ELF machine '$ARM64_MACHINE'" >&2; exit 1; }
+          [[ "$ARM32_MACHINE" == "ARM" ]] || { echo "ERROR: ARM32 URL returned ELF machine '$ARM32_MACHINE'" >&2; exit 1; }
+
+          for LIB in "$ARM64_DIR/libnode.so" "$ARM32_DIR/libnode.so"; do
+            echo "Inspecting ELF dependencies: $LIB"
+            readelf -h "$LIB" | grep -E 'Class:|Machine:'
+            readelf -d "$LIB" | grep NEEDED || true
+
+            if readelf -d "$LIB" | grep -Fq 'Shared library: [libz.so.1]'; then
+              echo "Replacing Linux zlib SONAME dependency with Android libz.so"
+              patchelf --replace-needed libz.so.1 libz.so "$LIB"
+            fi
+
+            if readelf -d "$LIB" | grep -Fq 'Shared library: [libz.so.1]'; then
+              echo "ERROR: unresolved libz.so.1 dependency remains in $LIB" >&2
+              exit 1
+            fi
+
+            # These are glibc/Linux runtime dependencies, not Android/Bionic
+            # system libraries. Do not publish an APK containing such a binary.
+            if readelf -d "$LIB" | grep -Eiq \
+              'Shared library: \[(libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|librt\.so\.1|ld-linux[^]]*|libstdc\+\+\.so\.6)\]'; then
+              echo "ERROR: $LIB still depends on a GNU/Linux runtime library" >&2
+              readelf -d "$LIB" | grep NEEDED >&2 || true
+              exit 1
+            fi
+
+            echo "Validated Android-compatible dependency names for $LIB"
+          done
+
+          echo "Final ARM64 dependencies:"
+          readelf -d "$ARM64_DIR/libnode.so" | grep NEEDED || true
+          echo "Final ARM32 dependencies:"
+          readelf -d "$ARM32_DIR/libnode.so" | grep NEEDED || true
+
           # The JNI bridge calls node::Start(), so it must compile against the
           # matching Node.js C++ headers, not just package libnode.so.
           HEADERS_ARCHIVE="$RUNNER_TEMP/node-v${NODE_VERSION}-headers.tar.gz"
@@ -161,7 +204,6 @@ jobs:
       - name: Bundle RexChat Baileys dependencies
         id: rexchat_deps
         if: always() && steps.nodejs_download.outcome == 'success' && steps.setup_nodejs.outcome == 'success'
-        continue-on-error: true
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
           set -Eeuo pipefail
