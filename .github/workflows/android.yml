@@ -201,6 +201,110 @@ jobs:
 
           echo "Node.js ${NODE_VERSION} headers and both Android ARM libraries are ready."
 
+      - name: Build and package Android c-ares runtime dependency
+        id: cares_runtime
+        if: always() && steps.nodejs_download.outcome == 'success'
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/NodeJS-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          CARES_VERSION="1.34.9"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
+          NDK="$SDK_ROOT/ndk/27.2.12479018"
+          TOOLCHAIN="$NDK/build/cmake/android.toolchain.cmake"
+          CARES_ARCHIVE="$RUNNER_TEMP/c-ares-${CARES_VERSION}.tar.gz"
+          CARES_SOURCE="$RUNNER_TEMP/c-ares-${CARES_VERSION}"
+
+          test -f "$TOOLCHAIN"
+          curl -fL --retry 5 --retry-delay 3 \
+            "https://github.com/c-ares/c-ares/releases/download/v${CARES_VERSION}/c-ares-${CARES_VERSION}.tar.gz" \
+            -o "$CARES_ARCHIVE"
+          mkdir -p "$CARES_SOURCE"
+          tar -xzf "$CARES_ARCHIVE" -C "$CARES_SOURCE" --strip-components=1
+          test -s "$CARES_SOURCE/CMakeLists.txt"
+
+          for ABI in arm64-v8a armeabi-v7a; do
+            case "$ABI" in
+              arm64-v8a) EXPECTED_MACHINE="AArch64" ;;
+              armeabi-v7a) EXPECTED_MACHINE="ARM" ;;
+            esac
+
+            ABI_DIR="app/src/main/jniLibs/$ABI"
+            BUILD_DIR="$RUNNER_TEMP/cares-build-$ABI"
+            mkdir -p "$ABI_DIR"
+            rm -rf "$BUILD_DIR"
+
+            echo "Building c-ares ${CARES_VERSION} for ${ABI}..."
+            cmake -S "$CARES_SOURCE" -B "$BUILD_DIR" \
+              -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+              -DANDROID_ABI="$ABI" \
+              -DANDROID_PLATFORM=android-27 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DCARES_SHARED=ON \
+              -DCARES_STATIC=OFF \
+              -DCARES_INSTALL=OFF \
+              -DCARES_BUILD_TESTS=OFF \
+              -DCARES_BUILD_CONTAINER_TESTS=OFF \
+              -DCARES_BUILD_TOOLS=OFF \
+              -DCARES_THREADS=ON
+            cmake --build "$BUILD_DIR" --config Release --parallel 2
+
+            CARES_BINARY="$(find "$BUILD_DIR" -type f \
+              \( -name 'libcares.so' -o -name 'libcares.so.*' \) -print -quit)"
+            test -n "$CARES_BINARY" && test -s "$CARES_BINARY"
+
+            # libnode.so requests the exact DT_NEEDED name libcares.so.
+            # Package a real Android/Bionic c-ares binary under that name.
+            patchelf --set-soname libcares.so "$CARES_BINARY"
+            install -m 755 "$CARES_BINARY" "$ABI_DIR/libcares.so"
+
+            ACTUAL_MACHINE="$(readelf -h "$ABI_DIR/libcares.so" | awk -F: '/Machine:/ {gsub(/^[[:space:]]+/, "", $2); print $2}')"
+            [[ "$ACTUAL_MACHINE" == "$EXPECTED_MACHINE" ]] || {
+              echo "ERROR: c-ares for $ABI has ELF machine '$ACTUAL_MACHINE'" >&2
+              exit 1
+            }
+
+            readelf -h "$ABI_DIR/libcares.so" | grep -E 'Class:|Machine:'
+            readelf -d "$ABI_DIR/libcares.so" | grep -E 'SONAME|NEEDED' || true
+            echo "Packaged $ABI_DIR/libcares.so"
+          done
+
+          # Validate every non-system DT_NEEDED entry on both native libraries.
+          # This prevents publishing an APK that simply fails later with the
+          # next missing .so dependency.
+          for ABI in arm64-v8a armeabi-v7a; do
+            ABI_DIR="app/src/main/jniLibs/$ABI"
+            if ! readelf -d "$ABI_DIR/libnode.so" | grep -Fq 'Shared library: [libcares.so]'; then
+              echo "ERROR: $ABI_DIR/libnode.so does not declare the expected libcares.so dependency." >&2
+              readelf -d "$ABI_DIR/libnode.so" | grep NEEDED >&2 || true
+              exit 1
+            fi
+
+            for LIB in "$ABI_DIR/libnode.so" "$ABI_DIR/libcares.so"; do
+              test -s "$LIB"
+              while IFS= read -r NEEDED; do
+                case "$NEEDED" in
+                  libc.so|libm.so|libdl.so|liblog.so|libandroid.so|libz.so|\
+                  libEGL.so|libGLESv1_CM.so|libGLESv2.so|libOpenSLES.so|\
+                  libvulkan.so|libjnigraphics.so|libmediandk.so|libnativewindow.so|\
+                  libcamera2ndk.so|libaaudio.so|libatomic.so|libc++_shared.so|\
+                  libunwind.so|libsync.so)
+                    ;;
+                  *)
+                    if [[ ! -s "$ABI_DIR/$NEEDED" ]]; then
+                      echo "ERROR: $LIB needs '$NEEDED', but it is neither an allowed Android system library nor packaged for $ABI." >&2
+                      readelf -d "$LIB" | grep NEEDED >&2 || true
+                      exit 1
+                    fi
+                    ;;
+                esac
+              done < <(readelf -d "$LIB" | sed -n 's/.*Shared library: \[(.*)\].*/\1/p')
+            done
+          done
+
+          echo "Android c-ares dependency built, packaged, and validated for ARM64 and ARM32."
+
       - name: Bundle RexChat Baileys dependencies
         id: rexchat_deps
         if: always() && steps.nodejs_download.outcome == 'success' && steps.setup_nodejs.outcome == 'success'
@@ -236,6 +340,7 @@ jobs:
           steps.android_sdk.outcome == 'success' &&
           steps.signing.outcome == 'success' &&
           steps.nodejs_download.outcome == 'success' &&
+          steps.cares_runtime.outcome == 'success' &&
           steps.rexchat_deps.outcome == 'success'
         continue-on-error: true
         run: |
@@ -253,17 +358,22 @@ jobs:
             unzip -Z1 "$APK" | grep -q '^assets/rexchat/node_modules/@whiskeysockets/baileys/package.json$'
             unzip -Z1 "$APK" | grep -q '^lib/[^/]*/librexnode.so$'
             unzip -Z1 "$APK" | grep -q '^lib/[^/]*/libnode.so$'
+            unzip -Z1 "$APK" | grep -q '^lib/[^/]*/libcares.so$'
           done
 
           unzip -Z1 "$ARM64_APK" | grep -q '^lib/arm64-v8a/libnode.so$'
+          unzip -Z1 "$ARM64_APK" | grep -q '^lib/arm64-v8a/libcares.so$'
           unzip -Z1 "$ARM64_APK" | grep -q '^lib/arm64-v8a/librexnode.so$'
           unzip -Z1 "$ARM32_APK" | grep -q '^lib/armeabi-v7a/libnode.so$'
+          unzip -Z1 "$ARM32_APK" | grep -q '^lib/armeabi-v7a/libcares.so$'
           unzip -Z1 "$ARM32_APK" | grep -q '^lib/armeabi-v7a/librexnode.so$'
           unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/arm64-v8a/libnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/arm64-v8a/libcares.so$'
           unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/arm64-v8a/librexnode.so$'
           unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/armeabi-v7a/libnode.so$'
+          unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/armeabi-v7a/libcares.so$'
           unzip -Z1 "$UNIVERSAL_APK" | grep -q '^lib/armeabi-v7a/librexnode.so$'
-          echo "Verified: all APK variants include libnode.so, JNI bridge, and Baileys dependencies."
+          echo "Verified: all APK variants include libnode.so, libcares.so, JNI bridge, and Baileys dependencies."
 
       - name: Sign APKs and create download ZIPs
         id: verify
