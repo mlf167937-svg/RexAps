@@ -45,7 +45,9 @@ Java_com_rexaps_rexchat_v1_RexNodeBridge_startNodeWithArguments(
     for (std::string& value : storage) {
         argv.push_back(value.data());
     }
+    const int argc = static_cast<int>(argv.size());
+    argv.push_back(nullptr); // Match the process argv[argc] terminator contract.
 
     // Node's embedded runtime can only be started once per Android process.
-    return static_cast<jint>(node::Start(static_cast<int>(argv.size()), argv.data()));
+    return static_cast<jint>(node::Start(argc, argv.data()));
 }

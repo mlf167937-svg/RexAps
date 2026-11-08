@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -130,7 +132,11 @@ fun RexChatScreen(
             }
 
             when (tab) {
-                RexTab.CHATS -> ChatHome(runtime.detail, runtime.connected, onPair = { showPairing = true })
+                RexTab.CHATS -> ChatHome(
+                    runtime = runtime,
+                    onPair = { showPairing = true },
+                    onSend = { chatId, message -> RexChatRuntime.sendText(sessionId, chatId, message) }
+                )
                 RexTab.PLUGINS -> PluginHome()
                 RexTab.ACCOUNT -> AccountHome(
                     runtime = runtime,
@@ -193,26 +199,126 @@ fun RexChatScreen(
 }
 
 @Composable
-private fun ChatHome(detail: String, connected: Boolean, onPair: () -> Unit) {
+private fun ChatHome(
+    runtime: RexChatRuntime.State,
+    onPair: () -> Unit,
+    onSend: (String, String) -> Unit
+) {
+    var chatId by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf("") }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
-        RuntimeBanner(detail, connected)
-        Spacer(Modifier.height(20.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), shape = RoundedCornerShape(28.dp)) {
-            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(76.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.ChatBubbleOutline, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        RuntimeBanner(runtime.detail, runtime.connected)
+        Spacer(Modifier.height(12.dp))
+
+        if (!runtime.connected) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.ChatBubbleOutline, null, Modifier.size(34.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text("Hubungkan WhatsApp", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Hubungkan akun untuk menerima dan mengirim pesan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onPair) {
+                        Icon(Icons.Default.Link, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Hubungkan akun")
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                Text("Percakapan akan muncul di sini", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(6.dp))
-                Text("Hubungkan akun WhatsApp untuk mulai menerima dan mengirim pesan.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(18.dp))
-                Button(onClick = onPair) { Icon(Icons.Default.Link, null); Spacer(Modifier.width(8.dp)); Text("Hubungkan akun") }
             }
+        } else {
+            Text("Pesan terbaru", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            if (runtime.messages.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Belum ada pesan. Pesan masuk akan tampil di sini.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(runtime.messages.takeLast(100)) { message ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { chatId = message.chatId },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (message.fromMe) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                Text(
+                                    if (message.fromMe) "Kamu · ${message.chatId}" else message.chatId,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(message.text, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "Ketuk untuk membalas",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = chatId,
+                onValueChange = { chatId = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Nomor WhatsApp atau ID chat") },
+                placeholder = { Text("62812… atau 12345-678@g.us") },
+                singleLine = true
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Pesan") },
+                    singleLine = false,
+                    maxLines = 3
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    enabled = chatId.isNotBlank() && draft.isNotBlank(),
+                    onClick = {
+                        onSend(chatId, draft)
+                        draft = ""
+                    }
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = "Kirim")
+                }
+            }
+            Text(
+                "Tip: ketuk pesan untuk mengisi ID chat tujuan secara otomatis.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            )
         }
-        Spacer(Modifier.height(18.dp))
-        Text("RexChat V1", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Text("Native interface · Local sessions · Plugin-ready", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

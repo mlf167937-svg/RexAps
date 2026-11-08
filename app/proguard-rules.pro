@@ -22,5 +22,5 @@
 -dontwarn javax.management.**
 -dontwarn org.ietf.jgss.**
 
-# The Node.js JNI bridge is resolved by its package/class/method symbol.
+# JNI entry point invoked by the embedded Node.js runtime.
 -keep class com.rexaps.rexchat.v1.RexNodeBridge { *; }

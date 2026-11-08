@@ -23,17 +23,27 @@ import java.util.concurrent.ConcurrentHashMap
 object RexChatRuntime {
     private const val TAG = "RexChatRuntime"
     private const val HTTP_PORT = 43827
+    private const val EXPECTED_NODE_VERSION = "v26.13.0"
     private const val ASSET_VERSION = "node-26.13.0-baileys-7.0.0-rc14-v1"
-    private const val BASE_URL = "http://127.0.0.1:$HTTP_PORT"
+    private const val BASE_URL = "http://localhost:$HTTP_PORT"
 
     enum class Status { STOPPED, STARTING, READY, MISSING, ERROR }
+
+    data class Message(
+        val id: String,
+        val chatId: String,
+        val text: String,
+        val fromMe: Boolean,
+        val timestamp: Long
+    )
 
     data class State(
         val status: Status = Status.STOPPED,
         val detail: String = "Runtime belum dijalankan",
         val qr: String? = null,
         val pairingCode: String? = null,
-        val connected: Boolean = false
+        val connected: Boolean = false,
+        val messages: List<Message> = emptyList()
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -262,9 +272,17 @@ object RexChatRuntime {
         }
     }
 
-    private fun healthCheck(): Boolean = runCatching {
-        request("GET", "/health").optBoolean("ok", false)
-    }.getOrDefault(false)
+    private fun healthCheck(): Boolean {
+        val health = runCatching { request("GET", "/health") }.getOrNull() ?: return false
+        val actualVersion = health.optString("version")
+        if (actualVersion != EXPECTED_NODE_VERSION) {
+            throw IllegalStateException(
+                "Versi Node.js tidak cocok: $actualVersion (diharapkan $EXPECTED_NODE_VERSION). " +
+                    "Periksa asset runtime GitHub Release v1.1."
+            )
+        }
+        return health.optBoolean("ok", false)
+    }
 
     private fun request(method: String, path: String, body: String? = null): JSONObject {
         val connection = (URL("$BASE_URL$path").openConnection() as HttpURLConnection).apply {
@@ -329,6 +347,22 @@ object RexChatRuntime {
                     status = Status.ERROR,
                     detail = event.optString("message", "Terjadi kesalahan runtime")
                 )
+                "message" -> {
+                    val idValue = event.optString("id")
+                    val message = Message(
+                        id = idValue,
+                        chatId = event.optString("chatId"),
+                        text = event.optString("text"),
+                        fromMe = event.optBoolean("fromMe"),
+                        timestamp = event.optLong("timestamp", 0L)
+                    )
+                    if (message.chatId.isBlank() || message.text.isBlank()) current
+                    else {
+                        val withoutDuplicate = if (idValue.isBlank()) current.messages
+                            else current.messages.filterNot { it.id == idValue }
+                        current.copy(messages = (withoutDuplicate + message).takeLast(100))
+                    }
+                }
                 else -> current
             }
             setState(id, updated)

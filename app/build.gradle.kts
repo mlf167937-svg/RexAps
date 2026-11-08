@@ -45,6 +45,7 @@ val releaseMinificationEnabled = providers.gradleProperty("rexaps.release.minify
 android {
     namespace = "com.rexaps"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     // Work around a crash in the Lifecycle NullSafeMutableLiveData lint detector
     // reported by lintVitalAnalyzeRelease. Other lint checks remain enabled.
@@ -132,6 +133,9 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = false
+            // Some Android AARs may also package this runtime; retain the
+            // exact libc++_shared.so shipped beside the RexChat Node binary.
+            pickFirsts += "**/libc++_shared.so"
         }
         resources {
             excludes += setOf(

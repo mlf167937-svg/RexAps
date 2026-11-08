@@ -156,7 +156,22 @@ async function handle(command) {
   if (command.type === 'send-text') {
     const account = accounts.get(sessionId)
     if (!account) throw new Error('Account is not connected')
-    await account.socket.sendMessage(String(command.chatId), { text: String(command.text || '') })
+    const rawChatId = String(command.chatId || '').trim()
+    const chatId = rawChatId.includes('@')
+      ? rawChatId
+      : `${rawChatId.replace(/\D/g, '')}@s.whatsapp.net`
+    const text = String(command.text || '').trim()
+    if (!chatId || chatId === '@s.whatsapp.net') throw new Error('Nomor atau ID chat tidak valid')
+    if (!text) throw new Error('Pesan tidak boleh kosong')
+    const sent = await account.socket.sendMessage(chatId, { text })
+    emit('message', {
+      sessionId,
+      id: sent?.key?.id || `local-${Date.now()}`,
+      chatId,
+      fromMe: true,
+      text,
+      timestamp: Number(sent?.messageTimestamp || Math.floor(Date.now() / 1000))
+    })
     return
   }
   if (command.type === 'remove-account') {
@@ -220,8 +235,8 @@ async function loadAndStartServer() {
     sendJson(response, 404, { ok: false, error: 'Not found' })
   })
 
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`RexChat Node.js ${process.version} ready on 127.0.0.1:${port}`)
+  server.listen(port, 'localhost', () => {
+    console.log(`RexChat Node.js ${process.version} ready on localhost:${port}`)
   })
   server.on('error', error => {
     emit('error', { message: `RexChat HTTP server: ${error.message}` })

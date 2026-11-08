@@ -70,7 +70,8 @@
         android:allowBackup="true"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/rexchat_network_security_config">
 
         <!-- =========================== FILE PROVIDER ====================== -->
         <provider
