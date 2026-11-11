@@ -3,7 +3,7 @@ name: Build RexAps Release
 on:
   push:
     branches:
-      - main
+      - develepment
   workflow_dispatch:
 
 permissions:

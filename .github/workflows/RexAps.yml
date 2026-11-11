@@ -1,0 +1,418 @@
+name: Build RexAps from Standalone Release
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      source_release_tag:
+        description: "Tag GitHub Release yang berisi rexaps-full-standalone.zip"
+        required: true
+        type: string
+        default: "v1.3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rexaps-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Download source and build ARM64 then ARM32
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      SOURCE_ASSET: rexaps-full-standalone.zip
+
+    steps:
+      - name: Checkout workflow repository
+        uses: actions/checkout@v4
+
+      - name: Initialize logs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : > Build.log
+          : > Source-Download.log
+          : > Actions-AllLog.log
+          {
+            echo "RexAps standalone build"
+            echo "Event: $GITHUB_EVENT_NAME"
+            echo "Run ID: $GITHUB_RUN_ID"
+            echo "Commit: $GITHUB_SHA"
+            echo "Started UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } | tee -a Actions-AllLog.log
+
+      - name: Select source release tag
+        id: source_tag
+        shell: bash
+        env:
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.source_release_tag }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
+            TAG="$EVENT_RELEASE_TAG"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="$INPUT_RELEASE_TAG"
+          else
+            TAG="v1.3"
+          fi
+
+          if [[ -z "$TAG" ]]; then
+            echo "ERROR: Source release tag is empty."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Selected source release: $TAG" | tee -a Actions-AllLog.log
+
+      - name: Download standalone source ZIP from GitHub Release
+        id: source_download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ steps.source_tag.outputs.tag }}
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Source-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          DOWNLOAD_DIR="$RUNNER_TEMP/rexaps-source-download"
+          EXTRACT_DIR="$RUNNER_TEMP/rexaps-source"
+          mkdir -p "$DOWNLOAD_DIR" "$EXTRACT_DIR"
+
+          echo "Downloading asset: $SOURCE_ASSET"
+          gh release download "$SOURCE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$SOURCE_ASSET" \
+            --dir "$DOWNLOAD_DIR"
+
+          ARCHIVE="$DOWNLOAD_DIR/$SOURCE_ASSET"
+          test -s "$ARCHIVE"
+          echo "Downloaded archive size: $(stat -c '%s' "$ARCHIVE") bytes"
+          sha256sum "$ARCHIVE"
+          unzip -tq "$ARCHIVE"
+          unzip -q "$ARCHIVE" -d "$EXTRACT_DIR"
+
+          # Support ZIPs that contain either project files at the root or
+          # one enclosing directory.
+          if [[ -f "$EXTRACT_DIR/gradlew" ]]; then
+            PROJECT_DIR="$EXTRACT_DIR"
+          else
+            GRADLE_WRAPPER="$(find "$EXTRACT_DIR" -mindepth 2 -maxdepth 4 -type f -name gradlew -print -quit)"
+            if [[ -z "$GRADLE_WRAPPER" ]]; then
+              echo "ERROR: gradlew was not found in the source ZIP."
+              exit 1
+            fi
+            PROJECT_DIR="$(dirname "$GRADLE_WRAPPER")"
+          fi
+
+          for REQUIRED in \
+            settings.gradle.kts \
+            build.gradle.kts \
+            app/build.gradle.kts \
+            app/CMakeLists.txt \
+            app/src/main/AndroidManifest.xml; do
+            if [[ ! -s "$PROJECT_DIR/$REQUIRED" ]]; then
+              echo "ERROR: Missing required source file: $REQUIRED"
+              exit 1
+            fi
+          done
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Standalone source extracted and structure validated."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
+          accept-android-sdk-licenses: "true"
+
+      - name: Install Android SDK, CMake and NDK
+        shell: bash
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1" \
+            "ndk;27.2.12479018"
+
+          NDK_ROOT="$SDK_ROOT/ndk/27.2.12479018"
+          test -x "$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
+          echo "Android SDK/NDK installation completed."
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-rexaps-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-rexaps-gradle-
+
+      - name: Validate standalone native libraries and RexChat dependencies
+        id: validate_source
+        shell: bash
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Source-Download.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          JNI_ROOT="$PROJECT_DIR/app/src/main/jniLibs"
+          NDK_ROOT="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          READELF="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+
+          test -s "$PROJECT_DIR/app/libnode/include/node/node.h"
+          test -s "$PROJECT_DIR/app/src/main/assets/rexchat/package.json"
+          test -s "$PROJECT_DIR/app/src/main/assets/rexchat/node_modules/@whiskeysockets/baileys/package.json"
+          test -s "$PROJECT_DIR/app/src/main/assets/rexnux/proot"
+
+          LIBRARIES=(libnode.so libcares.so libsqlite3.so libc++_shared.so librexchat_node.so)
+
+          for ABI in arm64-v8a armeabi-v7a; do
+            case "$ABI" in
+              arm64-v8a) EXPECTED_CLASS="ELF64"; EXPECTED_MACHINE="AArch64" ;;
+              armeabi-v7a) EXPECTED_CLASS="ELF32"; EXPECTED_MACHINE="ARM" ;;
+            esac
+
+            ABI_DIR="$JNI_ROOT/$ABI"
+            if [[ ! -d "$ABI_DIR" ]]; then
+              echo "ERROR: Missing native library directory: $ABI_DIR"
+              exit 1
+            fi
+
+            for LIB in "${LIBRARIES[@]}"; do
+              SO="$ABI_DIR/$LIB"
+              if [[ ! -s "$SO" ]]; then
+                echo "ERROR: Missing native library: $ABI/$LIB"
+                exit 1
+              fi
+
+              HEADER="$("$READELF" -h "$SO")"
+              grep -Eq "Class:.*$EXPECTED_CLASS" <<<"$HEADER"
+              grep -Eq "Machine:.*$EXPECTED_MACHINE" <<<"$HEADER"
+              echo "OK: $ABI/$LIB - $(stat -c '%s' "$SO") bytes"
+            done
+          done
+
+          echo "All required source files, Node headers, Baileys assets and ARM libraries are present."
+
+      - name: Prepare Release signing key
+        id: signing
+        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD_SECRET: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS_SECRET: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD_SECRET: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          SIGNING_DIR="$RUNNER_TEMP/rexaps-signing"
+          mkdir -p "$SIGNING_DIR"
+          chmod 700 "$SIGNING_DIR"
+          KEYSTORE="$SIGNING_DIR/rexaps-release.jks"
+
+          if [[ -n "$RELEASE_KEYSTORE_BASE64" && -n "$RELEASE_STORE_PASSWORD_SECRET" && -n "$RELEASE_KEY_ALIAS_SECRET" && -n "$RELEASE_KEY_PASSWORD_SECRET" ]]; then
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            STORE_PASSWORD="$RELEASE_STORE_PASSWORD_SECRET"
+            KEY_ALIAS="$RELEASE_KEY_ALIAS_SECRET"
+            KEY_PASSWORD="$RELEASE_KEY_PASSWORD_SECRET"
+            echo "Using persistent signing key from GitHub Secrets."
+          elif [[ -z "$RELEASE_KEYSTORE_BASE64" && -z "$RELEASE_STORE_PASSWORD_SECRET" && -z "$RELEASE_KEY_ALIAS_SECRET" && -z "$RELEASE_KEY_PASSWORD_SECRET" ]]; then
+            # Fallback keeps the generated APK installable. It will not be
+            # compatible as an update with APKs signed by a different key.
+            STORE_PASSWORD="$(openssl rand -hex 24)"
+            KEY_PASSWORD="$STORE_PASSWORD"
+            KEY_ALIAS="rexaps-ci-temporary"
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE" \
+              -storetype JKS \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=RexAps CI, OU=Android, O=RexAps, C=ID"
+            echo "WARNING: Using a temporary signing key. Configure GitHub Secrets to preserve update compatibility."
+          else
+            echo "ERROR: Signing secrets are incomplete. Set all four signing secrets or leave all four empty."
+            exit 1
+          fi
+
+          test -s "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          {
+            echo "RELEASE_STORE_FILE=$KEYSTORE"
+            echo "RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build ARM64 first, then ARM32 (sequential)
+        id: build
+        shell: bash
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: "2"
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/Build.log" "$GITHUB_WORKSPACE/Actions-AllLog.log") 2>&1
+          set -Eeuo pipefail
+
+          cd "$PROJECT_DIR"
+          chmod +x ./gradlew
+
+          DIST_DIR="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$DIST_DIR"
+
+          ORIGINAL_GRADLE="$RUNNER_TEMP/rexaps-app-build.gradle.kts"
+          cp app/build.gradle.kts "$ORIGINAL_GRADLE"
+
+          build_one_abi() {
+            local ABI="$1"
+            local APK=""
+            local CANDIDATE
+
+            echo
+            echo "============================================================"
+            echo "START BUILD: $ABI"
+            echo "Started UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "============================================================"
+
+            # Restrict both NDK filters and APK split filters to one ABI.
+            # This guarantees ARM64 finishes before ARM32 starts.
+            cp "$ORIGINAL_GRADLE" app/build.gradle.kts
+            ABI_TO_BUILD="$ABI" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("app/build.gradle.kts")
+          text = path.read_text()
+          abi = os.environ["ABI_TO_BUILD"]
+
+          old_filter = 'abiFilters += listOf("arm64-v8a", "armeabi-v7a")'
+          old_split = 'include("arm64-v8a", "armeabi-v7a")'
+          if text.count(old_filter) != 1 or text.count(old_split) != 1:
+              raise SystemExit(
+                  "Could not safely isolate ABI: expected exactly one abiFilters "
+                  "and one splits.include declaration."
+              )
+
+          text = text.replace(old_filter, f'abiFilters += listOf("{abi}")', 1)
+          text = text.replace(old_split, f'include("{abi}")', 1)
+          path.write_text(text)
+          PY
+
+            ./gradlew --no-daemon --max-workers=2 \
+              -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+              clean :app:assembleRelease --stacktrace
+
+            while IFS= read -r CANDIDATE; do
+              [[ -s "$CANDIDATE" ]] || continue
+              if unzip -Z1 "$CANDIDATE" | grep -qx "lib/$ABI/libnode.so" \
+                && unzip -Z1 "$CANDIDATE" | grep -qx "lib/$ABI/librexnode.so"; then
+                APK="$CANDIDATE"
+                if [[ "$(basename "$CANDIDATE")" == *"$ABI"* ]]; then
+                  break
+                fi
+              fi
+            done < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+
+            if [[ -z "$APK" ]]; then
+              echo "ERROR: Could not find a signed Release APK containing $ABI/libnode.so and $ABI/librexnode.so."
+              find app/build/outputs/apk -type f -name '*.apk' -print || true
+              exit 1
+            fi
+
+            unzip -Z1 "$APK" | grep -qx "lib/$ABI/libcares.so"
+            unzip -Z1 "$APK" | grep -qx "lib/$ABI/libsqlite3.so"
+            unzip -Z1 "$APK" | grep -qx "lib/$ABI/libc++_shared.so"
+            unzip -Z1 "$APK" | grep -qx "lib/$ABI/librexchat_node.so"
+            unzip -Z1 "$APK" | grep -qx "assets/rexchat/node_modules/@whiskeysockets/baileys/package.json"
+
+            local LABEL
+            if [[ "$ABI" == "arm64-v8a" ]]; then
+              LABEL="Arm64-v8a"
+            else
+              LABEL="Armeabi-v7a"
+            fi
+
+            cp "$APK" "$DIST_DIR/RexAps-$LABEL.apk"
+            local BUNDLE_DIR="$RUNNER_TEMP/rexaps-$LABEL"
+            mkdir -p "$BUNDLE_DIR"
+            cp "$APK" "$BUNDLE_DIR/RexAps.apk"
+            (cd "$BUNDLE_DIR" && zip -q "$DIST_DIR/RexAps-$LABEL.zip" RexAps.apk)
+
+            echo "SUCCESS: $ABI -> $DIST_DIR/RexAps-$LABEL.apk"
+            echo "Finished UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          }
+
+          # Deliberately sequential: do not start ARM32 until ARM64 is done.
+          build_one_abi "arm64-v8a"
+          build_one_abi "armeabi-v7a"
+
+          echo "Both ABI builds completed successfully."
+
+      - name: Create diagnostic log archive
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p dist
+          for FILE in Build.log Source-Download.log Actions-AllLog.log; do
+            [[ -f "$FILE" ]] || : > "$FILE"
+          done
+          zip -q -j dist/Actions.zip Build.log Source-Download.log Actions-AllLog.log
+
+      - name: Upload ARM64 APK and ZIP
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-Arm64-v8a
+          path: |
+            dist/RexAps-Arm64-v8a.apk
+            dist/RexAps-Arm64-v8a.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ARM32 APK and ZIP
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-Armeabi-v7a
+          path: |
+            dist/RexAps-Armeabi-v7a.apk
+            dist/RexAps-Armeabi-v7a.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Actions diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexAps-Actions-Logs
+          path: dist/Actions.zip
+          if-no-files-found: warn
+          retention-days: 14
