@@ -15,7 +15,7 @@
 
 ## Tentang project 
 
-**RexAps** adalah aplikasi Android berbasis Kotlin yang menyatukan berbagai utilitas dalam satu shell aplikasi. Setiap fungsi utama dipecah menjadi modul tersendiri—mulai dari browser dan editor kode sampai Git, terminal Linux, pemutar musik, dan pemantauan perangkat.
+**RexAps** adalah aplikasi Android berbasis Kotlin yang menyatukan berbagai utilitas dalam satu shell aplikasi. Setiap fungsi utama dipecah menjadi modul tersendiri—mulai dari browser dan editor kode sampai Git, terminal Linux, pemutar musik, dan pemantauan perangkat. 
 
 Antarmuka dibangun menggunakan Jetpack Compose dengan dukungan tampilan portrait dan landscape, navigasi antarmodul, serta sistem tema bersama.
 
