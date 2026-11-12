@@ -13,7 +13,7 @@
   <img alt="Design" src="https://img.shields.io/badge/Design-Material%203-6750A4" />
 </p>
 
-## Tentang proyek
+## Tentang project 
 
 **RexAps** adalah aplikasi Android berbasis Kotlin yang menyatukan berbagai utilitas dalam satu shell aplikasi. Setiap fungsi utama dipecah menjadi modul tersendiri—mulai dari browser dan editor kode sampai Git, terminal Linux, pemutar musik, dan pemantauan perangkat.
 
