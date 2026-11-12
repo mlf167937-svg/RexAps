@@ -10,10 +10,10 @@ on:
   workflow_dispatch:
     inputs:
       source_release_tag:
-        description: "Tag GitHub Release yang berisi rexaps-full-standalone.zip"
+        description: "Tag GitHub Release yang berisi RexAps.zip"
         required: true
         type: string
-        default: "v1.3"
+        default: "v1.3.2"
 
 permissions:
   contents: read
@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 180
 
     env:
-      SOURCE_ASSET: rexaps-full-standalone.zip
+      SOURCE_ASSET: RexAps.zip
 
     steps:
       - name: Checkout workflow repository
@@ -63,7 +63,7 @@ jobs:
           elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             TAG="$INPUT_RELEASE_TAG"
           else
-            TAG="v1.3"
+            TAG="v1.3.2"
           fi
 
           if [[ -z "$TAG" ]]; then
