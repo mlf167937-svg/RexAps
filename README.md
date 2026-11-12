@@ -31,7 +31,7 @@ Antarmuka dibangun menggunakan Jetpack Compose dengan dukungan tampilan portrait
 - [Kontribusi](#kontribusi)
 - [Lisensi](#lisensi)
 
-## Fitur utama
+## Main Feature
 
 - **Desain modular** — fitur dipisahkan agar struktur kode dan pengembangan lebih mudah dikelola.
 - **Navigasi terpadu** — modul yang tersedia dibuka melalui dashboard RexAps.
