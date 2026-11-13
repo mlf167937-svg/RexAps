@@ -54,6 +54,13 @@ object RexAppRegistry {
         ),
 
         RexModule(
+            id = "rexgames",
+            name = "RexGames",
+            description = "Offline Chess & Local Multiplayer",
+            available = true
+        ),
+
+        RexModule(
             id = "rexgit",
             name = "RexGit",
             description = "Git manager & repo",

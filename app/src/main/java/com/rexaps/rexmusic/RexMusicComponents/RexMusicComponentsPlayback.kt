@@ -15,6 +15,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
+internal fun SourceBadge(source: RexTrackSource) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        color = scheme.surfaceVariant,
+        contentColor = scheme.onSurfaceVariant,
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            source.label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
+
+@Composable
 internal fun __splitImpl_TrackRow(
     track: RexTrack,
     active: Boolean,
@@ -57,7 +73,27 @@ internal fun __splitImpl_TrackRow(
                 }
                 Text(
                     subtitle ?: track.artist,
+                    modifier = Modifier.weight(1f, fill = false),
                     style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(6.dp))
+                if (track.durationText.isNotBlank()) {
+                    Text(
+                        track.durationText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                SourceBadge(track.source)
+            }
+            if (track.variant.isNotBlank()) {
+                Text(
+                    track.variant,
+                    style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )

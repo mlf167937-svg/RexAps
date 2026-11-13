@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun __splitImpl_RexMusicContent(
@@ -65,6 +66,16 @@ internal fun __splitImpl_RexMusicContent(
     var tab by rememberSaveable { mutableStateOf(TAB_HOME) }
     var libTab by rememberSaveable { mutableStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
+    var providerFilterId by rememberSaveable { mutableStateOf("all") }
+    val providerFilter = remember(providerFilterId) {
+        when (providerFilterId) {
+            RexTrackSource.SPOTIFY.id -> RexTrackSource.SPOTIFY
+            RexTrackSource.APPLE_MUSIC.id -> RexTrackSource.APPLE_MUSIC
+            RexTrackSource.YOUTUBE.id -> RexTrackSource.YOUTUBE
+            else -> null
+        }
+    }
+    val searchQueryHistory by vm.searchQueryHistory.collectAsState()
     var typing by remember { mutableStateOf(false) }
     var showPlayer by rememberSaveable { mutableStateOf(false) }
     var selectedPlaylistName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -81,6 +92,14 @@ internal fun __splitImpl_RexMusicContent(
     var playlistTarget by remember { mutableStateOf<RexTrack?>(null) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
     var showLocalProfile by rememberSaveable { mutableStateOf(false) }
+    var showAddMusic by rememberSaveable { mutableStateOf(false) }
+    var pendingLocalPicker by remember { mutableStateOf(false) }
+    var pendingFileSource by remember { mutableStateOf(RexTrackSource.LOCAL) }
+    var pendingFileVariant by remember { mutableStateOf("") }
+    var pendingFileTitle by remember { mutableStateOf("") }
+    var pendingFileArtist by remember { mutableStateOf("") }
+    var pendingFileThumbnailUrl by remember { mutableStateOf("") }
+    var pendingFileThumbnailUri by remember { mutableStateOf<Uri?>(null) }
     var localProfile by remember { mutableStateOf(RexLocalProfileBridge.read()) }
 
     // Preserve liked IDs across configuration changes without needing to serialize RexTrack objects.
@@ -91,6 +110,7 @@ internal fun __splitImpl_RexMusicContent(
         )
     ) { mutableStateListOf<String>() }
     val snackbar = remember { SnackbarHostState() }
+    val uiScope = rememberCoroutineScope()
 
     val homeList = rememberLazyListState()
     val searchList = rememberLazyListState()
@@ -121,6 +141,14 @@ internal fun __splitImpl_RexMusicContent(
         }
     }
 
+    LaunchedEffect(query, state.offline.enabled) {
+        val clean = query.trim().replace(Regex("\\s+"), " ")
+        if (!state.offline.enabled && clean.length >= 2) {
+            delay(700)
+            vm.saveSearchQuery(clean)
+        }
+    }
+
     val settingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -131,6 +159,31 @@ internal fun __splitImpl_RexMusicContent(
         ActivityResultContracts.RequestPermission()
     ) {
         vm.refreshOffline()
+    }
+
+    val localAudioPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            vm.importLocalAudio(
+                uri,
+                pendingFileSource,
+                pendingFileVariant,
+                pendingFileTitle,
+                pendingFileArtist,
+                pendingFileThumbnailUri,
+                pendingFileThumbnailUrl
+            )
+            pendingFileThumbnailUri = null
+            pendingFileThumbnailUrl = ""
+        }
+    }
+
+    LaunchedEffect(state.offline.hasAccess, pendingLocalPicker) {
+        if (pendingLocalPicker && state.offline.hasAccess) {
+            pendingLocalPicker = false
+            localAudioPicker.launch(arrayOf("audio/mpeg", "audio/*"))
+        }
     }
 
     val openStorageSettings: () -> Unit = {
@@ -223,11 +276,30 @@ internal fun __splitImpl_RexMusicContent(
         selectedPlaylistName = null
     }
 
+    fun openProviderLink(source: RexTrackSource, url: String) {
+        if (RexMusicCatalogApi.isValidProviderLink(source, url)) {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }.onFailure {
+                uiScope.launch { snackbar.showSnackbar("Tidak dapat membuka ${source.label}") }
+            }
+        } else {
+            uiScope.launch { snackbar.showSnackbar("Link ${source.label} tidak valid") }
+        }
+    }
+
     val actions = RexActions(
-        playSearch = {
-            requestNotifications()
-            vm.playFromSearch(it)
-            showPlayer = true
+        playSearch = { index ->
+            val track = vm.state.value.searchResults.getOrNull(index)
+            if (track != null) {
+                if (track.source == RexTrackSource.SPOTIFY && track.spotifyUrl.isNotBlank()) {
+                    requestNotifications()
+                    vm.playTrack(track)
+                    showPlayer = true
+                } else {
+                    openProviderLink(track.source, track.sourceUrl)
+                }
+            }
         },
 
         playHistory = {
@@ -414,11 +486,7 @@ internal fun __splitImpl_RexMusicContent(
                                     onQueryChange = {
                                         query = it
                                         if (!state.offline.enabled) {
-                                            if (it.isBlank()) {
-                                                vm.clearSearch()
-                                            } else {
-                                                vm.search(it)
-                                            }
+                                            if (it.isBlank()) vm.clearSearch() else vm.search(it, providerFilter)
                                         }
                                     },
                                     onClear = {
@@ -426,7 +494,21 @@ internal fun __splitImpl_RexMusicContent(
                                         vm.clearSearch()
                                     },
                                     actions = actions,
-                                    listState = searchList
+                                    listState = searchList,
+                                    onAddMusic = { showAddMusic = true },
+                                    providerFilter = providerFilter,
+                                    onProviderFilterChange = { selected ->
+                                        providerFilterId = selected?.id ?: "all"
+                                        if (query.isNotBlank() && !state.offline.enabled) vm.search(query, selected)
+                                    },
+                                    searchHistory = searchQueryHistory,
+                                    onSelectHistory = { saved ->
+                                        query = saved
+                                        if (!state.offline.enabled) vm.search(saved, providerFilter)
+                                    },
+                                    onRemoveHistory = vm::removeSearchQuery,
+                                    onClearHistory = vm::clearSearchQueryHistory,
+                                    onRetry = { if (query.isNotBlank()) vm.search(query, providerFilter) }
                                 )
                             }
 
@@ -654,6 +736,47 @@ internal fun __splitImpl_RexMusicContent(
     }
     }
 
+    if (showAddMusic) {
+        RexMusicAddSheet(
+            onDismiss = { showAddMusic = false },
+            onAddManual = { title, artist, url, source, thumbnailUrl, thumbnailUri ->
+                if (source == RexTrackSource.SPOTIFY && url.contains("/track/")) {
+                    val track = RexTrack(
+                        id = "manual-spotify-${url.hashCode()}",
+                        title = title,
+                        artist = artist,
+                        album = "Single",
+                        cover = thumbnailUrl.ifBlank { thumbnailUri?.toString().orEmpty() },
+                        spotifyUrl = url,
+                        source = RexTrackSource.SPOTIFY,
+                        sourceUrl = url
+                    )
+                    requestNotifications()
+                    vm.playTrack(track)
+                    showPlayer = true
+                } else {
+                    openProviderLink(source, url)
+                }
+            },
+            onPickLocalAudio = { title, artist, source, thumbnailUrl, thumbnailUri ->
+                pendingFileSource = source
+                pendingFileVariant = ""
+                pendingFileTitle = title
+                pendingFileArtist = artist
+                pendingFileThumbnailUrl = thumbnailUrl
+                pendingFileThumbnailUri = thumbnailUri
+                showAddMusic = false
+                if (RexOfflineManager.hasAccess(context)) {
+                    localAudioPicker.launch(arrayOf("audio/mpeg", "audio/*"))
+                } else {
+                    pendingLocalPicker = true
+                    pendingDownload = null
+                    showStorageDialog = true
+                }
+            }
+        )
+    }
+
     if (showQueue) {
         QueueSheet(
             state,
@@ -758,6 +881,7 @@ internal fun __splitImpl_RexMusicContent(
             onDismissRequest = {
                 showStorageDialog = false
                 pendingDownload = null
+                pendingLocalPicker = false
             },
 
             icon = {
@@ -773,10 +897,10 @@ internal fun __splitImpl_RexMusicContent(
 
             text = {
                 Text(
-                    "Lagu yang diunduh disimpan di " +
+                    "Lagu offline dan MP3 yang kamu impor disimpan di " +
                         "${RexOfflineManager.DISPLAY_PATH}/ " +
                         "supaya mudah kamu buka dan hapus lewat aplikasi File. " +
-                        "Aplikasi butuh izin akses penyimpanan untuk itu."
+                        "RexMusic butuh izin akses penyimpanan untuk menyimpan file di sana."
                 )
             },
 
@@ -795,6 +919,7 @@ internal fun __splitImpl_RexMusicContent(
                     onClick = {
                         showStorageDialog = false
                         pendingDownload = null
+                        pendingLocalPicker = false
                     }
                 ) {
                     Text("Nanti")

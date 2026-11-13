@@ -144,6 +144,10 @@ internal fun RexOfflineManager.__splitImpl_download(track: RexTrack) {
             _messages.tryEmit("Sudah ada di offline")
             return
         }
+        if (track.source != RexTrackSource.SPOTIFY) {
+            _messages.tryEmit("${track.source.label} tidak menyediakan unduhan audio lewat RexMusic. Impor MP3 yang kamu miliki untuk akses offline.")
+            return
+        }
         if (jobs[key]?.isActive == true) return
 
         setStatus(key, DownloadStatus(track, DownloadStage.Queued))

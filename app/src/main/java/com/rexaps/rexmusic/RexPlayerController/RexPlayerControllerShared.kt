@@ -85,29 +85,55 @@ import kotlinx.coroutines.launch
     }
 
 /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
-    internal fun RexPlayerController.__splitImpl_search(query: String) {
+    internal fun RexPlayerController.__splitImpl_search(query: String, provider: RexTrackSource? = null) {
+        val requestId = ++searchGeneration
         searchJob?.cancel()
-        if (offlineMode()) return
-        val q = query.trim()
+        if (offlineMode()) {
+            searching = false
+            publishLoading()
+            return
+        }
+        val q = query.trim().replace(Regex("\\s+"), " ")
         if (q.isEmpty()) {
             clearSearch()
             return
         }
         searchJob = scope.launch {
-            delay(SEARCH_DEBOUNCE_MS)
-            searching = true
-            _state.update { it.copy(error = null) }
-            publishLoading()
-            RexMusicApi.search(q)
-                .onSuccess { list ->
-                    searching = false
-                    _state.update { it.copy(searchResults = list) }
+            try {
+                delay(SEARCH_DEBOUNCE_MS)
+                if (requestId != searchGeneration) return@launch
+                searching = true
+                _state.update { it.copy(error = null, searchResults = emptyList(), searchProviderFailures = emptyList()) }
+                publishLoading()
+                val outcome = RexMusicCatalogApi.searchHybridDetailed(q, provider)
+                if (requestId != searchGeneration) return@launch
+                val allFailed = outcome.requestedProviders.isNotEmpty() &&
+                    outcome.failedProviders.size == outcome.requestedProviders.size
+                _state.update {
+                    it.copy(
+                        searchResults = outcome.tracks,
+                        searchProviderFailures = outcome.failedProviders,
+                        error = if (allFailed) "Provider gagal: ${outcome.failedProviders.joinToString { source -> source.label }}" else null
+                    )
                 }
-                .onFailure { e ->
-                    searching = false
-                    _state.update { it.copy(error = e.message ?: "search gagal") }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (requestId == searchGeneration) {
+                    _state.update {
+                        it.copy(
+                            searchResults = emptyList(),
+                            searchProviderFailures = emptyList(),
+                            error = error.message ?: "Pencarian gagal"
+                        )
+                    }
                 }
-            publishLoading()
+            } finally {
+                if (requestId == searchGeneration) {
+                    searching = false
+                    publishLoading()
+                }
+            }
         }
     }
 

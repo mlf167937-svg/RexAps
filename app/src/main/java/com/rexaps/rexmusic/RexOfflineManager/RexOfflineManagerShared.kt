@@ -18,9 +18,13 @@ internal fun RexOfflineManager.__splitImpl_scan(): List<OfflineEntry> {
                 title = meta?.optString("title").orEmpty().ifBlank { dir.name.replace('-', ' ') },
                 artist = meta?.optString("artist").orEmpty().ifBlank { "Unknown" },
                 album = meta?.optString("album").orEmpty().ifBlank { "Offline" },
-                cover = thumb?.let { Uri.fromFile(it).toString() }.orEmpty(),
+                cover = thumb?.let { Uri.fromFile(it).toString() }
+                    ?: meta?.optString("coverUrl").orEmpty(),
                 spotifyUrl = meta?.optString("spotifyUrl").orEmpty(),
-                durationText = meta?.optString("durationText").orEmpty()
+                durationText = meta?.optString("durationText").orEmpty(),
+                source = RexTrackSource.fromId(meta?.optString("source")),
+                sourceUrl = meta?.optString("sourceUrl").orEmpty().ifBlank { meta?.optString("spotifyUrl").orEmpty() },
+                variant = meta?.optString("variant").orEmpty()
             )
             OfflineEntry(
                 key = dir.name,

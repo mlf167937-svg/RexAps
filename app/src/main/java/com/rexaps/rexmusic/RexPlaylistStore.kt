@@ -114,6 +114,9 @@ private fun RexTrack.toPlaylistJson(): JSONObject = JSONObject()
     .put("cover", cover)
     .put("spotifyUrl", spotifyUrl)
     .put("durationText", durationText)
+    .put("source", source.id)
+    .put("sourceUrl", sourceUrl)
+    .put("variant", variant)
 
 private fun JSONObject.toPlaylistTrack(): RexTrack? {
     val title = optString("title")
@@ -125,6 +128,9 @@ private fun JSONObject.toPlaylistTrack(): RexTrack? {
         album = optString("album").ifBlank { "Single" },
         cover = optString("cover"),
         spotifyUrl = optString("spotifyUrl"),
-        durationText = optString("durationText")
+        durationText = optString("durationText"),
+        source = RexTrackSource.fromId(optString("source")),
+        sourceUrl = optString("sourceUrl").ifBlank { optString("spotifyUrl") },
+        variant = optString("variant")
     )
 }

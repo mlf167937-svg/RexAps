@@ -301,30 +301,40 @@ fun TrackMenuSheet(
             Spacer(Modifier.height(8.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(scheme.onSurface.copy(alpha = 0.08f)))
 
-            target.onPlay?.let { play ->
-                MenuItem(Icons.Default.PlayArrow, "Putar sekarang") { play(); onDismiss() }
-            }
-            MenuItem(
-                if (queued) Icons.Default.Check else Icons.Default.Add,
-                if (queued) "Sudah di antrian" else "Tambah ke antrian",
-                enabled = !queued
-            ) { actions.addQueue(track); onDismiss() }
+            val externalCatalogResult = track.id.startsWith("youtube:") || track.id.startsWith("apple:")
+            if (externalCatalogResult) {
+                target.onPlay?.let { open ->
+                    MenuItem(Icons.Default.OpenInNew, "Buka di ${track.source.label}") {
+                        open()
+                        onDismiss()
+                    }
+                }
+            } else {
+                target.onPlay?.let { play ->
+                    MenuItem(Icons.Default.PlayArrow, "Putar sekarang") { play(); onDismiss() }
+                }
+                MenuItem(
+                    if (queued) Icons.Default.Check else Icons.Default.Add,
+                    if (queued) "Sudah di antrian" else "Tambah ke antrian",
+                    enabled = !queued
+                ) { actions.addQueue(track); onDismiss() }
 
-            MenuItem(Icons.Default.PlaylistAdd, "Simpan ke playlist") {
-                actions.openPlaylistPicker(track)
-                onDismiss()
-            }
+                MenuItem(Icons.Default.PlaylistAdd, "Simpan ke playlist") {
+                    actions.openPlaylistPicker(track)
+                    onDismiss()
+                }
 
-            when {
-                downloaded -> MenuItem(
-                    Icons.Default.Delete, "Hapus dari offline", tint = scheme.error
-                ) { actions.delete(track); onDismiss() }
-                status != null -> MenuItem(
-                    Icons.Default.Close, "Batalkan unduhan"
-                ) { actions.cancelDownload(track); onDismiss() }
-                else -> MenuItem(
-                    Icons.Default.Download, "Unduh untuk offline"
-                ) { actions.download(track); onDismiss() }
+                when {
+                    downloaded -> MenuItem(
+                        Icons.Default.Delete, "Hapus dari offline", tint = scheme.error
+                    ) { actions.delete(track); onDismiss() }
+                    status != null -> MenuItem(
+                        Icons.Default.Close, "Batalkan unduhan"
+                    ) { actions.cancelDownload(track); onDismiss() }
+                    else -> MenuItem(
+                        Icons.Default.Download, "Unduh untuk offline"
+                    ) { actions.download(track); onDismiss() }
+                }
             }
         }
     }

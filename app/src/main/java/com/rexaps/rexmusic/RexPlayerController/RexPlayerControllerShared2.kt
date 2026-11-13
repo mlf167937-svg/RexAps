@@ -117,9 +117,10 @@ internal fun RexPlayerController.__splitImpl_fail(message: String) {
     }
 
 internal fun RexPlayerController.__splitImpl_clearSearch() {
+        searchGeneration++
         searchJob?.cancel()
         searching = false
-        _state.update { it.copy(searchResults = emptyList()) }
+        _state.update { it.copy(searchResults = emptyList(), searchProviderFailures = emptyList(), error = null) }
         publishLoading()
     }
 

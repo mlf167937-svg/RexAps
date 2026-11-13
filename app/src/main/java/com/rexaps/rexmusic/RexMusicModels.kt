@@ -1,5 +1,18 @@
 package com.rexaps.rexmusic
 
+enum class RexTrackSource(val id: String, val label: String) {
+    SPOTIFY("spotify", "Spotify"),
+    YOUTUBE("youtube", "YouTube"),
+    APPLE_MUSIC("apple_music", "Apple Music"),
+    LOCAL("local", "Local");
+
+    companion object {
+        fun fromId(value: String?): RexTrackSource = values().firstOrNull {
+            it.id.equals(value.orEmpty(), ignoreCase = true) || it.label.equals(value.orEmpty(), ignoreCase = true)
+        } ?: SPOTIFY
+    }
+}
+
 data class RexTrack(
     val id: String,
     val title: String,
@@ -8,7 +21,17 @@ data class RexTrack(
     val cover: String = "",
     val audioUrl: String = "",
     val spotifyUrl: String = "",
-    val durationText: String = ""
+    val durationText: String = "",
+    /** Provider that supplied the metadata; independent from the playback engine. */
+    val source: RexTrackSource = RexTrackSource.SPOTIFY,
+    /** Public provider page (not a direct audio stream). */
+    val sourceUrl: String = spotifyUrl,
+    /** Optional version/theme label such as Slowed + reverb. */
+    val variant: String = "",
+    val channel: String? = null,
+    val durationSeconds: Long? = null,
+    val views: String? = null,
+    val uploadAt: String? = null
 )
 
 /** Fase loading real-time. */
@@ -63,6 +86,8 @@ data class RexMusicUiState(
     val bufferedPercent: Int = 0,
     val tracks: List<RexTrack> = emptyList(),
     val searchResults: List<RexTrack> = emptyList(),
+    /** Providers that failed while at least one other requested provider remained usable. */
+    val searchProviderFailures: List<RexTrackSource> = emptyList(),
     /** Riwayat lagu (terbaru di depan, tanpa lagu yang sedang diputar). Hanya metadata. */
     val history: List<RexTrack> = emptyList(),
     /** Antrian buatan pengguna (metadata saja, disimpan di cache). */

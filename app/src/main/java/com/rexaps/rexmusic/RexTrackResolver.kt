@@ -11,6 +11,9 @@ package com.rexaps.rexmusic
 internal object RexTrackResolver {
 
     suspend fun resolve(track: RexTrack): Result<RexTrack> {
+        if (track.source != RexTrackSource.SPOTIFY) {
+            return Result.failure(Exception("Sumber ${track.source.label} dibuka melalui layanan resminya atau dari file offline."))
+        }
         if (track.spotifyUrl.isNotBlank()) {
             val direct = RexMusicApi.resolveAudio(track)
             if (direct.isSuccess) return direct

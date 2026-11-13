@@ -1,6 +1,10 @@
 package com.rexaps.rexnux
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,329 +13,318 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RexNuxScreen(
     onExit: () -> Unit = {},
     viewModel: RexNuxViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    var distroToDelete by remember { mutableStateOf<RexNuxDistro?>(null) }
 
     when {
-        state.showSettings -> {
-            RexNuxSettingsScreen(
-                state = state,
-                onBack = viewModel::closeSettings,
-                onRemoveDistro = viewModel::removeDistro
-            )
-        }
-
-        state.showTerminal -> {
+        state.showTerminal && state.activeDistro != null -> {
             RexNuxTerminalScreen(
-                onBack = viewModel::closeRexNux
+                distro = state.activeDistro!!,
+                onBack = viewModel::closeTerminal
             )
         }
-
         state.downloading -> {
-            RexNuxInstallingScreen(
-                state = state
-            )
+            RexNuxInstallingDialog(state = state)
         }
-
-        state.showDownloadScreen -> {
-            RexNuxDownloadScreen(
-                state = state,
-                onBack = viewModel::closeDownloadScreen,
-                onSelectDistro = viewModel::selectDistro,
-                onInstall = viewModel::startInstall
-            )
-        }
-
         else -> {
-            RexNuxHomeScreen(
-                state = state,
-                onExit = onExit,
-                onDownload = viewModel::openDownloadScreen,
-                onSettings = viewModel::openSettings,
-                onOpenRexNux = viewModel::openRexNux
-            )
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text("RexNux", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("ARM64 Linux Subsystem (PRoot)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onExit) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = viewModel::refreshState) {
+                                Icon(Icons.Default.Terminal, contentDescription = "Refresh")
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "Multi-Distro Linux ARM64",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "RexNux menjalankan distribusi Linux sungguhan menggunakan PRoot di userland Android. Anda dapat menginstal beberapa distro sekaligus, menjalankan shell interaktif, dan memasang paket menggunakan pacman, apk, atau apt.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (!state.error.isNullOrBlank()) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(state.error!!, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text(
+                            "Daftar Distribusi Linux",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    items(RexNuxDistro.entries) { distro ->
+                        val isInstalled = state.installedDistros.contains(distro)
+                        val sizeText = state.distroSizes[distro] ?: ""
+
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isInstalled) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isInstalled) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Terminal,
+                                            contentDescription = null,
+                                            tint = if (isInstalled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(distro.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Text(distro.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isInstalled) {
+                                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                "Terpasang • $sizeText",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        } else {
+                                            Text(
+                                                "Belum Terpasang",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (isInstalled) {
+                                            IconButton(
+                                                onClick = { distroToDelete = distro }
+                                            ) {
+                                                Icon(Icons.Default.Delete, "Hapus", tint = MaterialTheme.colorScheme.error)
+                                            }
+                                            Button(
+                                                onClick = { viewModel.openTerminal(distro) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                            ) {
+                                                Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("Launch")
+                                            }
+                                        } else {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.selectDistro(distro)
+                                                    viewModel.startInstall()
+                                                }
+                                            ) {
+                                                Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("Install")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text("Informasi Arsitektur", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Root Path: /data/data/com.rexaps/rexnux/<distro>/", style = MaterialTheme.typography.bodySmall)
+                                Text("User Home: /files/home (HOME=/files/home, USER=root)", style = MaterialTheme.typography.bodySmall)
+                                Text("ABI Target: arm64-v8a • PRoot: Userland Namespace Isolation", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+
+            distroToDelete?.let { distro ->
+                AlertDialog(
+                    onDismissRequest = { distroToDelete = null },
+                    title = { Text("Hapus ${distro.title}?") },
+                    text = {
+                        Text("Root filesystem dan file di dalam distro ini akan dihapus secara permanen. Distro lain yang terpasang tidak akan terpengaruh.")
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.removeDistro(distro)
+                                distroToDelete = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Hapus")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { distroToDelete = null }) {
+                            Text("Batal")
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
-/*
- * ------------------------------------------------------------
- * HOME
- * ------------------------------------------------------------
- */
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RexNuxHomeScreen(
-    state: RexNuxUiState,
-    onExit: () -> Unit,
-    onDownload: () -> Unit,
-    onSettings: () -> Unit,
-    onOpenRexNux: () -> Unit
-) {
-        return __splitImpl_RexNuxHomeScreen(state, onExit, onDownload, onSettings, onOpenRexNux)
-    }
-
-/*
- * ------------------------------------------------------------
- * NO DISTRO
- * ------------------------------------------------------------
- */
-
-@Composable
-internal fun RexNuxNoDistroContent(
-    modifier: Modifier = Modifier,
-    onDownload: () -> Unit,
-    error: String?
-) {
-        return __splitImpl_RexNuxNoDistroContent(modifier, onDownload, error)
-    }
-
-/*
- * ------------------------------------------------------------
- * INSTALLED DISTRO
- * ------------------------------------------------------------
- */
-
-@Composable
-internal fun RexNuxInstalledContent(
-    modifier: Modifier = Modifier,
-    distro: RexNuxDistro,
-    error: String?,
-    onOpen: () -> Unit
-) {
-        return __splitImpl_RexNuxInstalledContent(modifier, distro, error, onOpen)
-    }
-
-/*
- * ------------------------------------------------------------
- * DOWNLOAD DISTRO
- * ------------------------------------------------------------
- */
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun RexNuxDownloadScreen(
-    state: RexNuxUiState,
-    onBack: () -> Unit,
-    onSelectDistro: (RexNuxDistro) -> Unit,
-    onInstall: () -> Unit
-) {
-        return __splitImpl_RexNuxDownloadScreen(state, onBack, onSelectDistro, onInstall)
-    }
-
-/*
- * ------------------------------------------------------------
- * DISTRO CARD
- * ------------------------------------------------------------
- */
-
-@Composable
-internal fun RexNuxDistroCard(
-    distro: RexNuxDistro,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = distro.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+private fun RexNuxInstallingDialog(state: RexNuxUiState) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = {
+            Text("Memasang Distribusi Linux", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
                 )
-
-                Spacer(
-                    modifier = Modifier.height(4.dp)
-                )
-
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    text = distro.description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    "${(state.progress * 100).toInt()}% selesai",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            if (selected) {
-                Spacer(
-                    modifier = Modifier.size(12.dp)
-                )
-
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Selected",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-}
-
-/*
- * ------------------------------------------------------------
- * INSTALLING
- * ------------------------------------------------------------
- */
-
-@Composable
-private fun RexNuxInstallingScreen(
-    state: RexNuxUiState
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-
-        CircularProgressIndicator()
-
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
-
-        Text(
-            text = "Installing ${
-                state.selectedDistro?.title ?: "RexNux"
-            }",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
-        Text(
-            text = state.message.ifBlank {
-                "Preparing..."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
-
-        LinearProgressIndicator(
-            progress = {
-                state.progress
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
-        Text(
-            text = "${(state.progress * 100).toInt()}%",
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-}
-
-/*
- * ------------------------------------------------------------
- * SETTINGS
- * ------------------------------------------------------------
- */
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun RexNuxSettingsScreen(
-    state: RexNuxUiState,
-    onBack: () -> Unit,
-    onRemoveDistro: () -> Unit
-) {
-        return __splitImpl_RexNuxSettingsScreen(state, onBack, onRemoveDistro)
-    }
-
-/*
- * ------------------------------------------------------------
- * ERROR
- * ------------------------------------------------------------
- */
-
-@Composable
-internal fun RexNuxErrorMessage(
-    message: String
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                MaterialTheme.colorScheme.errorContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            Icon(
-                imageVector = Icons.Default.Error,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
-            )
-
-            Spacer(
-                modifier = Modifier.size(10.dp)
-            )
-
-            Text(
-                text = message,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
+        },
+        confirmButton = {}
+    )
 }

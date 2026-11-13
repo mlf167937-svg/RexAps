@@ -3,12 +3,29 @@ package com.rexaps.rexmusic
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * ViewModel tipis. Semua logika player ada di [RexPlayerController] dan unduhan di
  * [RexOfflineManager] (hidup di level aplikasi) supaya musik + notifikasi tetap jalan walau layar ditutup.
  */
 class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
+    private val searchHistoryStore = RexMusicSearchHistoryStore(app)
+    private val _searchQueryHistory = MutableStateFlow(searchHistoryStore.read())
+    val searchQueryHistory: StateFlow<List<String>> = _searchQueryHistory.asStateFlow()
+
+    fun saveSearchQuery(query: String) {
+        _searchQueryHistory.value = searchHistoryStore.save(query)
+    }
+
+    fun removeSearchQuery(query: String) {
+        _searchQueryHistory.value = searchHistoryStore.remove(query)
+    }
+
+    fun clearSearchQueryHistory() {
+        _searchQueryHistory.value = searchHistoryStore.clear()
+    }
 
     init {
         RexPlayerController.init(app)
@@ -16,7 +33,19 @@ class RexMusicViewModel(app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<RexMusicUiState> = RexPlayerController.state
 
-    fun search(query: String) = RexPlayerController.search(query)
+    fun search(query: String, provider: RexTrackSource? = null) = RexPlayerController.search(query, provider)
+    fun playTrack(track: RexTrack) = RexPlayerController.playTrack(track)
+    fun importLocalAudio(
+        uri: android.net.Uri,
+        source: RexTrackSource,
+        variant: String = "",
+        titleOverride: String = "",
+        artistOverride: String = "",
+        thumbnailUri: android.net.Uri? = null,
+        thumbnailUrl: String = ""
+    ) = RexOfflineManager.importLocalAudio(
+        uri, source, variant, titleOverride, artistOverride, thumbnailUri, thumbnailUrl
+    )
     fun clearSearch() = RexPlayerController.clearSearch()
     fun dismissError() = RexPlayerController.dismissError()
     fun consumeNotice() = RexPlayerController.consumeNotice()

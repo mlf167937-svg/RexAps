@@ -72,10 +72,20 @@ internal fun __splitImpl_ShelfCard(
                 color = if (active) scheme.primary else scheme.onSurface,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
-            Text(
-                track.artist, style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    track.artist, modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                SourceBadge(track.source)
+            }
+            if (track.variant.isNotBlank()) {
+                Text(
+                    track.variant, style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

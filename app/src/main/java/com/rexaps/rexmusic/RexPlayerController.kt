@@ -51,6 +51,7 @@ object RexPlayerController {
 
     // search / resolve / prepare / buffering flags
     internal var searchJob: Job? = null
+    internal var searchGeneration: Long = 0L
     internal var playJob: Job? = null
     internal var searching = false
     internal var resolving = false
@@ -154,8 +155,8 @@ object RexPlayerController {
 
     // Search
     /** Debounced: aman dipanggil di tiap ketikan. Tidak dipakai saat mode offline. */
-    fun search(query: String) {
-        return this.__splitImpl_search(query)
+    fun search(query: String, provider: RexTrackSource? = null) {
+        return this.__splitImpl_search(query, provider)
     }
 
     fun clearSearch() {
@@ -177,6 +178,19 @@ object RexPlayerController {
 
     fun playFromSearch(index: Int) {
         return this.__splitImpl_playFromSearch(index)
+    }
+
+    /** Start one catalog result without requiring it to be in the debounced search screen. */
+    fun playTrack(track: RexTrack) {
+        if (offlineMode() && !RexOfflineManager.isDownloaded(track)) {
+            postNotice("Mode offline: lagu ini belum disimpan")
+            return
+        }
+        cancelPending()
+        queue = listOf(track.copy(audioUrl = ""))
+        queueIndex = 0
+        followContext = false
+        beginTrack(queue.first())
     }
 
     /** index mengacu ke state.history (terbaru di depan). Lagu yang sudah diunduh diputar dari file. */

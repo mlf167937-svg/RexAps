@@ -46,6 +46,11 @@ enum class RexRoute(
         "RexMusic"
     ),
 
+    REXGAMES(
+        "rexgames",
+        "RexGames"
+    ),
+
     REXMANAGER(
         "rexmanager",
         "RexManager"

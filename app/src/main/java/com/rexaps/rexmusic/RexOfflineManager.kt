@@ -143,6 +143,21 @@ object RexOfflineManager {
         return this.__splitImpl_importSyncTrack(track, sourceDir)
     }
 
+    /** Import a user-owned MP3 into the offline library with its own source metadata. */
+    fun importLocalAudio(
+        uri: android.net.Uri,
+        source: RexTrackSource,
+        variant: String = "",
+        titleOverride: String = "",
+        artistOverride: String = "",
+        thumbnailUri: android.net.Uri? = null,
+        thumbnailUrl: String = ""
+    ) {
+        return this.__splitImpl_importLocalAudio(
+            uri, source, variant, titleOverride, artistOverride, thumbnailUri, thumbnailUrl
+        )
+    }
+
     /** File mp3 lokal untuk lagu ini, atau null kalau belum diunduh. */
     fun audioFile(track: RexTrack): File? {
         val key = _state.value.keyFor(track) ?: return null
@@ -223,6 +238,9 @@ object RexOfflineManager {
                     .put("spotifyUrl", t.spotifyUrl)
                     .put("durationText", t.durationText)
                     .put("coverUrl", t.cover)
+                    .put("source", t.source.id)
+                    .put("sourceUrl", t.sourceUrl)
+                    .put("variant", t.variant)
                     .toString()
             )
         }

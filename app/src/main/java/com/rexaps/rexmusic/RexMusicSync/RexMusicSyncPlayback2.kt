@@ -158,7 +158,16 @@ internal fun RexMusicSyncEngine.__splitImpl_setMemberVolume(id: String, value: F
         )
     }
 
-internal fun RexMusicSyncEngine.__splitImpl_trackFromJson(o: JSONObject?): RexTrack? = o?.let { RexTrack(it.optString("id"), it.optString("title"), it.optString("artist"), it.optString("album", "Single"), it.optString("cover"), spotifyUrl = it.optString("spotifyUrl"), durationText = it.optString("durationText")) }?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
+internal fun RexMusicSyncEngine.__splitImpl_trackFromJson(o: JSONObject?): RexTrack? = o?.let {
+    RexTrack(
+        id = it.optString("id"), title = it.optString("title"), artist = it.optString("artist"),
+        album = it.optString("album", "Single"), cover = it.optString("cover"),
+        spotifyUrl = it.optString("spotifyUrl"), durationText = it.optString("durationText"),
+        source = RexTrackSource.fromId(it.optString("source")),
+        sourceUrl = it.optString("sourceUrl").ifBlank { it.optString("spotifyUrl") },
+        variant = it.optString("variant")
+    )
+}?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
 
 internal fun RexMusicSyncEngine.__splitImpl_setHostVolume(value: Float) {
         val v = value.coerceIn(0f, 1f)
@@ -177,6 +186,10 @@ internal fun RexMusicSyncEngine.__splitImpl_setHostVolume(value: Float) {
         }
     }
 
-internal fun RexMusicSyncEngine.__splitImpl_trackJson(t: RexTrack) = JSONObject().put("id", t.id).put("title", t.title).put("artist", t.artist).put("album", t.album).put("cover", t.cover).put("spotifyUrl", t.spotifyUrl).put("durationText", t.durationText)
+internal fun RexMusicSyncEngine.__splitImpl_trackJson(t: RexTrack) = JSONObject()
+    .put("id", t.id).put("title", t.title).put("artist", t.artist)
+    .put("album", t.album).put("cover", t.cover).put("spotifyUrl", t.spotifyUrl)
+    .put("durationText", t.durationText).put("source", t.source.id)
+    .put("sourceUrl", t.sourceUrl).put("variant", t.variant)
 
 internal fun RexMusicSyncEngine.__splitImpl_stopLocalPlayback() { appContextRef?.let { c -> scope.launch(Dispatchers.Main) { runCatching { RexPlayerController.init(c); RexPlayerController.pause() } } } }

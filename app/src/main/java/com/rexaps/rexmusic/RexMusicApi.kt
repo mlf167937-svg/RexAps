@@ -214,7 +214,9 @@ object RexMusicApi {
             album = album ?: "Single",
             cover = thumbnail.orEmpty(),
             spotifyUrl = url.orEmpty(),
-            durationText = duration.orEmpty()
+            durationText = duration.orEmpty(),
+            source = RexTrackSource.SPOTIFY,
+            sourceUrl = url.orEmpty()
         )
     }
 

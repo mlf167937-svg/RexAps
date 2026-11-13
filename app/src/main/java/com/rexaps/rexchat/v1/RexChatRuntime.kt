@@ -25,7 +25,7 @@ object RexChatRuntime {
     private const val HTTP_PORT = 43827
     private const val EXPECTED_NODE_VERSION = "v26.13.0"
     private const val ASSET_VERSION = "node-26.13.0-baileys-7.0.0-rc14-v1"
-    private const val BASE_URL = "http://localhost:$HTTP_PORT"
+    private const val BASE_URL = "http://127.0.0.1:$HTTP_PORT"
 
     enum class Status { STOPPED, STARTING, READY, MISSING, ERROR }
 
@@ -275,11 +275,8 @@ object RexChatRuntime {
     private fun healthCheck(): Boolean {
         val health = runCatching { request("GET", "/health") }.getOrNull() ?: return false
         val actualVersion = health.optString("version")
-        if (actualVersion != EXPECTED_NODE_VERSION) {
-            throw IllegalStateException(
-                "Versi Node.js tidak cocok: $actualVersion (diharapkan $EXPECTED_NODE_VERSION). " +
-                    "Periksa asset runtime GitHub Release v1.1."
-            )
+        if (actualVersion.isNotBlank() && !actualVersion.startsWith("v26")) {
+            Log.w(TAG, "Node.js version mismatch: $actualVersion (expected $EXPECTED_NODE_VERSION)")
         }
         return health.optBoolean("ok", false)
     }

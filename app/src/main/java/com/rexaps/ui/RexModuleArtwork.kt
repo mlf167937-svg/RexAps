@@ -125,6 +125,15 @@ private fun DrawScope.drawModuleGlyph(id: String, main: Color, light: Color, acc
                 drawRoundRect(accent.copy(alpha = if (i % 2 == 0) 1f else .72f), p(x, 50f - bar / 2), Size(w * .065f, h * bar / 100f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * .03f))
             }
         }
+        "rexgames" -> {
+            // Theme-aware chess knight with a small board baseline.
+            path(listOf(28f to 78f, 34f to 62f, 29f to 48f, 35f to 31f, 51f to 18f,
+                69f to 29f, 64f to 43f, 75f to 57f, 68f to 78f), main, false, stroke * 1.35f)
+            path(listOf(35f to 31f, 48f to 38f, 62f to 34f, 69f to 29f), accent, false, stroke * 1.1f)
+            circle(55f, 28f, 2.8f, light)
+            line(24f, 82f, 76f, 82f, light, stroke * 1.15f)
+            line(31f, 89f, 69f, 89f, accent, stroke * 1.15f)
+        }
         "rexcoder" -> {
             path(listOf(35f to 25f, 15f to 50f, 35f to 75f), main, false, stroke * 1.5f)
             path(listOf(65f to 25f, 85f to 50f, 65f to 75f), main, false, stroke * 1.5f)

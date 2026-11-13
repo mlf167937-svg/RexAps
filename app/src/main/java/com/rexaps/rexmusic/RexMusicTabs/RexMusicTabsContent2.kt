@@ -120,7 +120,7 @@ internal fun __splitImpl_ExploreTile(name: String, onClick: () -> Unit, modifier
     }
 }
 
-internal fun LazyListScope.__splitImpl_resultsSection(state: RexMusicUiState, actions: RexActions, typing: Boolean) {
+internal fun LazyListScope.__splitImpl_resultsSection(state: RexMusicUiState, actions: RexActions, typing: Boolean, onRetry: () -> Unit = {}) {
     val results = state.searchResults
     when {
         results.isEmpty() && (state.loading || typing) ->
@@ -132,9 +132,30 @@ internal fun LazyListScope.__splitImpl_resultsSection(state: RexMusicUiState, ac
                     "Coba kata kunci lain, misalnya judul lagu atau nama artis."
                 )
             }
-        results.isEmpty() -> Unit
+        results.isEmpty() -> item(key = "sr-error") {
+            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    state.error ?: if (state.searchProviderFailures.isNotEmpty())
+                        "Provider tidak merespons: ${state.searchProviderFailures.joinToString { it.label }}"
+                    else "Pencarian gagal",
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onRetry) { Text("Coba lagi") }
+            }
+        }
         else -> {
             item(key = "sr-title") { SectionTitle("Hasil pencarian") }
+            if (state.searchProviderFailures.isNotEmpty()) {
+                item(key = "sr-partial-warning") {
+                    Text(
+                        "Sebagian provider tidak merespons: ${state.searchProviderFailures.joinToString { it.label }}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+            }
             itemsIndexed(results, key = { _, t -> "sr-${t.id}" }) { idx, track ->
                 TrackRowFor(track, state, actions) { actions.playSearch(idx) }
             }

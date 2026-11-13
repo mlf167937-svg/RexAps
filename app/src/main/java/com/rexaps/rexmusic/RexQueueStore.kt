@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 /**
  * Antrian disimpan di folder cache sebagai file JSON kecil.
- * Yang disimpan HANYA metadata (id, judul, artis, album, cover, link spotify). Tidak ada mp3/audioUrl.
+ * Yang disimpan HANYA metadata (id, judul, artis, album, cover, sumber dan link layanan). Tidak ada mp3/audioUrl.
  * Kalau cache aplikasi dibersihkan, antrian ikut kosong (memang sifat cache).
  */
 class RexQueueStore(context: Context) {
@@ -46,6 +46,9 @@ internal fun RexTrack.toJson(): JSONObject = JSONObject()
     .put("album", album)
     .put("cover", cover)
     .put("spotifyUrl", spotifyUrl)
+    .put("source", source.id)
+    .put("sourceUrl", sourceUrl)
+    .put("variant", variant)
 
 internal fun JSONObject.toTrackOrNull(): RexTrack? {
     val title = optString("title")
@@ -56,6 +59,9 @@ internal fun JSONObject.toTrackOrNull(): RexTrack? {
         artist = optString("artist").ifBlank { "Unknown" },
         album = optString("album").ifBlank { "Single" },
         cover = optString("cover"),
-        spotifyUrl = optString("spotifyUrl")
+        spotifyUrl = optString("spotifyUrl"),
+        source = RexTrackSource.fromId(optString("source")),
+        sourceUrl = optString("sourceUrl").ifBlank { optString("spotifyUrl") },
+        variant = optString("variant")
     )
 }

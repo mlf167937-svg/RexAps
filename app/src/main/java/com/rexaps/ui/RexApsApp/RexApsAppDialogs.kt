@@ -30,6 +30,7 @@ import com.rexaps.rexfox.RexFoxScreen
 import com.rexaps.rexgit.RexGit
 import com.rexaps.rexmanager.RexManagerScreen
 import com.rexaps.rexmusic.RexMusicScreen
+import com.rexaps.rexgames.RexGamesScreen
 import com.rexaps.rexnux.RexNuxScreen
 import com.rexaps.rexspacex.RexSpaceXScreen
 import com.rexaps.rextools.navigation.RexNavGraph
@@ -159,6 +160,9 @@ internal fun __splitImpl_RexApsApp(
                                             selectedTab = RexTab.ACCOUNT
                                         }
                                     )
+
+                                RexRoute.REXGAMES ->
+                                    RexGamesScreen(onExit = { route = RexRoute.NONE })
 
                                 RexRoute.REXMANAGER ->
                                     RexManagerScreen(onExit = { route = RexRoute.NONE })

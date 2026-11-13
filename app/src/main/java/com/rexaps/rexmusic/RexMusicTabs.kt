@@ -92,9 +92,21 @@ fun SearchTab(
     onClear: () -> Unit,
     actions: RexActions,
     listState: LazyListState,
-    modifier: Modifier = Modifier
+    onAddMusic: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    providerFilter: RexTrackSource? = null,
+    onProviderFilterChange: (RexTrackSource?) -> Unit = {},
+    searchHistory: List<String> = emptyList(),
+    onSelectHistory: (String) -> Unit = {},
+    onRemoveHistory: (String) -> Unit = {},
+    onClearHistory: () -> Unit = {},
+    onRetry: () -> Unit = {}
 ) {
-        return __splitImpl_SearchTab(state, query, typing, onQueryChange, onClear, actions, listState, modifier)
+        return __splitImpl_SearchTab(
+            state, query, typing, onQueryChange, onClear, actions, listState,
+            onAddMusic, modifier, providerFilter, onProviderFilterChange,
+            searchHistory, onSelectHistory, onRemoveHistory, onClearHistory, onRetry
+        )
     }
 
 @Composable
@@ -117,8 +129,8 @@ internal fun ExploreTile(name: String, onClick: () -> Unit, modifier: Modifier =
         return __splitImpl_ExploreTile(name, onClick, modifier)
     }
 
-internal fun LazyListScope.resultsSection(state: RexMusicUiState, actions: RexActions, typing: Boolean) {
-        return this.__splitImpl_resultsSection(state, actions, typing)
+internal fun LazyListScope.resultsSection(state: RexMusicUiState, actions: RexActions, typing: Boolean, onRetry: () -> Unit = {}) {
+        return this.__splitImpl_resultsSection(state, actions, typing, onRetry)
     }
 
 //  LIBRARY 

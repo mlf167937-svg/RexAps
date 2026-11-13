@@ -12,37 +12,36 @@ import kotlinx.coroutines.launch
 class RexNuxViewModel(
     application: Application
 ) : AndroidViewModel(application) {
+    private val prefs = application.getSharedPreferences("rexnux", Context.MODE_PRIVATE)
+    private val installer = RexNuxInstaller(application)
 
-    private val prefs =
-        application.getSharedPreferences(
-            "rexnux",
-            Context.MODE_PRIVATE
-        )
+    private val _uiState = MutableStateFlow(RexNuxUiState())
+    val uiState: StateFlow<RexNuxUiState> = _uiState.asStateFlow()
 
-    private val installer =
-        RexNuxInstaller(application)
+    init {
+        refreshState()
+    }
 
-    private val _uiState =
-        MutableStateFlow(
-            RexNuxUiState(
-                installedDistro = loadInstalledDistro()
+    fun refreshState() {
+        viewModelScope.launch {
+            val installed = installer.getInstalledDistros()
+            val sizes = installed.associateWith { installer.getFormattedDistroSize(it) }
+            val lastActive = prefs.getString("active_distro", null)?.let { name ->
+                runCatching { RexNuxDistro.valueOf(name) }.getOrNull()
+            } ?: installed.firstOrNull()
+
+            _uiState.value = _uiState.value.copy(
+                installedDistros = installed,
+                activeDistro = lastActive,
+                distroSizes = sizes
             )
-        )
+        }
+    }
 
-    val uiState: StateFlow<RexNuxUiState> =
-        _uiState.asStateFlow()
-
-    private fun loadInstalledDistro(): RexNuxDistro? =
-        prefs.getString("installed_distro", null)
-            ?.let {
-                runCatching {
-                    RexNuxDistro.valueOf(it)
-                }.getOrNull()
-            }
-
-    fun openDownloadScreen() {
+    fun openDownloadScreen(distro: RexNuxDistro? = null) {
         _uiState.value = _uiState.value.copy(
             showDownloadScreen = true,
+            selectedDistro = distro,
             error = null
         )
     }
@@ -61,53 +60,35 @@ class RexNuxViewModel(
     }
 
     fun startInstall() {
-        val distro =
-            _uiState.value.selectedDistro ?: return
-
-        if (distro == RexNuxDistro.ARCH) {
-            _uiState.value = _uiState.value.copy(
-                error = "Arch Linux installer belum tersedia."
-            )
-            return
-        }
-
+        val distro = _uiState.value.selectedDistro ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 downloading = true,
                 progress = 0f,
-                message = "Starting installer...",
+                message = "Menyiapkan instalasi ${distro.title}...",
                 error = null
             )
-
             try {
-                installer.install(distro) { progress ->
+                installer.install(distro) { prog ->
                     _uiState.value = _uiState.value.copy(
-                        progress = progress.progress,
-                        message = progress.message
+                        progress = prog.progress,
+                        message = prog.message
                     )
                 }
-
-                prefs.edit()
-                    .putString(
-                        "installed_distro",
-                        distro.name
-                    )
-                    .apply()
-
+                prefs.edit().putString("active_distro", distro.name).apply()
+                refreshState()
                 _uiState.value = _uiState.value.copy(
-                    installedDistro = distro,
-                    selectedDistro = null,
+                    activeDistro = distro,
                     downloading = false,
                     progress = 1f,
-                    message = "Installation complete.",
+                    message = "Instalasi selesai.",
                     showDownloadScreen = false,
                     error = null
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     downloading = false,
-                    error =
-                        e.message ?: "Installation failed."
+                    error = e.message ?: "Instalasi gagal."
                 )
             }
         }
@@ -125,38 +106,40 @@ class RexNuxViewModel(
         )
     }
 
-    fun removeDistro() {
-        prefs.edit()
-            .remove("installed_distro")
-            .apply()
-
-        _uiState.value = _uiState.value.copy(
-            installedDistro = null,
-            selectedDistro = null,
-            showSettings = false,
-            showTerminal = false,
-            error = null
-        )
+    fun removeDistro(distro: RexNuxDistro) {
+        viewModelScope.launch {
+            installer.uninstall(distro)
+            val updatedInstalled = installer.getInstalledDistros()
+            val newActive = if (_uiState.value.activeDistro == distro) {
+                updatedInstalled.firstOrNull()
+            } else {
+                _uiState.value.activeDistro
+            }
+            if (newActive != null) {
+                prefs.edit().putString("active_distro", newActive.name).apply()
+            } else {
+                prefs.edit().remove("active_distro").apply()
+            }
+            refreshState()
+        }
     }
 
-    fun openRexNux() {
-        if (_uiState.value.installedDistro !=
-            RexNuxDistro.ALPINE
-        ) {
+    fun openTerminal(distro: RexNuxDistro) {
+        if (!installer.isDistroInstalled(distro)) {
             _uiState.value = _uiState.value.copy(
-                error =
-                    "Alpine Linux harus terinstall untuk membuka RexNux."
+                error = "${distro.title} belum terinstall. Silakan instal terlebih dahulu."
             )
             return
         }
-
+        prefs.edit().putString("active_distro", distro.name).apply()
         _uiState.value = _uiState.value.copy(
+            activeDistro = distro,
             showTerminal = true,
             error = null
         )
     }
 
-    fun closeRexNux() {
+    fun closeTerminal() {
         _uiState.value = _uiState.value.copy(
             showTerminal = false
         )
